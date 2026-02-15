@@ -11,17 +11,34 @@ A sleek dashboard to monitor, chat with, and manage your [OpenClaw](https://gith
 
 ## Quick Start
 
+### Prerequisites
+
+You need [OpenClaw](https://docs.openclaw.ai/install) installed first. If you don't have it:
+
 ```bash
-git clone https://github.com/openclaw/dashboard.git
-cd dashboard
+curl -fsSL https://openclaw.ai/install.sh | bash
+```
+
+Verify it's working:
+
+```bash
+openclaw --version
+```
+
+### Install the Dashboard
+
+Clone this repo **anywhere** (it auto-discovers your OpenClaw installation):
+
+```bash
+git clone https://github.com/robsannaa/openclaw-mission-control.git
+cd openclaw-mission-control
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` and you're in.
+Open `http://localhost:3000` — done!
 
-> **Prerequisites:** [Node.js 18+](https://nodejs.org/) and [OpenClaw](https://github.com/openclaw) installed.
-> Not sure? Run `node -v` and `openclaw --version` to check.
+> **Zero config needed.** The dashboard automatically finds your `~/.openclaw` directory and the `openclaw` binary.
 
 ---
 
@@ -80,28 +97,73 @@ Everything runs locally. No cloud. No data leaves your machine.
 
 ---
 
-## Alternative: Ask Your Agent
+## Let OpenClaw Install It For You
 
-If OpenClaw is already running, just ask:
+Already have OpenClaw running? Just ask your agent:
 
 ```
-Hey, install the Mission Control dashboard for me.
+Hey, install Mission Control for me
 ```
 
-Your agent knows how to set it up.
+Your agent will:
+1. Clone this repo to your workspace
+2. Run `npm install`
+3. Start the dev server
+4. Open it in your browser
 
 ---
 
 ## How It Works
 
-Mission Control auto-discovers your OpenClaw installation at startup:
+Mission Control **auto-discovers** your OpenClaw installation at startup. No configuration needed.
 
-1. **Home directory** — finds `~/.openclaw` (or `OPENCLAW_HOME` if set)
-2. **Binary** — locates the `openclaw` CLI via `which` or common install paths
+**What it finds automatically:**
+
+1. **OpenClaw binary** — checks `which openclaw`, then common paths like `/opt/homebrew/bin/openclaw`
+2. **Home directory** — looks at `~/.openclaw` (or `OPENCLAW_HOME` env var if set)
 3. **Agents** — reads `openclaw.json` and scans agent directories
-4. **Workspaces** — discovers all workspace directories automatically
+4. **Workspaces** — discovers all workspace directories from your config
 
-No config files to create. No paths to set. It just works.
+**You can clone this repo anywhere.** It doesn't need to be inside `~/.openclaw` or any specific location.
+
+---
+
+## Troubleshooting
+
+### "OpenClaw not found"
+
+The dashboard couldn't find the `openclaw` binary. Make sure it's installed and in your PATH:
+
+```bash
+openclaw --version
+```
+
+If that works but the dashboard still complains, set the path explicitly:
+
+```bash
+OPENCLAW_BIN=$(which openclaw) npm run dev
+```
+
+### Port 3000 already in use
+
+Change the port:
+
+```bash
+npm run dev -- --port 8080
+```
+
+---
+
+## Environment Variables (optional)
+
+Everything auto-discovers, but you can override if needed:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENCLAW_HOME` | `~/.openclaw` | Path to your OpenClaw home directory |
+| `OPENCLAW_BIN` | Auto-detected | Path to the `openclaw` binary |
+| `OPENCLAW_WORKSPACE` | Auto-detected | Path to the default workspace |
+| `OPENCLAW_SKILLS_DIR` | Auto-detected | Path to system skills directory |
 
 ---
 
@@ -112,19 +174,6 @@ Mission Control works as a **Progressive Web App**:
 1. Open `http://localhost:3000` in Chrome or Edge
 2. Click the install icon in the address bar
 3. Done — it now lives in your dock/taskbar
-
----
-
-## Environment Variables (optional)
-
-These are **not required** — everything is auto-discovered. Override only if needed:
-
-| Variable | Default | Description |
-|---|---|---|
-| `OPENCLAW_HOME` | `~/.openclaw` | Path to your OpenClaw home directory |
-| `OPENCLAW_BIN` | Auto-detected | Path to the `openclaw` binary |
-| `OPENCLAW_WORKSPACE` | Auto-detected | Path to the default workspace |
-| `OPENCLAW_SKILLS_DIR` | Auto-detected | Path to system skills directory |
 
 ---
 
@@ -166,11 +215,11 @@ If that doesn't work, [install OpenClaw first](https://docs.openclaw.ai/install)
 <details>
 <summary><strong>Can I run this on a remote server?</strong></summary>
 
-Yes! Clone the repo on any machine where OpenClaw is installed:
+Yes! Clone it on any machine where OpenClaw is installed:
 
 ```bash
-git clone https://github.com/openclaw/dashboard.git
-cd dashboard
+git clone https://github.com/robsannaa/openclaw-mission-control.git
+cd openclaw-mission-control
 npm install
 npm run dev -- --port 8080
 ```
