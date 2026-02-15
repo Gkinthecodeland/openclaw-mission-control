@@ -87,7 +87,7 @@ function TerminalPane({
           brightWhite: "#fafafa",
         },
         scrollback: 10000,
-        convertEol: false,
+        convertEol: true,
         allowProposedApi: true,
       });
 
@@ -161,8 +161,10 @@ function TerminalPane({
 
       const flushInput = () => {
         if (!inputBuffer) return;
-        const data = inputBuffer;
+        const raw = inputBuffer;
         inputBuffer = "";
+        // Shell reading from pipe expects \n to execute a line; xterm sends \r on Enter
+        const data = raw.replace(/\r/g, "\n");
         fetch("/api/terminal", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -171,6 +173,8 @@ function TerminalPane({
       };
 
       term.onData((data: string) => {
+        // Local echo: shell is in pipe mode so it won't echo; show typed chars locally
+        term.write(data);
         inputBuffer += data;
         // Flush immediately for Enter, Ctrl+C, etc. or batch with tiny delay
         if (data === "\r" || data === "\x03" || data === "\x04" || data.length > 1) {

@@ -8,6 +8,7 @@ import {
   useMemo,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   Search,
   Pause,
@@ -92,9 +93,22 @@ export function AgentChatPanel() {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [prompt, setPrompt] = useState("");
   const [showAgentPicker, setShowAgentPicker] = useState(false);
+  const [portalRoot, setPortalRoot] = useState<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Mount a dedicated portal root as the last child of body so the panel is always viewport-fixed
+  useEffect(() => {
+    const el = document.createElement("div");
+    el.id = "agent-chat-portal-root";
+    el.setAttribute("aria-hidden", "true");
+    document.body.appendChild(el);
+    setPortalRoot(el);
+    return () => {
+      if (document.body.contains(el)) document.body.removeChild(el);
+    };
+  }, []);
 
   // Fetch agents once
   useEffect(() => {
@@ -175,12 +189,20 @@ export function AgentChatPanel() {
 
   const currentAgent = agents.find((a) => a.id === chat.agentId);
 
-  if (!chat.open) return null;
+  if (!chat.open || !portalRoot) return null;
 
-  return (
+  const panel = (
     <div
       ref={panelRef}
-      className="fixed right-4 top-14 z-50 flex h-[min(580px,calc(100vh-80px))] w-[min(420px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2 fade-in duration-200"
+      role="dialog"
+      aria-label="Agent Chat"
+      style={{
+        position: "fixed",
+        right: 16,
+        top: 56,
+        zIndex: 99999,
+      }}
+      className="flex h-[min(580px,calc(100vh-80px))] w-[min(420px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2 fade-in duration-200"
     >
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-4 py-2.5">
@@ -334,6 +356,8 @@ export function AgentChatPanel() {
       </div>
     </div>
   );
+
+  return createPortal(panel, portalRoot);
 }
 
 /* ── Pause/Resume Gateway ───────────────────────── */

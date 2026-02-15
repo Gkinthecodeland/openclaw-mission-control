@@ -41,17 +41,11 @@ function createSession(): string {
   const home = getOpenClawHome();
   const shell = process.env.SHELL || "/bin/zsh";
 
-  // Use `script` to create a real PTY wrapper (macOS/Linux).
-  // Without a PTY, the shell won't echo typed characters back,
-  // won't support arrow keys/tab completion, and won't handle
-  // terminal escape sequences properly.
-  const isMac = process.platform === "darwin";
-  const cmd = isMac ? "script" : "script";
-  const args = isMac
-    ? ["-q", "/dev/null", shell, "-i"]   // macOS: script -q /dev/null <shell> -i
-    : ["-qc", `${shell} -i`, "/dev/null"]; // Linux: script -qc "<shell> -i" /dev/null
-
-  const proc = spawn(cmd, args, {
+  // Spawn the shell directly. We do NOT use `script` here because the Next.js
+  // API runs in a non-TTY context (stdio is sockets), so `script` fails with
+  // "tcgetattr/ioctl: Operation not supported on socket" and the session dies.
+  // The frontend handles local echo so the user still sees what they type.
+  const proc = spawn(shell, ["-i"], {
     cwd: home,
     env: {
       ...process.env,
