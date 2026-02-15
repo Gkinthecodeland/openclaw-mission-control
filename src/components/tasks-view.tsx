@@ -19,6 +19,7 @@ import {
   Bot,
   Brain,
   CheckCircle,
+  GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +57,9 @@ export function TasksView() {
   const [addingToColumn, setAddingToColumn] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<number | null>(null);
   const saveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [renamingTaskId, setRenamingTaskId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch("/api/tasks")
@@ -256,8 +260,34 @@ export function TasksView() {
       <div className="flex flex-col md:flex-row flex-1 gap-4 md:gap-6 overflow-x-auto px-4 md:px-6 pb-6">
         {columns.map((col) => {
           const colTasks = tasks.filter((t) => t.column === col.id);
+          const isDragTarget = dragOverColumn === col.id && draggingTaskId !== null;
           return (
-            <div key={col.id} className="flex md:min-w-[280px] flex-1 flex-col">
+            <div
+              key={col.id}
+              className={cn(
+                "flex md:min-w-[280px] flex-1 flex-col rounded-xl p-1 -m-1 transition-colors",
+                isDragTarget && "bg-violet-500/[0.06] ring-1 ring-inset ring-violet-500/20"
+              )}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (dragOverColumn !== col.id) setDragOverColumn(col.id);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setDragOverColumn(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const taskId = Number(e.dataTransfer.getData("text/plain"));
+                if (taskId && !isNaN(taskId)) {
+                  updateTask(taskId, { column: col.id });
+                }
+                setDraggingTaskId(null);
+                setDragOverColumn(null);
+              }}
+            >
               <div className="mb-3 flex items-center gap-2">
                 <div
                   className="h-2.5 w-2.5 rounded-full"
@@ -298,8 +328,13 @@ export function TasksView() {
 
               <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto">
                 {colTasks.length === 0 && addingToColumn !== col.id ? (
-                  <div className="flex items-center justify-center rounded-lg border border-dashed border-foreground/[0.06] py-8 text-[12px] text-muted-foreground/60">
-                    No tasks
+                  <div className={cn(
+                    "flex items-center justify-center rounded-lg border border-dashed py-8 text-[12px] transition-colors",
+                    isDragTarget
+                      ? "border-violet-500/30 text-violet-400/60 bg-violet-500/[0.03]"
+                      : "border-foreground/[0.06] text-muted-foreground/60"
+                  )}>
+                    {isDragTarget ? "Drop here" : "No tasks"}
                   </div>
                 ) : (
                   colTasks.map((task) =>
@@ -326,6 +361,15 @@ export function TasksView() {
                         onEdit={() => setEditingTask(task.id)}
                         onMove={(dir) => moveTask(task.id, dir)}
                         onDelete={() => deleteTask(task.id)}
+                        isDragging={draggingTaskId === task.id}
+                        onDragStart={() => setDraggingTaskId(task.id)}
+                        onDragEnd={() => { setDraggingTaskId(null); setDragOverColumn(null); }}
+                        isRenaming={renamingTaskId === task.id}
+                        onStartRename={() => setRenamingTaskId(task.id)}
+                        onRename={(title) => {
+                          if (title !== task.title) updateTask(task.id, { title });
+                          setRenamingTaskId(null);
+                        }}
                       />
                     )
                   )
@@ -347,20 +391,58 @@ function TaskCard({
   onEdit,
   onMove,
   onDelete,
+  isDragging,
+  onDragStart,
+  onDragEnd,
+  isRenaming,
+  onStartRename,
+  onRename,
 }: {
   task: Task;
   columns: Column[];
   onEdit: () => void;
   onMove: (dir: "left" | "right") => void;
   onDelete: () => void;
+  isDragging: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  isRenaming: boolean;
+  onStartRename: () => void;
+  onRename: (title: string) => void;
 }) {
   const colIdx = columns.findIndex((c) => c.id === task.column);
   const canLeft = colIdx > 0;
   const canRight = colIdx < columns.length - 1;
+  const [renameValue, setRenameValue] = useState(task.title);
+  const renameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming) {
+      setRenameValue(task.title);
+      setTimeout(() => {
+        renameRef.current?.focus();
+        renameRef.current?.select();
+      }, 0);
+    }
+  }, [isRenaming, task.title]);
 
   return (
-    <div className="group rounded-lg border border-foreground/[0.06] bg-card p-3.5 transition-colors hover:border-foreground/[0.12]">
-      <div className="flex items-start gap-2.5">
+    <div
+      className={cn(
+        "group rounded-lg border border-foreground/[0.06] bg-card p-3.5 transition-all hover:border-foreground/[0.12]",
+        isDragging && "opacity-40 scale-[0.97]",
+        !isRenaming && "cursor-grab active:cursor-grabbing"
+      )}
+      draggable={!isRenaming}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(task.id));
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
+    >
+      <div className="flex items-start gap-2">
+        <GripVertical className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground/20 transition-colors group-hover:text-muted-foreground/40" />
         <div
           className={cn(
             "mt-1.5 h-2 w-2 shrink-0 rounded-full",
@@ -368,8 +450,31 @@ function TaskCard({
           )}
         />
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-foreground/90">{task.title}</p>
-          {task.description && (
+          {isRenaming ? (
+            <input
+              ref={renameRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onRename(renameValue.trim() || task.title);
+                if (e.key === "Escape") onRename(task.title);
+              }}
+              onBlur={() => onRename(renameValue.trim() || task.title)}
+              className="w-full bg-transparent text-[13px] font-medium text-foreground/90 outline-none border-b border-violet-500/40 pb-0.5"
+            />
+          ) : (
+            <p
+              className="text-[13px] font-medium text-foreground/90"
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                onStartRename();
+              }}
+              title="Double-click to rename"
+            >
+              {task.title}
+            </p>
+          )}
+          {task.description && !isRenaming && (
             <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-muted-foreground">
               {task.description}
             </p>
