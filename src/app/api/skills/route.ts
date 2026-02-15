@@ -211,48 +211,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      case "enable-skill": {
-        // Add skill to allowlist or remove from disabledSkills in config
-        const name = body.name as string;
-        if (!name)
-          return NextResponse.json(
-            { error: "name required" },
-            { status: 400 }
-          );
-
-        try {
-          const configData = await gatewayCall<Record<string, unknown>>(
-            "config.get",
-            undefined,
-            8000
-          );
-          const hash = configData.hash as string;
-          const parsed = (configData.parsed || {}) as Record<string, unknown>;
-          const skills = ((parsed.skills || {}) as Record<string, unknown>);
-          const disabled = (skills.disabled || []) as string[];
-          const newDisabled = disabled.filter((s) => s !== name);
-
-          await gatewayCall(
-            "config.patch",
-            {
-              raw: JSON.stringify({ skills: { disabled: newDisabled } }),
-              baseHash: hash,
-            },
-            10000
-          );
-          return NextResponse.json({ ok: true, action, name });
-        } catch (err) {
-          return NextResponse.json({ error: String(err) }, { status: 500 });
-        }
-      }
-
+      case "enable-skill":
       case "disable-skill": {
+        // Toggle skill via skills.entries.<name>.enabled
         const name = body.name as string;
         if (!name)
           return NextResponse.json(
             { error: "name required" },
             { status: 400 }
           );
+
+        const enabling = action === "enable-skill";
 
         try {
           const configData = await gatewayCall<Record<string, unknown>>(
@@ -261,16 +230,22 @@ export async function POST(request: NextRequest) {
             8000
           );
           const hash = configData.hash as string;
-          const parsed = (configData.parsed || {}) as Record<string, unknown>;
-          const skills = ((parsed.skills || {}) as Record<string, unknown>);
-          const disabled = (skills.disabled || []) as string[];
-          if (!disabled.includes(name)) disabled.push(name);
+
+          // Schema requires: skills.entries.<skillKey>.enabled: boolean
+          const patch = {
+            skills: {
+              entries: {
+                [name]: { enabled: enabling },
+              },
+            },
+          };
 
           await gatewayCall(
             "config.patch",
             {
-              raw: JSON.stringify({ skills: { disabled } }),
+              raw: JSON.stringify(patch),
               baseHash: hash,
+              restartDelayMs: 2000,
             },
             10000
           );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Search,
   Pause,
@@ -12,6 +12,9 @@ import {
   AlertTriangle,
   Loader2,
   X,
+  Wifi,
+  WifiOff,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchModal } from "./search-modal";
@@ -25,6 +28,9 @@ type AgentInfo = {
   name: string;
   model: string;
 };
+
+type GatewayHealth = Record<string, unknown>;
+type GatewayStatus = "online" | "degraded" | "offline" | "loading";
 
 type CommandState = "idle" | "sending" | "success" | "error";
 
@@ -313,12 +319,253 @@ function usePauseState() {
   return { paused, busy, toggle };
 }
 
+/* ── Gateway Status Hook ───────────────────────── */
+
+function useGatewayStatus() {
+  const [status, setStatus] = useState<GatewayStatus>("loading");
+  const [health, setHealth] = useState<GatewayHealth | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/gateway");
+        const data = await res.json();
+        if (active) {
+          setStatus((data.status as GatewayStatus) || "offline");
+          setHealth((data.health as GatewayHealth) || null);
+        }
+      } catch {
+        if (active) setStatus("offline");
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 12000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  return { status, health };
+}
+
+/* ── Gateway Status Badge ──────────────────────── */
+
+function GatewayStatusBadge({
+  status,
+  health,
+}: {
+  status: GatewayStatus;
+  health: GatewayHealth | null;
+}) {
+  const [showPopover, setShowPopover] = useState(false);
+  const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleEnter = useCallback(() => {
+    if (hideTimeout.current) clearTimeout(hideTimeout.current);
+    setShowPopover(true);
+  }, []);
+
+  const handleLeave = useCallback(() => {
+    hideTimeout.current = setTimeout(() => setShowPopover(false), 200);
+  }, []);
+
+  // Extract useful details from health
+  const details = useMemo(() => {
+    if (!health) return null;
+    const gw = health.gateway as Record<string, unknown> | undefined;
+    const rawChannels = health.channels;
+    const rawAgents = health.agents;
+    const version = (gw?.version as string) || null;
+    const mode = (gw?.mode as string) || null;
+    const port = (gw?.port as number) || 18789;
+    const uptime = gw?.uptimeMs as number | undefined;
+
+    // channels/agents may be arrays, objects, or missing — handle all cases
+    const channelsArr = Array.isArray(rawChannels) ? rawChannels : [];
+    const agentsArr = Array.isArray(rawAgents)
+      ? rawAgents
+      : rawAgents && typeof rawAgents === "object"
+        ? Object.values(rawAgents)
+        : [];
+
+    const channelCount = channelsArr.length;
+    const activeChannels = channelsArr.filter(
+      (c: Record<string, unknown>) => c.connected || c.enabled
+    ).length;
+    const agentCount = agentsArr.length;
+
+    let uptimeStr: string | null = null;
+    if (uptime && uptime > 0) {
+      const hours = Math.floor(uptime / 3_600_000);
+      const mins = Math.floor((uptime % 3_600_000) / 60_000);
+      uptimeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+    }
+
+    return { version, mode, port, uptimeStr, channelCount, activeChannels, agentCount };
+  }, [health]);
+
+  const statusConfig = {
+    online: {
+      dot: "bg-emerald-400",
+      ping: true,
+      text: "text-emerald-500 dark:text-emerald-400",
+      label: "Online",
+      bg: "bg-emerald-500/[0.08] border-emerald-500/20",
+      icon: Wifi,
+    },
+    degraded: {
+      dot: "bg-amber-400",
+      ping: false,
+      text: "text-amber-500 dark:text-amber-400",
+      label: "Degraded",
+      bg: "bg-amber-500/[0.08] border-amber-500/20",
+      icon: Activity,
+    },
+    offline: {
+      dot: "bg-red-400",
+      ping: false,
+      text: "text-red-500 dark:text-red-400",
+      label: "Offline",
+      bg: "bg-red-500/[0.08] border-red-500/20",
+      icon: WifiOff,
+    },
+    loading: {
+      dot: "bg-zinc-400 animate-pulse",
+      ping: false,
+      text: "text-muted-foreground",
+      label: "Checking…",
+      bg: "bg-foreground/[0.04] border-foreground/[0.08]",
+      icon: Loader2,
+    },
+  };
+
+  const cfg = statusConfig[status];
+  const Icon = cfg.icon;
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      <div
+        className={cn(
+          "flex cursor-default items-center gap-1.5 rounded-full border px-2.5 py-1 transition-colors",
+          cfg.bg
+        )}
+      >
+        {/* Dot */}
+        <span className="relative flex h-2 w-2">
+          {cfg.ping && (
+            <span
+              className={cn(
+                "absolute inline-flex h-full w-full animate-ping rounded-full opacity-50",
+                cfg.dot
+              )}
+            />
+          )}
+          <span
+            className={cn(
+              "relative inline-flex h-2 w-2 rounded-full",
+              cfg.dot
+            )}
+          />
+        </span>
+        {/* Label */}
+        <span className={cn("text-[11px] font-medium", cfg.text)}>
+          {cfg.label}
+        </span>
+      </div>
+
+      {/* Popover */}
+      {showPopover && (
+        <div className="absolute left-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-sm">
+          {/* Header */}
+          <div className={cn("flex items-center gap-2.5 px-3.5 py-3 border-b border-foreground/[0.06]", cfg.bg)}>
+            <Icon className={cn("h-4 w-4", cfg.text, status === "loading" && "animate-spin")} />
+            <div>
+              <p className={cn("text-[12px] font-semibold", cfg.text)}>
+                Gateway {cfg.label}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {status === "offline"
+                  ? "Cannot reach gateway process"
+                  : status === "degraded"
+                    ? "Some services may be unavailable"
+                    : status === "loading"
+                      ? "Checking gateway health…"
+                      : "All systems operational"}
+              </p>
+            </div>
+          </div>
+
+          {/* Details */}
+          {details && status !== "loading" && (
+            <div className="space-y-0 divide-y divide-foreground/[0.04] px-3.5 py-1">
+              {details.uptimeStr && (
+                <DetailRow label="Uptime" value={details.uptimeStr} />
+              )}
+              {details.version && (
+                <DetailRow label="Version" value={details.version} />
+              )}
+              <DetailRow label="Port" value={String(details.port)} />
+              {details.mode && (
+                <DetailRow label="Mode" value={details.mode} />
+              )}
+              {details.agentCount > 0 && (
+                <DetailRow
+                  label="Agents"
+                  value={`${details.agentCount} configured`}
+                />
+              )}
+              {details.channelCount > 0 && (
+                <DetailRow
+                  label="Channels"
+                  value={`${details.activeChannels} / ${details.channelCount} active`}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Error info */}
+          {!!health?.error && (
+            <div className="border-t border-foreground/[0.06] px-3.5 py-2.5">
+              <p className="text-[10px] leading-relaxed text-red-400">
+                {String(health.error)}
+              </p>
+            </div>
+          )}
+
+          {/* Footer hint */}
+          <div className="border-t border-foreground/[0.06] px-3.5 py-2">
+            <p className="text-[10px] text-muted-foreground/50">
+              Polling every 12s · Click Pause above to stop gateway
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-[11px] text-muted-foreground/60">{label}</span>
+      <span className="text-[11px] font-medium text-foreground/70">{value}</span>
+    </div>
+  );
+}
+
 /* ── Header ─────────────────────────────────────── */
 
 export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const { paused, busy: pauseBusy, toggle: togglePause } = usePauseState();
+  const { status: gwStatus, health: gwHealth } = useGatewayStatus();
 
   // Global Cmd+K / Ctrl+K shortcut
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -341,8 +588,32 @@ export function Header() {
           <h1 className="text-sm font-semibold text-foreground">
             Mission Control
           </h1>
+          <GatewayStatusBadge status={gwStatus} health={gwHealth} />
         </div>
         <div className="flex items-center gap-1.5 md:gap-2">
+          {/* ── Actions ── */}
+
+          {/* Quick Command (primary CTA) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setCmdOpen(!cmdOpen)}
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-xs transition-colors",
+                cmdOpen
+                  ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
+                  : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted/80"
+              )}
+            >
+              <Zap className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">Ping Agent</span>
+            </button>
+
+            {cmdOpen && (
+              <QuickCommandPopover onClose={() => setCmdOpen(false)} />
+            )}
+          </div>
+
           {/* Search */}
           <button
             type="button"
@@ -355,6 +626,11 @@ export function Header() {
               ⌘K
             </kbd>
           </button>
+
+          {/* ── divider ── */}
+          <div className="hidden h-5 w-px bg-foreground/[0.08] sm:block" />
+
+          {/* ── System controls ── */}
 
           {/* Pause / Resume */}
           <button
@@ -379,26 +655,10 @@ export function Header() {
           {/* Pairing Notifications */}
           <PairingNotifications />
 
-          {/* Quick Command */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setCmdOpen(!cmdOpen)}
-              className={cn(
-                "flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-xs transition-colors",
-                cmdOpen
-                  ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
-                  : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted/80"
-              )}
-            >
-              <Zap className="h-3.5 w-3.5" />
-              <span className="hidden md:inline">Quick Command</span>
-            </button>
+          {/* ── divider ── */}
+          <div className="hidden h-5 w-px bg-foreground/[0.08] sm:block" />
 
-            {cmdOpen && (
-              <QuickCommandPopover onClose={() => setCmdOpen(false)} />
-            )}
-          </div>
+          {/* ── Settings ── */}
 
           {/* Theme Toggle */}
           <ThemeToggle />

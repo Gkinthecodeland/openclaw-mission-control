@@ -13,6 +13,9 @@ import {
   Pencil,
   ClipboardCopy,
   ExternalLink,
+  Code,
+  Eye,
+  CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InlineMarkdownEditor } from "./inline-markdown-editor";
@@ -86,6 +89,249 @@ const TAG_COLORS: Record<string, string> = {
   Newsletters: "bg-purple-500/20 text-purple-300 border-purple-500/30",
   "YouTube Scripts": "bg-red-500/20 text-red-300 border-red-500/30",
 };
+
+/* ── JSON Viewer ──────────────────────────────── */
+
+function highlightJson(json: string): React.ReactNode[] {
+  const result: React.ReactNode[] = [];
+  // Regex: key strings (followed by :), value strings, booleans, null, numbers
+  const regex =
+    /("(?:[^"\\]|\\.)*")(?=\s*:)|"(?:[^"\\]|\\.)*"|\b(?:true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+  let lastIndex = 0;
+  let idx = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(json)) !== null) {
+    // Plain text before match (structural chars, whitespace)
+    if (match.index > lastIndex) {
+      result.push(
+        <span key={`p${idx++}`} className="text-muted-foreground/50">
+          {json.slice(lastIndex, match.index)}
+        </span>
+      );
+    }
+
+    const m = match[0];
+    if (match[1]) {
+      // Key
+      result.push(
+        <span key={`k${idx++}`} className="text-violet-400">
+          {m}
+        </span>
+      );
+    } else if (m.startsWith('"')) {
+      // String value
+      const display = m.length > 120 ? m.slice(0, 117) + '…"' : m;
+      result.push(
+        <span key={`s${idx++}`} className="text-emerald-400">
+          {display}
+        </span>
+      );
+    } else if (m === "true" || m === "false") {
+      result.push(
+        <span key={`b${idx++}`} className="text-blue-400">
+          {m}
+        </span>
+      );
+    } else if (m === "null") {
+      result.push(
+        <span key={`n${idx++}`} className="text-red-400/70 italic">
+          {m}
+        </span>
+      );
+    } else {
+      // Number
+      result.push(
+        <span key={`d${idx++}`} className="text-amber-400">
+          {m}
+        </span>
+      );
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  // Remaining
+  if (lastIndex < json.length) {
+    result.push(
+      <span key={`p${idx}`} className="text-muted-foreground/50">
+        {json.slice(lastIndex)}
+      </span>
+    );
+  }
+
+  return result;
+}
+
+function JsonViewer({
+  content,
+  onContentChange,
+  onSave,
+}: {
+  content: string;
+  onContentChange: (c: string) => void;
+  onSave: (content: string) => void;
+}) {
+  const [mode, setMode] = useState<"view" | "edit">("view");
+  const [copied, setCopied] = useState(false);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  let parsed: unknown = null;
+  let valid = false;
+  try {
+    parsed = JSON.parse(content);
+    valid = true;
+  } catch {
+    /* invalid JSON */
+  }
+
+  const prettyJson = useMemo(
+    () => (valid ? JSON.stringify(parsed, null, 2) : content),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [content, valid]
+  );
+
+  const highlighted = useMemo(() => {
+    if (!valid) return null;
+    return highlightJson(prettyJson);
+  }, [prettyJson, valid]);
+
+  const lineCount = prettyJson.split("\n").length;
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(prettyJson);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [prettyJson]);
+
+  // Focus textarea when switching to edit
+  useEffect(() => {
+    if (mode === "edit") {
+      setTimeout(() => {
+        editRef.current?.focus();
+      }, 50);
+    }
+  }, [mode]);
+
+  const handleEditChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      onContentChange(e.target.value);
+    },
+    [onContentChange]
+  );
+
+  const handleEditKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        onSave(content);
+      }
+      // Tab → insert 2 spaces
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const ta = e.target as HTMLTextAreaElement;
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        const newVal = content.slice(0, start) + "  " + content.slice(end);
+        onContentChange(newVal);
+        setTimeout(() => {
+          ta.selectionStart = ta.selectionEnd = start + 2;
+        }, 0);
+      }
+    },
+    [content, onContentChange, onSave]
+  );
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Toolbar */}
+      <div className="mb-3 flex items-center gap-2">
+        <div className="flex rounded-lg border border-foreground/[0.06] bg-card">
+          <button
+            type="button"
+            onClick={() => setMode("view")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-[11px] font-medium transition",
+              mode === "view"
+                ? "bg-violet-500/15 text-violet-400"
+                : "text-muted-foreground hover:text-foreground/70"
+            )}
+          >
+            <Eye className="h-3 w-3" />
+            Formatted
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("edit")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-r-lg px-3 py-1.5 text-[11px] font-medium transition",
+              mode === "edit"
+                ? "bg-violet-500/15 text-violet-400"
+                : "text-muted-foreground hover:text-foreground/70"
+            )}
+          >
+            <Code className="h-3 w-3" />
+            Edit
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.06] bg-card px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground/70"
+        >
+          {copied ? (
+            <CheckCircle className="h-3 w-3 text-emerald-400" />
+          ) : (
+            <Copy className="h-3 w-3" />
+          )}
+          {copied ? "Copied" : "Copy"}
+        </button>
+        {!valid && (
+          <span className="text-[11px] text-amber-400">
+            Invalid JSON — showing raw text
+          </span>
+        )}
+        {valid && mode === "view" && (
+          <span className="text-[10px] text-muted-foreground/40">
+            {lineCount} lines
+          </span>
+        )}
+      </div>
+
+      {/* Content */}
+      {mode === "edit" ? (
+        <textarea
+          ref={editRef}
+          value={content}
+          onChange={handleEditChange}
+          onKeyDown={handleEditKeyDown}
+          spellCheck={false}
+          className="flex-1 resize-none rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-4 font-mono text-[13px] leading-6 text-foreground/80 outline-none focus:border-violet-500/30"
+        />
+      ) : (
+        <div className="flex flex-1 overflow-auto rounded-lg border border-foreground/[0.06] bg-foreground/[0.02]">
+          {/* Line numbers */}
+          <div className="shrink-0 select-none border-r border-foreground/[0.04] py-4 pr-1 text-right">
+            {Array.from({ length: lineCount }, (_, i) => (
+              <div
+                key={i}
+                className="px-3 font-mono text-[12px] leading-6 text-muted-foreground/25"
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+          {/* Highlighted JSON */}
+          <pre className="flex-1 overflow-x-auto whitespace-pre p-4 font-mono text-[13px] leading-6">
+            {highlighted ?? (
+              <span className="text-foreground/70">{prettyJson}</span>
+            )}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ── component ─────────────────────────────────── */
 
@@ -628,15 +874,24 @@ export function DocsView() {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6">
+            <div className="flex min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
               {content != null ? (
-                <InlineMarkdownEditor
-                  key={selected.path}
-                  content={content}
-                  onContentChange={handleContentChange}
-                  onSave={handleSave}
-                  placeholder="Click to start writing..."
-                />
+                selected.ext === ".json" ? (
+                  <JsonViewer
+                    key={selected.path}
+                    content={content}
+                    onContentChange={handleContentChange}
+                    onSave={handleSave}
+                  />
+                ) : (
+                  <InlineMarkdownEditor
+                    key={selected.path}
+                    content={content}
+                    onContentChange={handleContentChange}
+                    onSave={handleSave}
+                    placeholder="Click to start writing..."
+                  />
+                )
               ) : (
                 <div className="flex items-center justify-center py-12 text-sm text-muted-foreground/60">
                   Loading...
