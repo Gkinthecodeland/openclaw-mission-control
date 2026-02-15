@@ -44,7 +44,7 @@ export function RestartAnnouncementBar() {
   if (!needed) return null;
 
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-amber-500/20 bg-amber-500/[0.06] px-5 py-2.5">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 sm:gap-3 sm:px-5 sm:py-2.5">
       <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
       <div className="min-w-0 flex-1">
         <p className="text-[12px] font-medium text-amber-600 dark:text-amber-200">

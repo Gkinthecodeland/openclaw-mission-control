@@ -58,7 +58,7 @@ export default function RootLayout({
           <KeyboardShortcuts />
           <div className="flex h-screen overflow-hidden">
             <Sidebar />
-            <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <Header />
               <RestartAnnouncementBar />
               <main className="flex flex-1 overflow-hidden">

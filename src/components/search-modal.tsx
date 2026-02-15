@@ -136,10 +136,10 @@ export function SearchModal({ open, onClose }: Props) {
       />
 
       {/* Modal */}
-      <div className="fixed inset-x-0 top-[12%] z-50 mx-auto w-full max-w-2xl px-4">
+      <div className="fixed inset-x-0 top-[12%] z-50 mx-4 w-[calc(100vw-2rem)] max-w-2xl sm:mx-auto">
         <div className="overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl shadow-black/50">
           {/* Search input */}
-          <div className="flex items-center gap-3 border-b border-foreground/[0.06] px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3 border-b border-foreground/[0.06] px-4 py-3 sm:px-6">
             {loading ? (
               <Loader2 className="h-5 w-5 shrink-0 animate-spin text-violet-400" />
             ) : (
@@ -151,7 +151,7 @@ export function SearchModal({ open, onClose }: Props) {
               onChange={(e) => handleQueryChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Search memories with OpenClaw vector search..."
-              className="flex-1 bg-transparent text-sm text-foreground/90 outline-none placeholder:text-muted-foreground/60"
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground/90 outline-none placeholder:text-muted-foreground/60"
               spellCheck={false}
               autoComplete="off"
             />
@@ -161,10 +161,10 @@ export function SearchModal({ open, onClose }: Props) {
           </div>
 
           {/* Results */}
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="max-h-[60vh] overflow-x-hidden overflow-y-auto">
             {/* Hint when empty */}
             {!searched && !loading && (
-              <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+              <div className="flex flex-col items-center gap-3 px-4 py-10 text-center sm:px-6">
                 <div className="flex items-center gap-2 text-muted-foreground/60">
                   <Brain className="h-5 w-5" />
                   <span className="text-sm font-medium">
@@ -181,7 +181,7 @@ export function SearchModal({ open, onClose }: Props) {
 
             {/* Loading state */}
             {loading && results.length === 0 && searched && (
-              <div className="flex items-center justify-center gap-2 px-6 py-10 text-sm text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-muted-foreground sm:px-6">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Searching vector memory...
               </div>
@@ -189,15 +189,15 @@ export function SearchModal({ open, onClose }: Props) {
 
             {/* No results */}
             {searched && !loading && results.length === 0 && (
-              <div className="px-6 py-10 text-center text-sm text-muted-foreground/60">
+              <div className="px-4 py-10 text-center text-sm text-muted-foreground/60 sm:px-6">
                 No matches found for &quot;{query}&quot;
               </div>
             )}
 
             {/* Result list */}
             {results.length > 0 && (
-              <div className="py-2">
-                <div className="px-4 pb-2">
+              <div className="min-w-0 py-2">
+                <div className="px-4 pb-2 sm:px-6">
                   <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
                     {results.length} result{results.length !== 1 ? "s" : ""}
                   </span>
@@ -210,7 +210,7 @@ export function SearchModal({ open, onClose }: Props) {
                       key={`${result.path}-${result.startLine}`}
                       type="button"
                       className={cn(
-                        "flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors",
+                        "flex w-full min-w-0 flex-col gap-1.5 px-4 py-3 text-left transition-colors sm:px-6",
                         isSelected
                           ? "bg-violet-500/10"
                           : "hover:bg-muted/60"
@@ -218,9 +218,9 @@ export function SearchModal({ open, onClose }: Props) {
                       onMouseEnter={() => setSelectedIdx(idx)}
                     >
                       {/* Header row */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{icon}</span>
-                        <span className="text-[12px] font-medium text-foreground/70">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-sm">{icon}</span>
+                        <span className="min-w-0 truncate text-[12px] font-medium text-foreground/70">
                           {label}
                         </span>
                         <span className="text-[10px] text-muted-foreground/60">
@@ -240,7 +240,7 @@ export function SearchModal({ open, onClose }: Props) {
 
                       {/* Snippet */}
                       <div
-                        className="line-clamp-4 text-[12px] leading-5 text-muted-foreground"
+                        className="line-clamp-4 break-words text-[12px] leading-5 text-muted-foreground"
                         dangerouslySetInnerHTML={{
                           __html: highlightSnippet(
                             result.snippet.substring(0, 400)
@@ -255,7 +255,7 @@ export function SearchModal({ open, onClose }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between border-t border-foreground/[0.06] px-4 py-2 text-[10px] text-muted-foreground/60">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-foreground/[0.06] px-4 py-2 text-[10px] text-muted-foreground/60 sm:px-6">
             <span>
               Powered by{" "}
               <span className="font-medium text-muted-foreground">

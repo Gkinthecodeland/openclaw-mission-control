@@ -309,7 +309,7 @@ function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; con
       </div>
 
       {/* Gauges row */}
-      <div className="grid grid-cols-3 gap-4 rounded-xl border border-foreground/[0.06] bg-card/90 px-4 py-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 rounded-xl border border-foreground/[0.06] bg-card/90 px-4 py-5">
         <div className="relative flex justify-center">
           <RadialGauge
             value={stats.cpu.usage}
@@ -340,7 +340,7 @@ function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; con
       </div>
 
       {/* Detail cards grid */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {/* CPU details */}
         <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-3 space-y-2">
           <div className="flex items-center gap-2">
@@ -462,7 +462,7 @@ function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; con
           <Database className="h-3.5 w-3.5 text-pink-400" />
           <span className="text-[11px] font-semibold text-foreground/70">OpenClaw Storage</span>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <OcStatMini
             icon={Folder}
             label="Workspace"
@@ -571,7 +571,7 @@ export function DashboardView() {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       {/* ── Gateway status bar ────────────────────── */}
-      <div className="shrink-0 border-b border-foreground/[0.06] bg-card/80 px-6 py-2.5">
+      <div className="shrink-0 border-b border-foreground/[0.06] bg-card/80 px-4 py-2.5 md:px-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative flex items-center gap-2">
@@ -598,9 +598,9 @@ export function DashboardView() {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-6 py-5">
+      <div className="mx-auto w-full space-y-5 px-4 py-5 md:px-6 lg:max-w-6xl">
         {/* ── Stat cards ─────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <StatCard
             icon={Bot}
             value={live.agents.length}

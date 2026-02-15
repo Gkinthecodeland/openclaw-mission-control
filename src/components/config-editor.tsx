@@ -290,7 +290,7 @@ function ToastBar({ toast, onDone }: { toast: Toast; onDone: () => void }) {
 
 function RestartBanner({ onRestart, onDismiss }: { onRestart: () => void; onDismiss: () => void }) {
   return (
-    <div className="mx-6 mb-3 flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3">
+    <div className="mx-4 md:mx-6 mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3">
       <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
       <div className="flex-1">
         <p className="text-[13px] font-medium text-amber-200">
@@ -1113,7 +1113,7 @@ export function ConfigEditor() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 border-b border-foreground/[0.06] px-6 py-4">
+      <div className="shrink-0 border-b border-foreground/[0.06] px-4 md:px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-[18px] font-semibold text-foreground">
@@ -1192,7 +1192,7 @@ export function ConfigEditor() {
 
       {/* Unsaved changes bar */}
       {hasDirty && (
-        <div className="shrink-0 flex items-center gap-3 border-b border-violet-500/20 bg-violet-500/[0.06] px-6 py-2.5">
+        <div className="shrink-0 flex items-center gap-3 border-b border-violet-500/20 bg-violet-500/[0.06] px-4 md:px-6 py-2.5">
           <Info className="h-4 w-4 text-violet-400 shrink-0" />
           <p className="flex-1 text-[12px] text-violet-300">
             You have unsaved changes in{" "}
@@ -1223,7 +1223,7 @@ export function ConfigEditor() {
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-2">
         {showRawJson ? (
           /* Raw JSON view */
           <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4">

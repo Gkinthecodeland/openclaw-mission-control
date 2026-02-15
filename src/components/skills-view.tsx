@@ -130,7 +130,7 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Back + header */}
-      <div className="shrink-0 border-b border-foreground/[0.06] px-6 py-4">
+      <div className="shrink-0 border-b border-foreground/[0.06] px-4 md:px-6 py-4">
         <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground/70 mb-3"><ArrowLeft className="h-3.5 w-3.5" />Back to Skills</button>
         <div className="flex items-start gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-violet-500/10 text-3xl">{detail.emoji || "\u26A1"}</div>
@@ -151,7 +151,7 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5 space-y-5">
         {/* Actions bar */}
         <div className="flex flex-wrap items-center gap-2">
           {detail.disabled ? (
@@ -269,7 +269,7 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
         {/* File info */}
         <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-2">
           <h3 className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90"><Info className="h-4 w-4 text-muted-foreground" />Details</h3>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Skill Key</p><p className="text-[12px] font-mono text-foreground/70 mt-0.5">{detail.skillKey || detail.name}</p></div>
             <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Source</p><p className="text-[12px] text-foreground/70 mt-0.5">{detail.source}</p></div>
             <div className="col-span-2 rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">File Path</p><p className="text-[11px] font-mono text-muted-foreground mt-0.5 break-all">{detail.filePath}</p></div>
@@ -353,7 +353,7 @@ export function SkillsView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 px-6 pt-5 pb-4 space-y-3">
+      <div className="shrink-0 px-4 md:px-6 pt-5 pb-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-[18px] font-semibold text-foreground flex items-center gap-2"><Wrench className="h-5 w-5 text-violet-400" />Skills</h2>
@@ -364,7 +364,7 @@ export function SkillsView() {
 
         {/* Summary */}
         {summary && (
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             <SumCard value={summary.total} label="Total" color="text-foreground/90" />
             <SumCard value={summary.eligible} label="Ready" color="text-emerald-400" border="border-emerald-500/20" bg="bg-emerald-500/5" />
             <SumCard value={summary.missingRequirements} label="Missing Deps" color="text-amber-400" border="border-amber-500/20" bg="bg-amber-500/5" />
@@ -374,8 +374,8 @@ export function SkillsView() {
         )}
 
         {/* Search + filter */}
-        <div className="flex items-center gap-3">
-          <div className="flex flex-1 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-muted/50 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-muted/50 px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground/60" />
             <input placeholder="Search skills..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/60 text-foreground/70" />
             {search && <button onClick={() => setSearch("")} className="text-muted-foreground/60 hover:text-muted-foreground"><X className="h-3.5 w-3.5" /></button>}
@@ -389,8 +389,8 @@ export function SkillsView() {
       </div>
 
       {/* Skills grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-6">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((s) => <SkillCard key={s.name} skill={s} onClick={() => setSelectedSkill(s.name)} />)}
         </div>
         {filtered.length === 0 && (

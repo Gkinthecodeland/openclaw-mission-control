@@ -23,6 +23,12 @@ import {
   Check,
   AlertTriangle,
   Cpu,
+  Lock,
+  KeyRound,
+  Loader2,
+  ExternalLink,
+  CheckCircle,
+  Plug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -241,12 +247,12 @@ function ModelCard({
               )}
             </>
           )}
-          {info && !info.available && (
+          {info && !info.available && !info.local && (
             <>
               <span className="text-[10px] text-muted-foreground/40">·</span>
-              <span className="flex items-center gap-0.5 text-[10px] text-amber-500">
-                <AlertTriangle className="h-2.5 w-2.5" />
-                no auth
+              <span className="flex items-center gap-0.5 text-[10px] text-amber-500" title="Provider not authenticated — add API key in model picker">
+                <Lock className="h-2.5 w-2.5" />
+                needs auth
               </span>
             </>
           )}
@@ -304,7 +310,197 @@ function ModelCard({
   );
 }
 
-/* ── Model Picker (search all 700+ models) ────────── */
+/* ── Provider metadata for auth UX ───────────────── */
+
+type ProviderMeta = {
+  id: string;
+  name: string;
+  authType: "api-key" | "oauth" | "oauth-cli" | "local" | "env";
+  envKey?: string;
+  placeholder?: string;
+  oauthCommand?: string;
+  docsUrl?: string;
+};
+
+const PROVIDER_CATALOG: ProviderMeta[] = [
+  { id: "anthropic", name: "Anthropic", authType: "api-key", envKey: "ANTHROPIC_API_KEY", placeholder: "sk-ant-...", docsUrl: "https://console.anthropic.com/settings/keys" },
+  { id: "openai", name: "OpenAI", authType: "api-key", envKey: "OPENAI_API_KEY", placeholder: "sk-proj-...", docsUrl: "https://platform.openai.com/api-keys" },
+  { id: "openai-codex", name: "OpenAI Codex", authType: "oauth-cli", oauthCommand: "openclaw models auth login --provider openai-codex" },
+  { id: "google", name: "Google Gemini", authType: "api-key", envKey: "GEMINI_API_KEY", placeholder: "AI...", docsUrl: "https://aistudio.google.com/apikey" },
+  { id: "google-gemini-cli", name: "Gemini CLI (OAuth)", authType: "oauth-cli", oauthCommand: "openclaw models auth login --provider google-gemini-cli --set-default" },
+  { id: "google-antigravity", name: "Google Antigravity", authType: "oauth-cli", oauthCommand: "openclaw models auth login --provider google-antigravity --set-default" },
+  { id: "openrouter", name: "OpenRouter", authType: "api-key", envKey: "OPENROUTER_API_KEY", placeholder: "sk-or-...", docsUrl: "https://openrouter.ai/keys" },
+  { id: "groq", name: "Groq", authType: "api-key", envKey: "GROQ_API_KEY", placeholder: "gsk_...", docsUrl: "https://console.groq.com/keys" },
+  { id: "xai", name: "xAI (Grok)", authType: "api-key", envKey: "XAI_API_KEY", placeholder: "xai-..." },
+  { id: "mistral", name: "Mistral", authType: "api-key", envKey: "MISTRAL_API_KEY", placeholder: "...", docsUrl: "https://console.mistral.ai/api-keys" },
+  { id: "minimax", name: "MiniMax", authType: "api-key", envKey: "MINIMAX_API_KEY", placeholder: "..." },
+  { id: "minimax-portal", name: "MiniMax Portal", authType: "oauth-cli", oauthCommand: "openclaw models auth login --provider minimax-portal" },
+  { id: "zai", name: "Z.AI (GLM)", authType: "api-key", envKey: "ZAI_API_KEY", placeholder: "..." },
+  { id: "cerebras", name: "Cerebras", authType: "api-key", envKey: "CEREBRAS_API_KEY", placeholder: "..." },
+  { id: "huggingface", name: "Hugging Face", authType: "api-key", envKey: "HUGGINGFACE_HUB_TOKEN", placeholder: "hf_...", docsUrl: "https://huggingface.co/settings/tokens" },
+  { id: "ollama", name: "Ollama", authType: "local" },
+  { id: "vllm", name: "vLLM", authType: "local" },
+];
+
+type AuthProviderInfo = { provider: string; authenticated: boolean; authKind: string | null };
+
+/* ── Inline provider auth card ───────────────────── */
+
+function ProviderAuthCard({
+  meta,
+  isAuthenticated,
+  onAuthenticated,
+}: {
+  meta: ProviderMeta;
+  isAuthenticated: boolean;
+  onAuthenticated: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleSubmitKey = useCallback(async () => {
+    if (!apiKey.trim()) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "auth-provider", provider: meta.id, token: apiKey.trim() }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setResult({ ok: true, msg: "Connected!" });
+        setApiKey("");
+        setTimeout(() => {
+          onAuthenticated();
+          setExpanded(false);
+          setResult(null);
+        }, 1200);
+      } else {
+        setResult({ ok: false, msg: data.error || "Failed" });
+      }
+    } catch (err) {
+      setResult({ ok: false, msg: String(err) });
+    }
+    setBusy(false);
+  }, [apiKey, meta.id, onAuthenticated]);
+
+  if (isAuthenticated) {
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-3 py-2">
+        <CheckCircle className="h-4 w-4 shrink-0 text-emerald-400" />
+        <span className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400">{meta.name}</span>
+        <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-500">Connected</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] transition-all">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-foreground/[0.03]"
+      >
+        <Plug className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+        <span className="flex-1 text-[12px] font-medium text-foreground/80">{meta.name}</span>
+        {meta.authType === "api-key" && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">API Key</span>
+        )}
+        {meta.authType === "oauth-cli" && (
+          <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] text-violet-400">OAuth / CLI</span>
+        )}
+        {meta.authType === "local" && (
+          <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] text-blue-400">Local</span>
+        )}
+        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground/40 transition-transform", expanded && "rotate-180")} />
+      </button>
+
+      {expanded && (
+        <div className="border-t border-foreground/[0.04] px-3 py-3">
+          {meta.authType === "api-key" && (
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSubmitKey(); }}
+                  placeholder={meta.placeholder || "Paste your API key..."}
+                  className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[12px] text-foreground/80 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
+                  disabled={busy}
+                />
+                <button
+                  type="button"
+                  onClick={handleSubmitKey}
+                  disabled={busy || !apiKey.trim()}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                >
+                  {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <KeyRound className="h-3 w-3" />}
+                  Connect
+                </button>
+              </div>
+              {meta.docsUrl && (
+                <a
+                  href={meta.docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300"
+                >
+                  <ExternalLink className="h-2.5 w-2.5" />
+                  Get your API key from {meta.name}
+                </a>
+              )}
+              {result && (
+                <div className={cn("flex items-center gap-1.5 text-[11px]", result.ok ? "text-emerald-400" : "text-red-400")}>
+                  {result.ok ? <CheckCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                  {result.msg}
+                </div>
+              )}
+            </div>
+          )}
+
+          {meta.authType === "oauth-cli" && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                This provider uses OAuth. Run this command in your terminal:
+              </p>
+              <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                <code className="flex-1 text-[11px] font-mono text-foreground/70">
+                  {meta.oauthCommand}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => { navigator.clipboard.writeText(meta.oauthCommand || ""); }}
+                  className="shrink-0 rounded p-1 text-muted-foreground/60 hover:text-foreground/70"
+                  title="Copy command"
+                >
+                  <Check className="h-3 w-3" />
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground/50">
+                After authenticating, click the refresh button above to see the new models.
+              </p>
+            </div>
+          )}
+
+          {meta.authType === "local" && (
+            <p className="text-[11px] text-muted-foreground">
+              {meta.id === "ollama"
+                ? "Ollama runs locally — no authentication needed. Just install Ollama and pull a model (e.g. ollama pull llama3.3)."
+                : "vLLM runs locally — point it at your model server. No cloud auth needed."}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Model Picker (auth-aware, grouped by provider) ── */
 
 function ModelPicker({
   onSelect,
@@ -316,57 +512,85 @@ function ModelPicker({
   excludeModels: string[];
 }) {
   const [allModels, setAllModels] = useState<ModelInfo[]>([]);
+  const [authProviders, setAuthProviders] = useState<AuthProviderInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [showConnectProviders, setShowConnectProviders] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetch("/api/models?scope=all")
-      .then((r) => r.json())
-      .then((d) => {
-        setAllModels(d.models || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/models?scope=all");
+      const d = await res.json();
+      setAllModels(d.models || []);
+      setAuthProviders(d.authProviders || []);
+    } catch { /* ignore */ }
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 
-  const filtered = useMemo(() => {
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Build authenticated provider set
+  const authSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of authProviders) {
+      if (p.authenticated) set.add(p.provider);
+    }
+    return set;
+  }, [authProviders]);
+
+  // Group models: available (authenticated) vs locked
+  const { availableModels, lockedModels } = useMemo(() => {
     const q = query.toLowerCase();
-    return allModels
-      .filter(
-        (m) =>
-          !excludeModels.includes(m.key) &&
-          (m.key.toLowerCase().includes(q) ||
-            m.name.toLowerCase().includes(q) ||
-            m.tags.some((t) => t.toLowerCase().includes(q)))
-      )
-      .slice(0, 50);
-  }, [allModels, query, excludeModels]);
+    const matching = allModels.filter(
+      (m) =>
+        !excludeModels.includes(m.key) &&
+        (m.key.toLowerCase().includes(q) ||
+          m.name.toLowerCase().includes(q) ||
+          m.tags.some((t) => t.toLowerCase().includes(q)))
+    );
+
+    const available: ModelInfo[] = [];
+    const locked: ModelInfo[] = [];
+
+    for (const m of matching) {
+      const provider = m.key.split("/")[0];
+      if (m.available || m.local || authSet.has(provider)) {
+        available.push(m);
+      } else {
+        locked.push(m);
+      }
+    }
+
+    return {
+      availableModels: available.slice(0, 40),
+      lockedModels: locked.slice(0, 30),
+    };
+  }, [allModels, query, excludeModels, authSet]);
+
+  // Providers that are NOT authenticated
+  const unauthenticatedProviders = useMemo(() => {
+    const authed = new Set(authProviders.filter((p) => p.authenticated).map((p) => p.provider));
+    return PROVIDER_CATALOG.filter((p) => !authed.has(p.id) && p.authType !== "local");
+  }, [authProviders]);
 
   // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] sm:pt-[10vh]">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="relative z-10 flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card/95 shadow-2xl">
-        {/* Search */}
+      <div className="relative z-10 mx-2 flex max-h-[85vh] w-full max-w-[min(40rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card/95 shadow-2xl sm:mx-4 sm:max-h-[75vh]">
+        {/* Search header */}
         <div className="flex items-center gap-3 border-b border-foreground/[0.06] px-4 py-3">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
@@ -379,88 +603,193 @@ function ModelPicker({
           />
           <button
             type="button"
-            onClick={onClose}
-            className="rounded p-1 text-muted-foreground hover:text-foreground/70"
+            onClick={() => { setRefreshKey((k) => k + 1); }}
+            className="rounded p-1 text-muted-foreground/60 hover:text-foreground/70"
+            title="Refresh"
           >
+            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          </button>
+          <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground/70">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Results */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground/60" />
-              <span className="ml-2 text-sm text-muted-foreground">
-                Loading models catalog...
-              </span>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-12 text-center text-sm text-muted-foreground/60">
-              {query
-                ? "No models matching your search"
-                : "No additional models available"}
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/60" />
+              <span className="ml-2 text-sm text-muted-foreground">Loading models...</span>
             </div>
           ) : (
-            filtered.map((m) => (
-              <button
-                key={m.key}
-                type="button"
-                onClick={() => onSelect(m.key)}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-violet-500/10"
-              >
-                <Cpu className="h-4 w-4 shrink-0 text-muted-foreground/60" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-foreground/90">
-                      {m.name || m.key.split("/").pop()}
+            <>
+              {/* ── Available models (authenticated) ── */}
+              {availableModels.length > 0 && (
+                <div className="p-2">
+                  <div className="mb-1 flex items-center gap-2 px-2 py-1">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      Ready to use
                     </span>
-                    {m.available && (
-                      <span className="shrink-0 rounded bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium text-emerald-400">
-                        auth ✓
-                      </span>
-                    )}
-                    {m.local && (
-                      <span className="shrink-0 rounded bg-blue-500/10 px-1 py-0.5 text-[9px] font-medium text-blue-400">
-                        local
-                      </span>
-                    )}
+                    <span className="text-[10px] text-muted-foreground/50">
+                      ({availableModels.length})
+                    </span>
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded border px-1 py-0.5 text-[9px] font-medium",
-                        getProviderColor(m.key)
-                      )}
+                  {availableModels.map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => onSelect(m.key)}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-violet-500/10"
                     >
-                      {m.key.split("/")[0]}
-                    </span>
-                    <span className="truncate text-[10px] text-muted-foreground/60">
-                      {m.key}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/40">·</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      ctx {formatCtx(m.contextWindow)}
-                    </span>
-                    {m.input.includes("image") && (
-                      <>
-                        <span className="text-[10px] text-muted-foreground/40">·</span>
-                        <span className="text-[10px] text-cyan-500">
-                          vision
-                        </span>
-                      </>
-                    )}
-                  </div>
+                      <Cpu className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground/90">
+                            {m.name || m.key.split("/").pop()}
+                          </span>
+                          {m.local && (
+                            <span className="shrink-0 rounded bg-blue-500/10 px-1 py-0.5 text-[9px] font-medium text-blue-400">local</span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <span className={cn("inline-flex items-center rounded border px-1 py-0.5 text-[9px] font-medium", getProviderColor(m.key))}>
+                            {m.key.split("/")[0]}
+                          </span>
+                          <span className="truncate text-[10px] text-muted-foreground/60">{m.key}</span>
+                          <span className="text-[10px] text-muted-foreground/40">·</span>
+                          <span className="text-[10px] text-muted-foreground">ctx {formatCtx(m.contextWindow)}</span>
+                          {m.input.includes("image") && (
+                            <>
+                              <span className="text-[10px] text-muted-foreground/40">·</span>
+                              <span className="text-[10px] text-cyan-500">vision</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              </button>
-            ))
+              )}
+
+              {/* ── Locked models (unauthenticated) ── */}
+              {lockedModels.length > 0 && !showConnectProviders && (
+                <div className="border-t border-foreground/[0.04] p-2">
+                  <div className="mb-1 flex items-center gap-2 px-2 py-1">
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground/40" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+                      Requires authentication
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/40">
+                      ({lockedModels.length}+)
+                    </span>
+                  </div>
+
+                  {/* Show a few locked model previews */}
+                  {lockedModels.slice(0, 5).map((m) => (
+                    <div
+                      key={m.key}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 opacity-50"
+                    >
+                      <Lock className="h-4 w-4 shrink-0 text-muted-foreground/30" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground/50">
+                            {m.name || m.key.split("/").pop()}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <span className={cn("inline-flex items-center rounded border px-1 py-0.5 text-[9px] font-medium opacity-60", getProviderColor(m.key))}>
+                            {m.key.split("/")[0]}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/40">ctx {formatCtx(m.contextWindow)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Connect button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowConnectProviders(true)}
+                    className="mx-2 mt-2 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-lg border border-dashed border-violet-500/30 bg-violet-500/[0.05] px-4 py-3 text-[12px] font-medium text-violet-400 transition-colors hover:bg-violet-500/10"
+                  >
+                    <Plug className="h-4 w-4" />
+                    Connect a provider to unlock {lockedModels.length}+ more models
+                  </button>
+                </div>
+              )}
+
+              {/* ── Connect providers panel ── */}
+              {showConnectProviders && (
+                <div className="border-t border-foreground/[0.04] p-3">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Plug className="h-4 w-4 text-violet-400" />
+                      <span className="text-[12px] font-semibold text-foreground/80">
+                        Connect Providers
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowConnectProviders(false)}
+                      className="rounded p-1 text-muted-foreground/40 hover:text-foreground/70"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  <p className="mb-3 text-[11px] text-muted-foreground/60">
+                    Add your API keys to unlock models. Keys are stored securely in your local OpenClaw auth store.
+                  </p>
+
+                  <div className="space-y-1.5">
+                    {unauthenticatedProviders.map((meta) => (
+                      <ProviderAuthCard
+                        key={meta.id}
+                        meta={meta}
+                        isAuthenticated={authSet.has(meta.id)}
+                        onAuthenticated={() => setRefreshKey((k) => k + 1)}
+                      />
+                    ))}
+                  </div>
+
+                  {unauthenticatedProviders.length === 0 && (
+                    <div className="py-6 text-center text-[12px] text-emerald-400">
+                      <CheckCircle className="mx-auto mb-2 h-6 w-6" />
+                      All providers connected!
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Empty state */}
+              {availableModels.length === 0 && lockedModels.length === 0 && (
+                <div className="py-12 text-center text-sm text-muted-foreground/60">
+                  {query ? "No models matching your search" : "No additional models available"}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        <div className="border-t border-foreground/[0.06] px-4 py-2 text-[10px] text-muted-foreground/60">
-          {loading
-            ? "Scanning model catalog..."
-            : `${allModels.length} total models · ${filtered.length} shown`}
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-foreground/[0.06] px-4 py-2">
+          <span className="text-[10px] text-muted-foreground/60">
+            {loading
+              ? "Scanning model catalog..."
+              : `${availableModels.length} available · ${allModels.length} total`}
+          </span>
+          {!showConnectProviders && unauthenticatedProviders.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowConnectProviders(true)}
+              className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300"
+            >
+              <Plus className="h-2.5 w-2.5" />
+              Add provider
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -673,13 +1002,16 @@ export function ModelsView() {
     try {
       const res = await fetch("/api/models?scope=status");
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setStatus(data.status);
-      setModels(data.models || []);
+      if (data.error) {
+        // Non-critical: log and continue — the API degrades gracefully
+        console.warn("Models API partial error:", data.error);
+      }
+      if (data.status) setStatus(data.status);
+      if (data.models) setModels(data.models);
       setAgents(data.agents || []);
-      setConfigHash(data.configHash);
+      setConfigHash(data.configHash ?? null);
     } catch (err) {
-      console.error("Failed to fetch models:", err);
+      console.warn("Failed to fetch models:", err);
     } finally {
       setLoading(false);
     }
@@ -700,12 +1032,26 @@ export function ModelsView() {
           body: JSON.stringify(body),
         });
         const data = await res.json();
-        if (data.error) throw new Error(data.error);
+        if (data.error) {
+          // Show friendly error instead of throwing (avoids React error overlay)
+          const msg = String(data.error);
+          if (msg.includes("gateway closed") || msg.includes("1006")) {
+            flash("Gateway temporarily unavailable — try again in a moment", "error");
+          } else {
+            flash(msg, "error");
+          }
+          return;
+        }
         flash(successMsg);
         requestRestart("Model configuration was updated.");
         await fetchModels();
       } catch (err) {
-        flash(String(err), "error");
+        const msg = String(err);
+        if (msg.includes("gateway closed") || msg.includes("1006")) {
+          flash("Gateway temporarily unavailable — try again in a moment", "error");
+        } else {
+          flash(msg, "error");
+        }
       } finally {
         setBusy(false);
       }
@@ -898,7 +1244,7 @@ export function ModelsView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-6 py-4">
+      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-4 md:px-6 py-4">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Models</h1>
           <p className="mt-0.5 text-[12px] text-muted-foreground">
@@ -920,7 +1266,7 @@ export function ModelsView() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6">
         <div className="mx-auto max-w-3xl space-y-8">
           {/* ── Model Chain ────────────── */}
           <section>
@@ -1041,8 +1387,8 @@ export function ModelsView() {
                         >
                           <Star className="h-2.5 w-2.5" />
                           {m.name || m.key.split("/").pop()}
-                          {!m.available && (
-                            <AlertTriangle className="h-2.5 w-2.5 text-amber-500" />
+                          {!m.available && !m.local && (
+                            <Lock className="h-2.5 w-2.5 text-amber-500" />
                           )}
                         </button>
                       );
@@ -1151,7 +1497,7 @@ export function ModelsView() {
                 </div>
 
                 {/* Add alias */}
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <input
                     type="text"
                     value={newAlias}

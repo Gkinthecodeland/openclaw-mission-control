@@ -379,7 +379,7 @@ function EditCronForm({
       </div>
 
       {/* Schedule */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
             Schedule Type
@@ -440,7 +440,7 @@ function EditCronForm({
           Delivery Configuration
         </label>
         <div className="rounded-lg border border-foreground/[0.06] bg-muted/50 p-3 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="mb-1 block text-[10px] text-muted-foreground">
                 Mode
@@ -761,7 +761,7 @@ export function CronView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between px-6 pb-4 pt-5">
+      <div className="flex shrink-0 items-center justify-between px-4 md:px-6 pb-4 pt-5">
         <div>
           <h2 className="text-base font-semibold text-foreground">
             Cron Jobs ({jobs.length})
@@ -788,7 +788,7 @@ export function CronView() {
         </button>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-6 pb-6">
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 md:px-6 pb-6">
         {jobs.map((job) => {
           const isExpanded = expanded === job.id;
           const isEditing = editing === job.id;
@@ -992,7 +992,7 @@ export function CronView() {
                       <Info className="h-3 w-3" />
                       Job Configuration
                     </h3>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-foreground/[0.04] bg-muted/40 px-3 py-3 text-[11px]">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 md:gap-x-6 gap-y-2 rounded-lg border border-foreground/[0.04] bg-muted/40 px-3 py-3 text-[11px]">
                       <div className="flex items-center gap-2">
                         <Hash className="h-3 w-3 text-muted-foreground/40" />
                         <span className="text-muted-foreground/60">Job ID</span>
@@ -1064,7 +1064,7 @@ export function CronView() {
                           : "border-foreground/[0.04] bg-muted/40"
                       )}
                     >
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                           <span className="text-muted-foreground/60">Mode</span>
                           <p className="mt-0.5 font-medium text-foreground/70">
@@ -1116,7 +1116,7 @@ export function CronView() {
                       <Timer className="h-3 w-3" />
                       Execution Status
                     </h3>
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="rounded-lg border border-foreground/[0.04] bg-muted/40 px-3 py-2 text-center">
                         <p className="text-[10px] text-muted-foreground/60">Last Run</p>
                         <p className="mt-0.5 text-[12px] font-medium text-foreground/70">

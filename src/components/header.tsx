@@ -124,7 +124,7 @@ function QuickCommandPopover({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={popoverRef}
-      className="absolute right-0 top-full z-50 mt-2 w-[420px] overflow-hidden rounded-xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-sm"
+      className="absolute right-0 top-full z-50 mt-2 w-[calc(100vw-24px)] max-w-[420px] overflow-hidden rounded-xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-sm sm:w-[420px]"
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-foreground/[0.06] px-3 py-2">
@@ -335,23 +335,23 @@ export function Header() {
 
   return (
     <>
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-sidebar/80 px-5 backdrop-blur-sm">
-        <div className="flex items-center gap-2.5">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-sidebar/80 px-3 md:px-5 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5 pl-10 md:pl-0">
           <span className="text-lg">🦞</span>
           <h1 className="text-sm font-semibold text-foreground">
             Mission Control
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2">
           {/* Search */}
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="flex h-8 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-card px-3 text-xs text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground/70"
+            className="flex h-8 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-card px-2 md:px-3 text-xs text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground/70"
           >
             <Search className="h-3.5 w-3.5" />
-            <span>Search</span>
-            <kbd className="ml-1 rounded border border-foreground/[0.08] bg-muted/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span className="hidden sm:inline">Search</span>
+            <kbd className="ml-1 hidden rounded border border-foreground/[0.08] bg-muted/70 px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">
               ⌘K
             </kbd>
           </button>
@@ -362,7 +362,7 @@ export function Header() {
             onClick={togglePause}
             disabled={pauseBusy}
             className={cn(
-              "flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs transition-colors disabled:opacity-50",
+              "flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-xs transition-colors disabled:opacity-50",
               paused
                 ? "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
                 : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted/80"
@@ -373,7 +373,7 @@ export function Header() {
             ) : (
               <Pause className="h-3.5 w-3.5" />
             )}
-            <span>{paused ? "Resume" : "Pause"}</span>
+            <span className="hidden sm:inline">{paused ? "Resume" : "Pause"}</span>
           </button>
 
           {/* Pairing Notifications */}
@@ -385,14 +385,14 @@ export function Header() {
               type="button"
               onClick={() => setCmdOpen(!cmdOpen)}
               className={cn(
-                "flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs transition-colors",
+                "flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-xs transition-colors",
                 cmdOpen
                   ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
                   : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted/80"
               )}
             >
               <Zap className="h-3.5 w-3.5" />
-              <span>Quick Command</span>
+              <span className="hidden md:inline">Quick Command</span>
             </button>
 
             {cmdOpen && (

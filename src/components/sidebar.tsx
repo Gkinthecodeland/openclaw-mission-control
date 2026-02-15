@@ -23,6 +23,8 @@ import {
   Database,
   Users,
   BarChart3,
+  Menu,
+  X,
 } from "lucide-react";
 import { getChatUnreadCount, subscribeChatStore } from "@/lib/chat-store";
 
@@ -50,7 +52,7 @@ const navItems: {
   { section: "config", label: "Config", icon: Settings },
 ];
 
-function SidebarNav() {
+function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const searchParams = useSearchParams();
   const section = searchParams.get("section") || "dashboard";
 
@@ -62,7 +64,7 @@ function SidebarNav() {
   );
 
   return (
-    <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-4">
+    <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-4 overflow-y-auto">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = section === item.section;
@@ -71,6 +73,7 @@ function SidebarNav() {
           <div key={item.section}>
             <Link
               href={`/?section=${item.section}`}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
                 isActive
@@ -252,15 +255,67 @@ function GatewayBadge() {
 }
 
 export function Sidebar() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+
+  // Close on escape
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [mobileOpen]);
+
   return (
-    <aside className="flex h-full w-[200px] shrink-0 flex-col border-r border-border bg-sidebar">
-      <Suspense fallback={<div className="flex-1" />}>
-        <SidebarNav />
-      </Suspense>
-      <div className="border-t border-border">
-        <GatewayBadge />
-      </div>
-    </aside>
+    <>
+      {/* Mobile hamburger — visible only on small screens */}
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="fixed left-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-sidebar text-foreground shadow-sm md:hidden"
+        aria-label="Open menu"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — always visible on desktop, slide-in drawer on mobile */}
+      <aside
+        className={cn(
+          "flex h-full w-[200px] shrink-0 flex-col border-r border-border bg-sidebar transition-transform duration-200 ease-in-out",
+          // Desktop: always visible
+          "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-xl",
+          mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"
+        )}
+      >
+        {/* Mobile close button */}
+        <div className="flex items-center justify-end px-3 pt-3 md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <Suspense fallback={<div className="flex-1" />}>
+          <SidebarNav onNavigate={closeMobile} />
+        </Suspense>
+        <div className="border-t border-border">
+          <GatewayBadge />
+        </div>
+      </aside>
+    </>
   );
 }
 

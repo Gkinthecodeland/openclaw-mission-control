@@ -74,7 +74,7 @@ export function ChatNotificationToast() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed right-4 top-14 z-[100] flex flex-col gap-2">
+    <div className="fixed right-2 top-14 z-[100] flex max-w-[calc(100vw-1rem)] flex-col gap-2 sm:right-4">
       {toasts.map((toast, i) => (
         <div
           key={toast.id}

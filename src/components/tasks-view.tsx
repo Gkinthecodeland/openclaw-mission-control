@@ -204,7 +204,7 @@ export function TasksView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Stats header */}
-      <div className="shrink-0 space-y-3 px-6 pt-5 pb-4">
+      <div className="shrink-0 space-y-3 px-4 md:px-6 pt-5 pb-4">
         <div className="flex items-center justify-between">
           <div className="flex flex-wrap items-center gap-5 text-[13px]">
             <span>
@@ -253,11 +253,11 @@ export function TasksView() {
       </div>
 
       {/* Kanban columns */}
-      <div className="flex flex-1 gap-5 overflow-x-auto px-6 pb-6">
+      <div className="flex flex-col md:flex-row flex-1 gap-4 md:gap-6 overflow-x-auto px-4 md:px-6 pb-6">
         {columns.map((col) => {
           const colTasks = tasks.filter((t) => t.column === col.id);
           return (
-            <div key={col.id} className="flex min-w-[280px] flex-1 flex-col">
+            <div key={col.id} className="flex md:min-w-[280px] flex-1 flex-col">
               <div className="mb-3 flex items-center gap-2">
                 <div
                   className="h-2.5 w-2.5 rounded-full"
@@ -623,7 +623,7 @@ function BoardOnboarding({
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-xl px-6 py-12">
+            <div className="mx-auto max-w-xl px-4 md:px-6 py-12">
             {/* Hero */}
             <div className="text-center">
               <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-500/10">
@@ -711,7 +711,7 @@ function BoardOnboarding({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-lg px-6 py-12">
+        <div className="mx-auto max-w-lg px-4 md:px-6 py-12">
           <div className="text-center">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10">
               <CheckCircle className="h-7 w-7 text-emerald-400" />

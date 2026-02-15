@@ -450,7 +450,7 @@ function AudioPlayer({
       </div>
 
       {/* Metadata */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <ConfigField label="Provider" value={result.provider} />
         <ConfigField label="Format" value={result.format} />
         <ConfigField
@@ -530,7 +530,7 @@ function TalkModeSection({ config }: { config: TalkConfig }) {
 
       {hasConfig ? (
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ConfigField label="Voice ID" value={config.voiceId || "auto-detect"} />
             <ConfigField label="Model" value={config.modelId || "eleven_v3"} />
             <ConfigField label="Output Format" value={config.outputFormat || "pcm_44100 (macOS)"} />
@@ -570,7 +570,7 @@ function TalkModeSection({ config }: { config: TalkConfig }) {
       {/* Usage info */}
       <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2.5">
         <p className="text-[11px] font-medium text-muted-foreground mb-1">How it works</p>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { icon: "🎤", label: "Listen", desc: "Detects speech" },
             { icon: "📝", label: "Transcribe", desc: "Speech → text" },
@@ -772,7 +772,7 @@ function TtsSettingsPanel({
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
           API Keys
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {[
             { name: "OpenAI", has: status.hasOpenAIKey },
             { name: "ElevenLabs", has: status.hasElevenLabsKey },
@@ -1063,7 +1063,7 @@ export function AudioView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-6 py-4">
+      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-4 md:px-6 py-4">
         <div>
           <h1 className="text-[18px] font-semibold text-foreground flex items-center gap-2">
             <Volume2 className="h-5 w-5 text-violet-400" />
@@ -1084,7 +1084,7 @@ export function AudioView() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5 space-y-6">
         {/* Auto-TTS explanation + mode selector */}
         <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-5 space-y-4">
           <div>
@@ -1116,7 +1116,7 @@ export function AudioView() {
             </p>
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {AUTO_MODES.map((m) => (
               <button
                 key={m.value}
@@ -1144,7 +1144,7 @@ export function AudioView() {
         </div>
 
         {/* Quick status row */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <StatusCard
             label="Active Provider"
             value={providersData.active || status.provider || "none"}
@@ -1244,7 +1244,7 @@ export function AudioView() {
             <Radio className="h-4 w-4 text-sky-400" />
             Gateway RPC Methods
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {[
               "tts.status",
               "tts.enable",

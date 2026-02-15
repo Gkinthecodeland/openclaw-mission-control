@@ -437,7 +437,7 @@ export function PairingNotifications() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[380px] overflow-hidden rounded-xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-sm">
+        <div className="absolute right-0 top-full z-50 mt-2 w-[calc(100vw-24px)] max-w-[380px] overflow-hidden rounded-xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-sm sm:w-[380px]">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-4 py-2.5">
             <div className="flex items-center gap-2">

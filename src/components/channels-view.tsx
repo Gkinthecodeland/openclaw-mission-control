@@ -335,7 +335,7 @@ function PairedDeviceCard({
       {/* Expanded details */}
       {expanded && (
         <div className="border-t border-foreground/[0.04] px-4 py-3">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
             <div>
               <span className="text-muted-foreground/60">Device ID</span>
               <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
@@ -650,7 +650,7 @@ export function ChannelsView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-4xl space-y-8 px-6 py-6">
+      <div className="mx-auto w-full max-w-4xl space-y-8 px-4 md:px-6 py-6">
         {/* ── Pending Requests ──────────── */}
         {pendingRequests.length > 0 && (
           <section>

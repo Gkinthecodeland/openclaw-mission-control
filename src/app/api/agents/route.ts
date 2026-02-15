@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { readFile, readdir } from "fs/promises";
 import { join } from "path";
 import { getOpenClawHome, getDefaultWorkspaceSync } from "@/lib/paths";
-import { runCliJson } from "@/lib/openclaw-cli";
+import { runCliJson, runCli } from "@/lib/openclaw-cli";
 
 const OPENCLAW_HOME = getOpenClawHome();
 
@@ -124,12 +124,28 @@ export async function GET() {
       const rawEmoji = cli?.identityEmoji || "🤖";
       const emoji = rawEmoji.replace(/\s*_\(.*?\)_?\s*/g, "").trim() || rawEmoji;
 
-      // Model
-      const agentModelCfg = cfg.model as Record<string, unknown> | undefined;
-      const model =
-        (agentModelCfg?.primary as string) || cli?.model || defaultPrimary;
-      const fallbackModels =
-        (agentModelCfg?.fallbacks as string[]) || defaultFallbacks;
+      // Model — prefer config-level names over CLI's resolved provider model IDs
+      // (CLI returns the resolved model after auth failover, e.g. "amazon-bedrock/anthropic.claude-3-sonnet-..."
+      //  which is not what the user configured)
+      const agentModelCfg = cfg.model as
+        | string
+        | Record<string, unknown>
+        | undefined;
+      let model: string;
+      let fallbackModels: string[];
+      if (typeof agentModelCfg === "string") {
+        // Per-agent model set as a plain string
+        model = agentModelCfg;
+        fallbackModels = defaultFallbacks;
+      } else if (agentModelCfg && typeof agentModelCfg === "object") {
+        // Per-agent model set as { primary, fallbacks }
+        model = (agentModelCfg.primary as string) || defaultPrimary;
+        fallbackModels = (agentModelCfg.fallbacks as string[]) || defaultFallbacks;
+      } else {
+        // No per-agent override — use the configured defaults (NOT the CLI resolved model)
+        model = defaultPrimary;
+        fallbackModels = defaultFallbacks;
+      }
 
       // Workspace
       const workspace =
@@ -255,5 +271,87 @@ export async function GET() {
   } catch (err) {
     console.error("Agents API error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/agents - Create a new agent or perform agent actions.
+ *
+ * Body:
+ *   { action: "create", name: "work", model?: "provider/model", workspace?: "/path", bindings?: ["whatsapp:biz"] }
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const action = body.action as string;
+
+    switch (action) {
+      case "create": {
+        const name = (body.name as string)?.trim();
+        if (!name) {
+          return NextResponse.json(
+            { error: "Agent name is required" },
+            { status: 400 }
+          );
+        }
+
+        // Validate name: alphanumeric + hyphens only
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(name)) {
+          return NextResponse.json(
+            { error: "Agent name must start with a letter/number and contain only letters, numbers, hyphens, or underscores" },
+            { status: 400 }
+          );
+        }
+
+        // Build CLI args
+        const args = ["agents", "add", name, "--non-interactive", "--json"];
+
+        // Workspace (default or custom)
+        const workspace =
+          (body.workspace as string)?.trim() ||
+          join(getOpenClawHome(), `workspace-${name}`);
+        args.push("--workspace", workspace);
+
+        // Model (optional — inherits default if not set)
+        if (body.model) {
+          args.push("--model", body.model as string);
+        }
+
+        // Bindings (optional, repeatable)
+        const bindings = (body.bindings || []) as string[];
+        for (const b of bindings) {
+          if (b.trim()) args.push("--bind", b.trim());
+        }
+
+        const output = await runCli(args, 30000);
+
+        // Try to parse JSON output
+        let result: Record<string, unknown> = {};
+        try {
+          result = JSON.parse(output);
+        } catch {
+          result = { raw: output };
+        }
+
+        return NextResponse.json({ ok: true, action, name, workspace, ...result });
+      }
+
+      default:
+        return NextResponse.json(
+          { error: `Unknown action: ${action}` },
+          { status: 400 }
+        );
+    }
+  } catch (err) {
+    console.error("Agents API POST error:", err);
+    const msg = String(err);
+    // Make gateway errors user-friendly
+    if (msg.includes("already exists") || msg.includes("Agent already")) {
+      return NextResponse.json(
+        { error: `An agent with this name already exists` },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

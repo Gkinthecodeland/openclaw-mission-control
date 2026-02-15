@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   MarkerType,
   Handle,
   Position,
@@ -35,8 +37,13 @@ import {
   Layers,
   ArrowRight,
   Network,
+  Plus,
+  X,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { requestRestart } from "@/lib/restart-store";
 
 /* ================================================================
    Types
@@ -594,7 +601,7 @@ function AgentDetail({
       </div>
 
       {/* Grid */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* Model Stack */}
         <div className="rounded-lg border border-foreground/[0.06] bg-card/80 p-3 space-y-2">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
@@ -796,7 +803,7 @@ function GridView({
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {agents.map((agent, idx) => {
         const sc = STATUS_COLORS[agent.status] || STATUS_COLORS.unknown;
         const selected = selectedId === agent.id;
@@ -872,7 +879,7 @@ function GridView({
    Flow View
    ================================================================ */
 
-function FlowView({
+function FlowViewInner({
   data,
   selectedId,
   onSelect,
@@ -881,6 +888,8 @@ function FlowView({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const { fitView } = useReactFlow();
+
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
     () => buildGraph(data, selectedId, onSelect),
     [data, selectedId, onSelect]
@@ -891,38 +900,489 @@ function FlowView({
 
   // Update when data or selection changes
   useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = buildGraph(
-      data,
-      selectedId,
-      onSelect
-    );
+    const { nodes: newNodes, edges: newEdges } = buildGraph(data, selectedId, onSelect);
     setNodes(newNodes);
     setEdges(newEdges);
   }, [data, selectedId, onSelect, setNodes, setEdges]);
 
+  // Re-fit whenever nodes change (after React Flow has measured them)
+  const onNodesChangeWrapped = useCallback(
+    (changes: Parameters<typeof onNodesChange>[0]) => {
+      onNodesChange(changes);
+    },
+    [onNodesChange]
+  );
+
+  // Use onNodesInitialized to fit after nodes are measured
+  const handleNodesInitialized = useCallback(() => {
+    fitView({ padding: 0.15, duration: 250 });
+  }, [fitView]);
+
   return (
-    <div className="flex-1 w-full border-t border-border overflow-hidden bg-card dark:bg-[#08080c]">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.25 }}
-        proOptions={{ hideAttribution: true }}
-        minZoom={0.2}
-        maxZoom={2}
-        defaultEdgeOptions={{
-          type: "default",
-        }}
-      >
-        <Background className="!bg-card dark:!bg-[#08080c]" color="var(--border)" gap={20} size={1} />
-        <Controls
-          showInteractive={false}
-          className="!bg-card dark:!bg-zinc-900 !border-border !shadow-xl [&>button]:!bg-secondary dark:[&>button]:!bg-zinc-800 [&>button]:!border-border [&>button]:!text-muted-foreground [&>button:hover]:!bg-accent dark:[&>button:hover]:!bg-zinc-700"
-        />
-      </ReactFlow>
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChangeWrapped}
+      onEdgesChange={onEdgesChange}
+      onInit={() => {
+        // Fit after init with staggered attempts
+        setTimeout(() => fitView({ padding: 0.15 }), 0);
+        setTimeout(() => fitView({ padding: 0.15, duration: 200 }), 300);
+      }}
+      onNodeMouseEnter={undefined}
+      nodeTypes={nodeTypes}
+      fitView
+      fitViewOptions={{ padding: 0.15 }}
+      proOptions={{ hideAttribution: true }}
+      minZoom={0.1}
+      maxZoom={2}
+      defaultEdgeOptions={{ type: "default" }}
+    >
+      <Background className="!bg-card dark:!bg-[#08080c]" color="var(--border)" gap={20} size={1} />
+      <Controls
+        showInteractive={false}
+        className="!bg-card dark:!bg-zinc-900 !border-border !shadow-xl [&>button]:!bg-secondary dark:[&>button]:!bg-zinc-800 [&>button]:!border-border [&>button]:!text-muted-foreground [&>button:hover]:!bg-accent dark:[&>button:hover]:!bg-zinc-700"
+      />
+    </ReactFlow>
+  );
+}
+
+function FlowView({
+  data,
+  selectedId,
+  onSelect,
+}: {
+  data: AgentsResponse;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+
+  // Measure the container with ResizeObserver for a concrete pixel size
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setDims({ w: width, h: height });
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative h-0 flex-1 w-full border-t border-border overflow-hidden bg-card dark:bg-[#08080c]"
+    >
+      {dims ? (
+        <div style={{ width: dims.w, height: dims.h, position: "absolute", inset: 0 }}>
+          <ReactFlowProvider>
+            <FlowViewInner data={data} selectedId={selectedId} onSelect={onSelect} />
+          </ReactFlowProvider>
+        </div>
+      ) : (
+        <div className="flex h-full items-center justify-center text-muted-foreground/40">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================================================================
+   Add Agent Modal
+   ================================================================ */
+
+type AvailableModel = {
+  key: string;
+  name: string;
+  available: boolean;
+  local: boolean;
+  contextWindow: number;
+};
+
+const CHANNEL_OPTIONS = [
+  { value: "whatsapp", label: "WhatsApp", icon: "💬", hint: "Phone number or account label" },
+  { value: "telegram", label: "Telegram", icon: "✈️", hint: "Bot username or account ID" },
+  { value: "discord", label: "Discord", icon: "🎮", hint: "Server or account ID" },
+  { value: "slack", label: "Slack", icon: "💼", hint: "Workspace or channel" },
+  { value: "imessage", label: "iMessage", icon: "🍎", hint: "Apple ID or phone" },
+  { value: "mattermost", label: "Mattermost", icon: "📡", hint: "Team or channel" },
+  { value: "web", label: "Web / API", icon: "🌐", hint: "Session label" },
+];
+
+function AddAgentModal({
+  onClose,
+  onCreated,
+  defaultModel,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+  defaultModel: string;
+}) {
+  const [name, setName] = useState("");
+  const [model, setModel] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [workspace, setWorkspace] = useState("");
+  const [bindings, setBindings] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  // ── Fetch available models ──
+  const [models, setModels] = useState<AvailableModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/models?scope=all");
+        const data = await res.json();
+        const all = (data.models || []) as AvailableModel[];
+        // Only show available (authenticated) models, sorted by name
+        const avail = all
+          .filter((m) => m.available || m.local)
+          .sort((a, b) => (a.name || a.key).localeCompare(b.name || b.key));
+        setModels(avail);
+      } catch { /* ignore */ }
+      setModelsLoading(false);
+    })();
+  }, []);
+
+  // ── Channel binding wizard state ──
+  const [bindChannel, setBindChannel] = useState<string | null>(null);
+  const [bindAccountId, setBindAccountId] = useState("");
+
+  useEffect(() => { nameRef.current?.focus(); }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose, busy]);
+
+  const addBinding = useCallback(() => {
+    if (!bindChannel) return;
+    const binding = bindAccountId.trim()
+      ? `${bindChannel}:${bindAccountId.trim()}`
+      : bindChannel;
+    if (!bindings.includes(binding)) {
+      setBindings((prev) => [...prev, binding]);
+    }
+    setBindChannel(null);
+    setBindAccountId("");
+  }, [bindChannel, bindAccountId, bindings]);
+
+  const removeBinding = useCallback((b: string) => {
+    setBindings((prev) => prev.filter((x) => x !== b));
+  }, []);
+
+  const handleCreate = useCallback(async () => {
+    if (!name.trim()) {
+      setError("Agent name is required");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          name: name.trim(),
+          model: model || undefined,
+          workspace: workspace.trim() || undefined,
+          bindings: bindings.length > 0 ? bindings : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || `Failed (HTTP ${res.status})`);
+        setBusy(false);
+        return;
+      }
+      setSuccess(true);
+      requestRestart("New agent was added — restart to pick up changes.");
+      setTimeout(() => {
+        onCreated();
+        onClose();
+      }, 1500);
+    } catch (err) {
+      setError(String(err));
+    }
+    setBusy(false);
+  }, [name, model, workspace, bindings, onCreated, onClose]);
+
+  const selectedChannelMeta = CHANNEL_OPTIONS.find((c) => c.value === bindChannel);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] sm:pt-[8vh]">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { if (!busy) onClose(); }} />
+
+      <div className="relative z-10 mx-3 flex max-h-[88vh] w-full max-w-[min(30rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card/95 shadow-2xl sm:mx-4 sm:max-h-[80vh]">
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/15">
+              <Sparkles className="h-4 w-4 text-violet-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Create New Agent</h2>
+              <p className="text-[10px] text-muted-foreground">Isolated workspace, sessions & auth</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} disabled={busy} className="rounded p-1 text-muted-foreground/60 hover:text-foreground/70 disabled:opacity-40">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Scrollable form */}
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          {/* ── 1. Name (required) ── */}
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold text-foreground/70">
+              Agent Name <span className="text-red-400">*</span>
+            </label>
+            <input
+              ref={nameRef}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+              placeholder="e.g. work, research, creative"
+              className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-[13px] text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
+              disabled={busy}
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground/50">
+              Unique ID used throughout OpenClaw — auto-formatted to lowercase
+            </p>
+          </div>
+
+          {/* ── 2. Model (select) ── */}
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold text-foreground/70">
+              Model
+            </label>
+            {modelsLoading ? (
+              <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-[12px] text-muted-foreground/50">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading available models...
+              </div>
+            ) : (
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={busy}
+                className="w-full appearance-none rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-[13px] text-foreground/90 focus:border-violet-500/30 focus:outline-none disabled:opacity-40"
+              >
+                <option value="">Use default ({defaultModel.split("/").pop() || defaultModel})</option>
+                {models.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.name || m.key.split("/").pop()} — {m.key.split("/")[0]}{m.local ? " (local)" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            {!modelsLoading && models.length === 0 && (
+              <p className="mt-1.5 text-[10px] text-amber-400">
+                No authenticated models found.{" "}
+                <a href="/?section=models" className="underline hover:text-amber-300">
+                  Go to Models
+                </a>{" "}
+                to connect a provider.
+              </p>
+            )}
+            {!modelsLoading && models.length > 0 && (
+              <p className="mt-1 text-[10px] text-muted-foreground/50">
+                Showing {models.length} authenticated models.{" "}
+                <a href="/?section=models" className="text-violet-400 hover:text-violet-300">
+                  Add more providers →
+                </a>
+              </p>
+            )}
+          </div>
+
+          {/* ── 3. Channel Bindings (wizard) ── */}
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold text-foreground/70">
+              Channel Bindings
+              <span className="ml-1 text-[10px] font-normal text-muted-foreground/40">optional</span>
+            </label>
+
+            {/* Existing bindings chips */}
+            {bindings.length > 0 && (
+              <div className="mb-2.5 flex flex-wrap gap-1.5">
+                {bindings.map((b) => {
+                  const chKey = b.split(":")[0];
+                  const chMeta = CHANNEL_OPTIONS.find((c) => c.value === chKey);
+                  return (
+                    <span key={b} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/[0.06] px-2.5 py-1 text-[11px] text-violet-400">
+                      <span>{chMeta?.icon || "📡"}</span>
+                      <span className="font-medium">{b}</span>
+                      <button type="button" onClick={() => removeBinding(b)} className="ml-0.5 rounded text-violet-400/60 hover:text-violet-200" disabled={busy}>
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Channel binding wizard */}
+            {bindChannel === null ? (
+              /* Step 1: Pick a channel */
+              <div>
+                <p className="mb-2 text-[10px] text-muted-foreground/60">
+                  Route messages from a channel to this agent:
+                </p>
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                  {CHANNEL_OPTIONS.map((ch) => (
+                    <button
+                      key={ch.value}
+                      type="button"
+                      onClick={() => setBindChannel(ch.value)}
+                      disabled={busy}
+                      className="flex items-center gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2 text-left text-[11px] text-foreground/70 transition-colors hover:border-violet-500/20 hover:bg-violet-500/[0.05] hover:text-violet-400 disabled:opacity-40"
+                    >
+                      <span className="text-base">{ch.icon}</span>
+                      <span className="font-medium">{ch.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Step 2: Enter account ID */
+              <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.03] p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{selectedChannelMeta?.icon}</span>
+                    <span className="text-[12px] font-semibold text-foreground/80">{selectedChannelMeta?.label}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setBindChannel(null); setBindAccountId(""); }}
+                    className="rounded p-0.5 text-muted-foreground/40 hover:text-foreground/70"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={bindAccountId}
+                    onChange={(e) => setBindAccountId(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addBinding(); } }}
+                    placeholder={selectedChannelMeta?.hint || "Account ID (optional)"}
+                    className="flex-1 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
+                    autoFocus
+                    disabled={busy}
+                  />
+                  <button
+                    type="button"
+                    onClick={addBinding}
+                    disabled={busy}
+                    className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                  >
+                    Add
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[10px] text-muted-foreground/50">
+                  Leave empty to bind all {selectedChannelMeta?.label} messages, or enter an account ID for specific routing.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* ── 4. Advanced (collapsible) ── */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50 transition-colors hover:text-foreground/60"
+            >
+              <ChevronDown className={cn("h-3 w-3 transition-transform", showAdvanced && "rotate-180")} />
+              Advanced options
+            </button>
+            {showAdvanced && (
+              <div className="mt-2.5">
+                <label className="mb-1 block text-[10px] font-medium text-muted-foreground/60">
+                  Custom Workspace Path
+                </label>
+                <input
+                  type="text"
+                  value={workspace}
+                  onChange={(e) => setWorkspace(e.target.value)}
+                  placeholder={`~/.openclaw/workspace-${name || "<name>"}`}
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[12px] font-mono text-foreground/80 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
+                  disabled={busy}
+                />
+                <p className="mt-1 text-[10px] text-muted-foreground/40">
+                  Defaults to <code>~/.openclaw/workspace-{name || "<name>"}</code>
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2 text-[12px] text-red-400">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {/* Success */}
+          {success && (
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-3 py-2 text-[12px] text-emerald-400">
+              <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+              Agent &ldquo;{name}&rdquo; created successfully!
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-foreground/[0.06] px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg border border-foreground/[0.08] px-4 py-2 text-[12px] text-muted-foreground transition-colors hover:bg-foreground/[0.05] disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={busy || !name.trim() || success}
+            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-[12px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+          >
+            {busy ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Creating...
+              </>
+            ) : success ? (
+              <>
+                <CheckCircle className="h-3.5 w-3.5" />
+                Done!
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3.5 w-3.5" />
+                Create Agent
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -937,6 +1397,7 @@ export function AgentsView() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"flow" | "grid">("flow");
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -992,9 +1453,9 @@ export function AgentsView() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-6 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-4 md:px-6 py-3">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
             <Users className="h-5 w-5 text-violet-400" />
@@ -1005,8 +1466,16 @@ export function AgentsView() {
               {data.agents.length} agent{data.agents.length !== 1 && "s"} configured
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
+          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-500/20"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Add Agent</span>
+          </button>
           <div className="flex rounded-lg border border-foreground/[0.06] bg-card">
             <button
               type="button"
@@ -1051,7 +1520,7 @@ export function AgentsView() {
       {/* Grid view + detail: scrollable with max-width */}
       {view === "grid" && (
         <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-6xl space-y-5 p-6">
+          <div className="mx-auto max-w-6xl space-y-5 px-4 md:px-6 py-6">
             <SummaryBar agents={data.agents} />
             <GridView
               agents={data.agents}
@@ -1067,6 +1536,18 @@ export function AgentsView() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Add Agent Modal */}
+      {showAddModal && (
+        <AddAgentModal
+          onClose={() => setShowAddModal(false)}
+          onCreated={() => {
+            setLoading(true);
+            fetchAgents();
+          }}
+          defaultModel={data.defaultModel}
+        />
       )}
     </div>
   );

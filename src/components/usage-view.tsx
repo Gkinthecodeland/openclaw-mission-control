@@ -227,7 +227,7 @@ function ModelCard({ m, maxTokens, isPrimary, isFallback, rank }: {
       </button>
       {expanded && (
         <div className="border-t border-foreground/[0.04] p-4 space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="rounded-lg bg-foreground/[0.03] p-3 text-center">
               <div className="flex items-center justify-center gap-1"><ArrowDown className="h-3 w-3 text-blue-400" /><p className="text-[10px] text-muted-foreground">Input</p></div>
               <p className="mt-1 text-base font-bold text-blue-400">{fmtTokens(m.inputTokens)}</p>
@@ -341,7 +341,7 @@ export function UsageView() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-6 py-4">
+      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-4 md:px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-600">
             <BarChart3 className="h-5 w-5 text-white" />
@@ -363,7 +363,7 @@ export function UsageView() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-7xl space-y-6 p-6">
+        <div className="mx-auto max-w-7xl w-full space-y-6 px-4 md:px-6 py-6">
 
           {/* Hero Stats */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -378,7 +378,7 @@ export function UsageView() {
           {/* Time Buckets */}
           <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-5">
             <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground/90"><TrendingUp className="h-4 w-4 text-emerald-400" />Token Flow Over Time</h2>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {(["last1h", "last24h", "last7d", "allTime"] as Period[]).map((p) => {
                 const b = data.buckets[p];
                 const isActive = period === p;
@@ -536,14 +536,14 @@ export function UsageView() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between"><span className="text-[11px] text-muted-foreground">Tokens</span><span className="text-lg font-bold text-amber-300">{fmtTokens(peakSession.totalTokens)}</span></div>
                     <ContextGauge used={peakSession.totalTokens} total={peakSession.contextTokens} />
-                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
                       <div><span className="text-muted-foreground/60">Agent</span><p className="font-medium text-foreground/70">{peakSession.agentId}</p></div>
                       <div><span className="text-muted-foreground/60">Model</span><p className="font-medium text-foreground/70">{shortModel(peakSession.model)}</p></div>
                     </div>
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-4 text-center">
                   <Activity className="mx-auto h-5 w-5 text-emerald-400" />
                   <p className="mt-2 text-lg font-bold text-foreground">{totals.totalTokens > 0 && totals.sessions > 0 ? fmtTokens(Math.round(totals.totalTokens / totals.sessions)) : "0"}</p>

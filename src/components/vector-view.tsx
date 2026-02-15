@@ -5,7 +5,7 @@ import {
   Database, Search, RefreshCw, ChevronDown, ChevronUp, Check,
   AlertTriangle, Loader2, X, FileText, Hash, Cpu, HardDrive,
   Layers, RotateCcw, Activity, Filter, ArrowUpDown, Eye, Copy,
-  Box, BarChart3, CircleDot, Settings2, Pencil, Save,
+  Box, BarChart3, CircleDot, Settings2, Pencil, Save, Lock, KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -74,7 +74,7 @@ function ResultCard({ result, rank }: { result: SearchResult; rank: number }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] transition-all hover:border-foreground/[0.1]">
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-[11px] font-bold text-violet-400">#{rank}</div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -146,7 +146,7 @@ function AgentIndexCard({ agent, onReindex, reindexing }: { agent: AgentMemory; 
       </div>
       {expanded && (
         <div className="border-t border-foreground/[0.04] px-4 py-3 space-y-3">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <MiniStat icon={Layers} label="Backend" value={st.backend} />
             <MiniStat icon={Cpu} label="Provider" value={st.provider} />
             <MiniStat icon={Box} label="Model" value={st.model} />
@@ -188,7 +188,48 @@ function EmbeddingModelEditor({ currentProvider, currentModel, currentDims, onSa
   const [editing, setEditing] = useState(false);
   const [provider, setProvider] = useState(currentProvider);
   const [model, setModel] = useState(currentModel);
+  const [authProviders, setAuthProviders] = useState<Set<string>>(new Set());
+  const [authLoading, setAuthLoading] = useState(false);
   const preset = EMBEDDING_MODELS.find((m) => m.provider === provider && m.model === model);
+
+  // Fetch authenticated providers when editor opens
+  useEffect(() => {
+    if (!editing) return;
+    setAuthLoading(true);
+    (async () => {
+      try {
+        const res = await fetch("/api/models");
+        const data = await res.json();
+        const providers = new Set<string>();
+        // Extract providers that have auth configured
+        const authList = data?.status?.auth?.providers ?? [];
+        for (const p of authList) {
+          if (p.effective) providers.add(p.provider);
+        }
+        // Always include the current provider
+        if (currentProvider) providers.add(currentProvider);
+        setAuthProviders(providers);
+      } catch {
+        // If we can't check, show all models
+        setAuthProviders(new Set(EMBEDDING_MODELS.map((m) => m.provider)));
+      }
+      setAuthLoading(false);
+    })();
+  }, [editing, currentProvider]);
+
+  // Split models into available (authenticated) and locked (not authenticated)
+  const availableModels = useMemo(
+    () => EMBEDDING_MODELS.filter((m) => authProviders.has(m.provider)),
+    [authProviders]
+  );
+  const lockedModels = useMemo(
+    () => EMBEDDING_MODELS.filter((m) => !authProviders.has(m.provider)),
+    [authProviders]
+  );
+  const lockedProviders = useMemo(
+    () => [...new Set(lockedModels.map((m) => m.provider))],
+    [lockedModels]
+  );
 
   if (!editing) return (
     <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4">
@@ -196,7 +237,7 @@ function EmbeddingModelEditor({ currentProvider, currentModel, currentDims, onSa
         <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90"><Cpu className="h-4 w-4 text-violet-400" />Embedding Model</div>
         <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-[11px] font-medium text-foreground/70 hover:bg-foreground/[0.1]"><Pencil className="h-3 w-3" />Change</button>
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-3">
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Provider</p><p className="text-[13px] font-mono text-foreground/90 mt-0.5">{currentProvider}</p></div>
         <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Model</p><p className="text-[13px] font-mono text-foreground/90 mt-0.5 truncate" title={currentModel}>{currentModel}</p></div>
         <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Dimensions</p><p className="text-[13px] font-mono text-foreground/90 mt-0.5">{currentDims || "\u2014"}</p></div>
@@ -210,32 +251,104 @@ function EmbeddingModelEditor({ currentProvider, currentModel, currentDims, onSa
         <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90"><Cpu className="h-4 w-4 text-violet-400" />Change Embedding Model</div>
         <button onClick={() => { setEditing(false); setProvider(currentProvider); setModel(currentModel); }} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground/70"><X className="h-4 w-4" /></button>
       </div>
-      <p className="text-[11px] text-muted-foreground">Changing the embedding model requires a full reindex. Make sure the provider API key is configured.</p>
-      <div>
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1.5">Quick Select</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          {EMBEDDING_MODELS.map((m) => {
-            const sel = m.provider === provider && m.model === model;
-            const cur = m.provider === currentProvider && m.model === currentModel;
-            return (<button key={m.provider + "/" + m.model} onClick={() => { setProvider(m.provider); setModel(m.model); }} className={cn("rounded-lg border px-3 py-2 text-left transition-all", sel ? "border-violet-500/40 bg-violet-500/15" : "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]")}>
-              <div className="flex items-center gap-2"><span className={cn("text-[12px] font-medium", sel ? "text-violet-300" : "text-foreground/70")}>{m.label}</span>{cur && <span className="rounded bg-emerald-500/20 px-1 py-0.5 text-[8px] text-emerald-400">CURRENT</span>}</div>
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{m.dims}d - {m.provider}</p>
-            </button>);
-          })}
+      <p className="text-[11px] text-muted-foreground">Changing the embedding model requires a full reindex.</p>
+
+      {/* Available models — from authenticated providers */}
+      {authLoading ? (
+        <div className="flex items-center gap-2 py-4 text-[11px] text-muted-foreground/60">
+          <Loader2 className="h-3 w-3 animate-spin" />Checking authenticated providers...
         </div>
-      </div>
+      ) : (
+        <>
+          {availableModels.length > 0 && (
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1.5">
+                Available Models
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {availableModels.map((m) => {
+                  const sel = m.provider === provider && m.model === model;
+                  const cur = m.provider === currentProvider && m.model === currentModel;
+                  return (
+                    <button
+                      key={m.provider + "/" + m.model}
+                      onClick={() => { setProvider(m.provider); setModel(m.model); }}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-left transition-all",
+                        sel
+                          ? "border-violet-500/40 bg-violet-500/15"
+                          : "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={cn("text-[12px] font-medium", sel ? "text-violet-300" : "text-foreground/70")}>{m.label}</span>
+                        {cur && <span className="rounded bg-emerald-500/20 px-1 py-0.5 text-[8px] text-emerald-400">CURRENT</span>}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">{m.dims}d &middot; {m.provider}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Locked models — providers not authenticated */}
+          {lockedModels.length > 0 && (
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/40 mb-1.5 flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                Requires Authentication
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 opacity-50">
+                {lockedModels.map((m) => (
+                  <div
+                    key={m.provider + "/" + m.model}
+                    className="rounded-lg border border-foreground/[0.04] bg-foreground/[0.01] px-3 py-2 text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Lock className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+                      <span className="text-[12px] font-medium text-muted-foreground/60">{m.label}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground/40 mt-0.5">{m.dims}d &middot; {m.provider}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 rounded-lg border border-foreground/[0.06] bg-muted/30 px-3 py-2.5">
+                <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <KeyRound className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+                  Authenticate more providers to unlock these models:
+                </p>
+                <p className="mt-1 pl-5 text-[11px] font-mono text-muted-foreground/70">
+                  {lockedProviders.map((p, i) => (
+                    <span key={p}>
+                      {i > 0 && ", "}
+                      <code className="rounded bg-muted px-1 py-0.5 text-violet-400/80">openclaw models auth --provider {p}</code>
+                    </span>
+                  ))}
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Custom entry */}
       <div className="space-y-2">
         <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Or enter custom</p>
-        <div className="grid grid-cols-2 gap-2">
-          <input value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded-lg border border-foreground/[0.08] bg-muted px-3 py-2 text-[12px] text-foreground/90 placeholder-zinc-600 outline-none focus:border-violet-500/30" placeholder="Provider" />
-          <input value={model} onChange={(e) => setModel(e.target.value)} className="rounded-lg border border-foreground/[0.08] bg-muted px-3 py-2 text-[12px] text-foreground/90 placeholder-zinc-600 outline-none focus:border-violet-500/30" placeholder="Model" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded-lg border border-foreground/[0.08] bg-muted px-3 py-2 text-[12px] text-foreground/90 outline-none focus:border-violet-500/30" placeholder="Provider" />
+          <input value={model} onChange={(e) => setModel(e.target.value)} className="rounded-lg border border-foreground/[0.08] bg-muted px-3 py-2 text-[12px] text-foreground/90 outline-none focus:border-violet-500/30" placeholder="Model" />
         </div>
       </div>
+
+      {/* Reindex warning */}
       {(provider !== currentProvider || model !== currentModel) && (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2">
           <p className="flex items-center gap-1.5 text-[11px] text-amber-300"><AlertTriangle className="h-3 w-3" />Changing model requires a full reindex. Existing embeddings will be replaced.{preset && currentDims && preset.dims !== currentDims && " Vector dimensions will change."}</p>
         </div>
       )}
+
+      {/* Actions */}
       <div className="flex items-center gap-2">
         <button onClick={() => { onSave(provider, model); setEditing(false); }} disabled={saving || !provider.trim() || !model.trim() || (provider === currentProvider && model === currentModel)} className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-[12px] font-medium text-white hover:bg-violet-500 disabled:opacity-50">
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Save & Reindex
@@ -333,15 +446,15 @@ export function VectorView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-6 py-4">
+        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-4 md:px-6 py-4">
         <div>
           <h1 className="text-[18px] font-semibold text-foreground flex items-center gap-2"><Database className="h-5 w-5 text-violet-400" />Vector Memory</h1>
           <p className="text-[12px] text-muted-foreground mt-0.5">Browse, search, and manage your embedding index</p>
         </div>
         <button onClick={() => { setLoading(true); fetchStatus(); }} className="rounded-lg p-2 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground/70"><RefreshCw className="h-4 w-4" /></button>
       </div>
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-        <div className="grid grid-cols-5 gap-3">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5 space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <OverviewStat icon={Layers} value={String(totalChunks)} label="Total Chunks" color="text-violet-400" />
           <OverviewStat icon={FileText} value={String(totalFiles)} label="Indexed Files" color="text-sky-400" />
           <OverviewStat icon={HardDrive} value={formatBytes(totalDb)} label="DB Size" color="text-emerald-400" />

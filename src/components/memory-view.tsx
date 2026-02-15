@@ -371,9 +371,9 @@ export function MemoryView() {
   const isExpanded = (key: string) => !collapsedPeriods.has(key);
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
       {/* Left panel: search + memory list */}
-      <div className="flex w-[340px] shrink-0 flex-col overflow-hidden border-r border-foreground/[0.06] bg-card/60">
+      <div className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-hidden border-b border-foreground/[0.06] bg-card/60 md:max-h-none md:w-[340px] md:border-b-0 md:border-r">
         <div className="shrink-0 p-3">
           <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-sm text-muted-foreground">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -556,7 +556,7 @@ export function MemoryView() {
       </div>
 
       {/* Right panel: memory content */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-background/40">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/40">
         {detailMeta ? (
           <>
             <div className="shrink-0 border-b border-foreground/[0.06] px-6 py-4">
@@ -585,7 +585,7 @@ export function MemoryView() {
                 to save
               </p>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 min-w-0">
               {detailContent != null ? (
                 <InlineMarkdownEditor
                   key={detailMeta?.fileKey || "memory"}
@@ -688,6 +688,6 @@ export function MemoryView() {
           {actionMsg.msg}
         </div>
       )}
-    </>
+    </div>
   );
 }

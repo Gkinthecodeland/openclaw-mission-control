@@ -310,7 +310,7 @@ function ChatPanel({
       {/* ── Messages area ───────────────────────── */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 px-6">
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-4 md:px-6">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/80 text-3xl">
               {agentEmoji(agentId)}
             </div>
@@ -474,8 +474,8 @@ function ChatPanel({
 
       {/* ── Input area ──────────────────────────── */}
       <div className="shrink-0 border-t border-foreground/[0.06] bg-card/60 px-4 py-3">
-        <div className="mx-auto flex max-w-3xl items-end gap-3">
-          <div className="flex flex-1 items-end rounded-xl border border-foreground/[0.08] bg-card px-4 py-3 focus-within:border-violet-500/30 focus-within:ring-1 focus-within:ring-violet-500/20">
+        <div className="mx-auto flex max-w-3xl min-w-0 items-end gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-end rounded-xl border border-foreground/[0.08] bg-card px-3 py-2 sm:px-4 sm:py-3 focus-within:border-violet-500/30 focus-within:ring-1 focus-within:ring-violet-500/20">
             <textarea
               ref={inputRef}
               value={inputValue}
@@ -612,8 +612,8 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* ── Top bar: agent selector ─────────────── */}
-      <div className="shrink-0 border-b border-foreground/[0.06] bg-card/60 px-4 py-3">
-        <div className="flex items-center justify-between">
+      <div className="shrink-0 border-b border-foreground/[0.06] bg-card/60 px-4 md:px-6 py-3">
+        <div className="flex items-center justify-between overflow-x-auto">
           <div className="flex items-center gap-3">
             {/* Agent dropdown */}
             <div className="relative" ref={dropdownRef}>

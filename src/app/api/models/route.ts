@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runCliJson, runCli, gatewayCall } from "@/lib/openclaw-cli";
 
+/* ── Provider → environment variable key mapping ── */
+const PROVIDER_ENV_KEYS: Record<string, string> = {
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  google: "GEMINI_API_KEY",
+  groq: "GROQ_API_KEY",
+  xai: "XAI_API_KEY",
+  mistral: "MISTRAL_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+  cerebras: "CEREBRAS_API_KEY",
+  huggingface: "HUGGINGFACE_HUB_TOKEN",
+  zai: "ZAI_API_KEY",
+  minimax: "MINIMAX_API_KEY",
+};
+
 type ModelInfo = {
   key: string;
   name: string;
@@ -47,55 +62,98 @@ export async function GET(request: NextRequest) {
       if (agentId) listArgs.push("--agent", agentId);
       const list = await runCliJson<{ models: ModelInfo[] }>(listArgs, 10000);
 
-      // Get per-agent configs from gateway
-      const configData = await gatewayCall<Record<string, unknown>>(
-        "config.get",
-        undefined,
-        10000
-      );
-      // config.get returns { resolved: { agents: { defaults, list } }, parsed: {...}, hash: "..." }
-      const resolved = (configData.resolved || {}) as Record<string, unknown>;
-      const agentsBlock = (resolved.agents || {}) as Record<string, unknown>;
-      const agentsList = (
-        (agentsBlock.list || []) as Record<string, unknown>[]
-      ).map((a) => {
-        const agentModel = a.model as
-          | string
-          | { primary?: string; fallbacks?: string[] }
-          | undefined;
-        let primary: string | null = null;
-        let fallbacks: string[] | null = null;
-        if (typeof agentModel === "string") {
-          primary = agentModel;
-        } else if (agentModel && typeof agentModel === "object") {
-          primary = agentModel.primary || null;
-          fallbacks = agentModel.fallbacks || null;
-        }
-        return {
-          id: a.id as string,
-          name: (a.name as string) || (a.id as string),
-          modelPrimary: primary,
-          modelFallbacks: fallbacks,
-          usesDefaults: !agentModel,
-        };
-      });
+      // Get per-agent configs from gateway (non-critical — gracefully degrade)
+      let agentsList: { id: string; name: string; modelPrimary: string | null; modelFallbacks: string[] | null; usesDefaults: boolean }[] = [];
+      let configHash: string | null = null;
+      try {
+        const configData = await gatewayCall<Record<string, unknown>>(
+          "config.get",
+          undefined,
+          10000
+        );
+        configHash = (configData.hash as string) || null;
+        // config.get returns { resolved: { agents: { defaults, list } }, parsed: {...}, hash: "..." }
+        const resolved = (configData.resolved || {}) as Record<string, unknown>;
+        const agentsBlock = (resolved.agents || {}) as Record<string, unknown>;
+        agentsList = (
+          (agentsBlock.list || []) as Record<string, unknown>[]
+        ).map((a) => {
+          const agentModel = a.model as
+            | string
+            | { primary?: string; fallbacks?: string[] }
+            | undefined;
+          let primary: string | null = null;
+          let fallbacks: string[] | null = null;
+          if (typeof agentModel === "string") {
+            primary = agentModel;
+          } else if (agentModel && typeof agentModel === "object") {
+            primary = agentModel.primary || null;
+            fallbacks = agentModel.fallbacks || null;
+          }
+          return {
+            id: a.id as string,
+            name: (a.name as string) || (a.id as string),
+            modelPrimary: primary,
+            modelFallbacks: fallbacks,
+            usesDefaults: !agentModel,
+          };
+        });
+      } catch (gwErr) {
+        console.warn("Models API: gateway config.get unavailable, continuing without agent configs:", gwErr);
+      }
 
       return NextResponse.json({
         status,
         models: list.models || [],
         agents: agentsList,
-        configHash: configData.hash || null,
+        configHash,
       });
     }
 
     if (scope === "all") {
-      const list = await runCliJson<{ count: number; models: ModelInfo[] }>(
-        ["models", "list", "--all"],
-        15000
-      );
+      // Fetch models and auth status in parallel
+      const [list, statusData] = await Promise.all([
+        runCliJson<{ count: number; models: ModelInfo[] }>(
+          ["models", "list", "--all"],
+          15000
+        ),
+        runCliJson<Record<string, unknown>>(["models", "status"], 10000).catch(
+          () => null
+        ),
+      ]);
+
+      // Extract auth providers from status
+      const auth = (statusData?.auth || {}) as Record<string, unknown>;
+      const authProviders = (
+        (auth.providers || []) as Array<{
+          provider: string;
+          effective?: { kind: string; detail: string };
+        }>
+      ).map((p) => ({
+        provider: p.provider,
+        authenticated: !!p.effective,
+        authKind: p.effective?.kind || null,
+      }));
+
+      // Extract OAuth status
+      const oauthBlock = (auth.oauth || {}) as Record<string, unknown>;
+      const oauthProfiles = (
+        (oauthBlock.profiles || []) as Array<{
+          provider: string;
+          status: string;
+          remainingMs?: number;
+        }>
+      ).map((p) => ({
+        provider: p.provider,
+        status: p.status,
+        remainingMs: p.remainingMs,
+      }));
+
       return NextResponse.json({
         count: list.count,
         models: list.models || [],
+        authProviders,
+        oauthProfiles,
       });
     }
 
@@ -123,6 +181,7 @@ export async function GET(request: NextRequest) {
  *   { action: "reset-agent-model", agentId: "..." }  // remove per-agent override
  *   { action: "set-alias", alias: "...", model: "..." }
  *   { action: "remove-alias", alias: "..." }
+ *   { action: "auth-provider", provider: "...", token: "..." }  // paste API key/token for a provider
  */
 export async function POST(request: NextRequest) {
   try {
@@ -262,6 +321,46 @@ export async function POST(request: NextRequest) {
       case "remove-alias": {
         await runCli(["models", "aliases", "remove", body.alias], 10000);
         return NextResponse.json({ ok: true, action, alias: body.alias });
+      }
+
+      case "auth-provider": {
+        // Paste an API key / token for a provider
+        const provider = body.provider as string;
+        const token = body.token as string;
+        if (!provider || !token) {
+          return NextResponse.json(
+            { error: "Both provider and token are required" },
+            { status: 400 }
+          );
+        }
+        try {
+          await runCli(
+            ["models", "auth", "paste-token", "--provider", provider],
+            15000,
+            token // pass token via stdin
+          );
+          return NextResponse.json({ ok: true, action, provider });
+        } catch (pasteErr) {
+          // Fallback: try setting the env var directly via config.patch
+          try {
+            const envKey = PROVIDER_ENV_KEYS[provider];
+            if (envKey) {
+              const configData = await gatewayCall<Record<string, unknown>>(
+                "config.get",
+                undefined,
+                10000
+              );
+              const hash = configData.hash as string;
+              const patchRaw = JSON.stringify({ env: { [envKey]: token } });
+              await gatewayCall("config.patch", { raw: patchRaw, baseHash: hash }, 15000);
+              return NextResponse.json({ ok: true, action, provider, method: "env" });
+            }
+          } catch { /* ignore */ }
+          return NextResponse.json(
+            { error: `Failed to authenticate ${provider}: ${pasteErr}` },
+            { status: 500 }
+          );
+        }
       }
 
       default:
