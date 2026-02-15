@@ -6,6 +6,7 @@ import {
   AlertTriangle, Loader2, X, FileText, Hash, Cpu, HardDrive,
   Layers, RotateCcw, Activity, Filter, ArrowUpDown, Eye, Copy,
   Box, BarChart3, CircleDot, Settings2, Pencil, Save, Lock, KeyRound,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -359,6 +360,155 @@ function EmbeddingModelEditor({ currentProvider, currentModel, currentDims, onSa
   );
 }
 
+/* ── Setup Wizard ────────────────────────────────── */
+
+type SetupProvider = { id: string; provider: string; model: string; dims: number; label: string; description: string; needsKey: string; icon: string };
+
+const SETUP_OPTIONS: SetupProvider[] = [
+  { id: "openai", provider: "openai", model: "text-embedding-3-small", dims: 1536, label: "OpenAI", description: "Best quality, widely used. Requires OPENAI_API_KEY.", needsKey: "OPENAI_API_KEY", icon: "🟢" },
+  { id: "openai-large", provider: "openai", model: "text-embedding-3-large", dims: 3072, label: "OpenAI (Large)", description: "Higher quality, 3072 dimensions. More expensive.", needsKey: "OPENAI_API_KEY", icon: "🟢" },
+  { id: "google", provider: "google", model: "text-embedding-004", dims: 768, label: "Google Gemini", description: "Free tier available. Requires GEMINI_API_KEY.", needsKey: "GEMINI_API_KEY", icon: "🔵" },
+  { id: "local", provider: "local", model: "auto", dims: 0, label: "Local (Offline)", description: "Runs on your device. No API key needed. Downloads ~600MB model.", needsKey: "", icon: "💻" },
+];
+
+function SetupWizard({ authProviders, onSetup, busy }: { authProviders: string[]; onSetup: (provider: string, model: string) => void; busy: boolean }) {
+  const [selected, setSelected] = useState<string | null>(null);
+
+  // Auto-select best available option
+  useEffect(() => {
+    if (selected) return;
+    if (authProviders.includes("openai")) { setSelected("openai"); return; }
+    if (authProviders.includes("google")) { setSelected("google"); return; }
+    setSelected("local");
+  }, [authProviders, selected]);
+
+  const recommended = SETUP_OPTIONS.find((o) => {
+    if (authProviders.includes("openai")) return o.id === "openai";
+    if (authProviders.includes("google")) return o.id === "google";
+    return o.id === "local";
+  });
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+      <div className="w-full max-w-xl space-y-6">
+        {/* Hero */}
+        <div className="text-center space-y-3">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-500/15">
+            <Database className="h-8 w-8 text-violet-400" />
+          </div>
+          <h1 className="text-[22px] font-semibold text-foreground">Set Up Vector Memory</h1>
+          <p className="text-[13px] text-muted-foreground max-w-md mx-auto">
+            Vector memory lets your agents search notes, documents, and knowledge semantically.
+            Pick an embedding provider to get started — it takes one click.
+          </p>
+        </div>
+
+        {/* Provider cards */}
+        <div className="space-y-2">
+          {SETUP_OPTIONS.map((opt) => {
+            const isAuth = opt.provider === "local" || authProviders.includes(opt.provider);
+            const isSel = selected === opt.id;
+            const isRec = recommended?.id === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setSelected(opt.id)}
+                disabled={!isAuth}
+                className={cn(
+                  "w-full rounded-xl border p-4 text-left transition-all",
+                  !isAuth
+                    ? "cursor-not-allowed border-foreground/[0.04] bg-foreground/[0.01] opacity-50"
+                    : isSel
+                      ? "border-violet-500/40 bg-violet-500/10 scale-[1.01]"
+                      : "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{opt.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className={cn("text-[14px] font-semibold", isSel ? "text-violet-300" : isAuth ? "text-foreground/90" : "text-foreground/50")}>{opt.label}</p>
+                      {isRec && isAuth && (
+                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-semibold text-emerald-300">RECOMMENDED</span>
+                      )}
+                      {isAuth && !isSel && (
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-medium text-emerald-400/80">Ready</span>
+                      )}
+                      {!isAuth && (
+                        <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[9px] text-muted-foreground">
+                          <Lock className="h-2.5 w-2.5" />No API key
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{opt.description}</p>
+                    {opt.dims > 0 && (
+                      <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                        {opt.model} · {opt.dims}d vectors
+                      </p>
+                    )}
+                  </div>
+                  {isSel && isAuth && (
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500">
+                      <Check className="h-3.5 w-3.5 text-white" />
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Auth hint for locked providers */}
+        {SETUP_OPTIONS.some((o) => o.provider !== "local" && !authProviders.includes(o.provider)) && (
+          <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3.5">
+            <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <KeyRound className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+              Missing a provider? Add your API key:
+            </p>
+            <div className="mt-2 space-y-1 pl-5">
+              {!authProviders.includes("openai") && (
+                <p className="text-[11px] font-mono text-muted-foreground/60">
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-violet-400/80">openclaw models auth --provider openai</code>
+                </p>
+              )}
+              {!authProviders.includes("google") && (
+                <p className="text-[11px] font-mono text-muted-foreground/60">
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-violet-400/80">openclaw models auth --provider google</code>
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Action */}
+        {selected && (
+          <div className="text-center">
+            <button
+              type="button"
+              disabled={busy || !selected}
+              onClick={() => {
+                const opt = SETUP_OPTIONS.find((o) => o.id === selected);
+                if (opt) onSetup(opt.provider, opt.model);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-8 py-3 text-[14px] font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50"
+            >
+              {busy ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />Setting up...</>
+              ) : (
+                <><Zap className="h-4 w-4" />Enable Vector Memory</>
+              )}
+            </button>
+            <p className="mt-2 text-[10px] text-muted-foreground/40">
+              This configures your embedding provider and runs the initial index.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function OverviewStat({ icon: Icon, value, label, sub, color }: { icon: React.ComponentType<{ className?: string }>; value: string; label: string; sub?: string; color: string }) {
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
@@ -374,6 +524,7 @@ export function VectorView() {
   const [loading, setLoading] = useState(true);
   const [reindexing, setReindexing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [query, setQuery] = useState("");
   const [searchAgent, setSearchAgent] = useState("");
@@ -385,9 +536,17 @@ export function VectorView() {
   const [lastQuery, setLastQuery] = useState("");
   const [searchTime, setSearchTime] = useState(0);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [authProviders, setAuthProviders] = useState<string[]>([]);
+  const [memorySearch, setMemorySearch] = useState<Record<string, unknown> | null>(null);
 
   const fetchStatus = useCallback(async () => {
-    try { const res = await fetch("/api/vector?scope=status"); const data = await res.json(); setAgents(data.agents || []); }
+    try {
+      const res = await fetch("/api/vector?scope=status");
+      const data = await res.json();
+      setAgents(data.agents || []);
+      setAuthProviders(data.authProviders || []);
+      setMemorySearch(data.memorySearch || null);
+    }
     catch (err) { console.error("Vector fetch:", err); }
     finally { setLoading(false); }
   }, []);
@@ -432,17 +591,59 @@ export function VectorView() {
     } catch (e) { setToast({ message: String(e), type: "error" }); } finally { setSaving(false); }
   }, [fetchStatus]);
 
+  const handleSetup = useCallback(async (provider: string, model: string) => {
+    setSettingUp(true);
+    try {
+      const res = await fetch("/api/vector", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setup-memory", provider, model }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setToast({ message: "Vector memory enabled with " + provider + "/" + model + "!", type: "success" });
+        setLoading(true);
+        await fetchStatus();
+      } else {
+        setToast({ message: d.error || "Setup failed", type: "error" });
+      }
+    } catch (e) {
+      setToast({ message: String(e), type: "error" });
+    } finally {
+      setSettingUp(false);
+    }
+  }, [fetchStatus]);
+
   const sorted = useMemo(() => { const r = [...results]; if (sortBy === "path") r.sort((a, b) => a.path.localeCompare(b.path)); return r; }, [results, sortBy]);
 
   const totalChunks = agents.reduce((s, a) => s + a.status.chunks, 0);
   const totalFiles = agents.reduce((s, a) => s + a.status.files, 0);
   const totalDb = agents.reduce((s, a) => s + a.dbSizeBytes, 0);
   const primary = agents.find((a) => a.agentId === "main") || agents[0];
-  const curProv = primary?.status.provider || "openai";
-  const curModel = primary?.status.model || "text-embedding-3-small";
+  const curProv = primary?.status.provider || "";
+  const curModel = primary?.status.model || "";
   const curDims = primary?.status.vector.dims || null;
 
+  // Determine if setup is needed:
+  // - No agents returned, OR
+  // - memorySearch not configured, OR
+  // - No provider detected, OR
+  // - Zero chunks across all agents and no provider set
+  const needsSetup =
+    agents.length === 0 ||
+    (!memorySearch && !curProv) ||
+    (totalChunks === 0 && totalFiles === 0 && !curProv);
+
   if (loading) return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>;
+
+  if (needsSetup) {
+    return (
+      <>
+        <SetupWizard authProviders={authProviders} onSetup={handleSetup} busy={settingUp} />
+        {toast && <ToastBar toast={toast} onDone={() => setToast(null)} />}
+      </>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">

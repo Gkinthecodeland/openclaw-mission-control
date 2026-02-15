@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
 import {
   Search,
   Pause,
@@ -15,11 +22,15 @@ import {
   Wifi,
   WifiOff,
   Activity,
+  MessageSquare,
+  Trash2,
+  BellRing,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchModal } from "./search-modal";
 import { PairingNotifications } from "./pairing-notifications";
 import { ThemeToggle } from "./theme-toggle";
+import { chatStore, type ChatMessage } from "@/lib/chat-store";
 
 /* ── Types ──────────────────────────────────────── */
 
@@ -32,125 +43,183 @@ type AgentInfo = {
 type GatewayHealth = Record<string, unknown>;
 type GatewayStatus = "online" | "degraded" | "offline" | "loading";
 
-type CommandState = "idle" | "sending" | "success" | "error";
+/* ── Agent Chat Panel (persistent, global state) ── */
 
-/* ── Quick Command Popover ──────────────────────── */
+function useChatState() {
+  return useSyncExternalStore(chatStore.subscribe, chatStore.getSnapshot, chatStore.getSnapshot);
+}
 
-function QuickCommandPopover({ onClose }: { onClose: () => void }) {
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function ChatBubble({ msg }: { msg: ChatMessage }) {
+  if (msg.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600/90 px-3.5 py-2 text-[12px] leading-relaxed text-white shadow-sm">
+          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+          <p className="mt-1 text-right text-[9px] text-white/40">{formatTime(msg.timestamp)}</p>
+        </div>
+      </div>
+    );
+  }
+  if (msg.role === "error") {
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-red-500/20 bg-red-500/[0.06] px-3.5 py-2 text-[12px] leading-relaxed text-red-300 shadow-sm">
+          <div className="mb-1 flex items-center gap-1 text-[10px] font-medium text-red-400">
+            <AlertTriangle className="h-3 w-3" />Error
+          </div>
+          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+          <p className="mt-1 text-[9px] text-red-400/40">{formatTime(msg.timestamp)}</p>
+        </div>
+      </div>
+    );
+  }
+  // assistant
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-foreground/[0.06] bg-foreground/[0.03] px-3.5 py-2 text-[12px] leading-relaxed text-foreground/80 shadow-sm">
+        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+        <p className="mt-1 text-[9px] text-muted-foreground/30">{formatTime(msg.timestamp)}</p>
+      </div>
+    </div>
+  );
+}
+
+export function AgentChatPanel() {
+  const chat = useChatState();
   const [agents, setAgents] = useState<AgentInfo[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [prompt, setPrompt] = useState("");
-  const [state, setState] = useState<CommandState>("idle");
-  const [response, setResponse] = useState("");
   const [showAgentPicker, setShowAgentPicker] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  // Fetch agents
+  // Fetch agents once
   useEffect(() => {
     fetch("/api/agents")
       .then((r) => r.json())
       .then((data) => {
         const list = (data.agents || data || []) as AgentInfo[];
         setAgents(list);
-        if (list.length > 0) setSelectedAgent(list[0].id);
+        if (list.length > 0 && !chat.agentId) {
+          chatStore.setAgent(list[0].id);
+        }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Focus input on open
+  // Request notification permission on first open
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 100);
-  }, []);
+    if (chat.open) {
+      chatStore.requestNotificationPermission();
+    }
+  }, [chat.open]);
+
+  // Focus input when panel opens
+  useEffect(() => {
+    if (chat.open) {
+      setTimeout(() => inputRef.current?.focus(), 150);
+    }
+  }, [chat.open]);
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [chat.messages.length, chat.open]);
 
   // Close on Escape
   useEffect(() => {
+    if (!chat.open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") chatStore.close();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [chat.open]);
 
   // Close on click outside
   useEffect(() => {
+    if (!chat.open) return;
     const handler = (e: MouseEvent) => {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node)
-      ) {
-        onClose();
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        // Don't close if clicking the Ping Agent button (it has its own toggle)
+        const target = e.target as HTMLElement;
+        if (target.closest("[data-chat-toggle]")) return;
+        chatStore.close();
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
+    // Use setTimeout to avoid closing immediately on the same click that opened it
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 50);
+    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
+  }, [chat.open]);
 
-  const send = useCallback(async () => {
-    if (!prompt.trim() || !selectedAgent || state === "sending") return;
-    setState("sending");
-    setResponse("");
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agent: selectedAgent,
-          messages: [
-            {
-              role: "user",
-              id: crypto.randomUUID(),
-              parts: [{ type: "text", text: prompt.trim() }],
-            },
-          ],
-        }),
-      });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      const text = await res.text();
-      setResponse(text.slice(0, 500) + (text.length > 500 ? "…" : ""));
-      setState("success");
-    } catch (err) {
-      setResponse(String(err));
-      setState("error");
-    }
-  }, [prompt, selectedAgent, state]);
+  const handleSend = useCallback(() => {
+    if (!prompt.trim() || chat.sending) return;
+    chatStore.send(prompt.trim());
+    setPrompt("");
+  }, [prompt, chat.sending]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        send();
+        handleSend();
       }
     },
-    [send]
+    [handleSend]
   );
 
-  const currentAgent = agents.find((a) => a.id === selectedAgent);
+  const currentAgent = agents.find((a) => a.id === chat.agentId);
+
+  if (!chat.open) return null;
 
   return (
     <div
-      ref={popoverRef}
-      className="absolute right-0 top-full z-50 mt-2 w-[calc(100vw-24px)] max-w-[420px] overflow-hidden rounded-xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-sm sm:w-[420px]"
+      ref={panelRef}
+      className="fixed right-4 top-14 z-50 flex h-[min(580px,calc(100vh-80px))] w-[min(420px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-2 fade-in duration-200"
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-3 py-2">
-        <div className="flex items-center gap-1.5">
-          <Zap className="h-3.5 w-3.5 text-violet-400" />
-          <span className="text-[12px] font-medium text-foreground/70">
-            Quick Command
-          </span>
+      <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15">
+            <MessageSquare className="h-3.5 w-3.5 text-violet-400" />
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-foreground/80">Agent Chat</p>
+            <p className="text-[9px] text-muted-foreground/50">
+              {chat.messages.length} messages
+              {chat.sending && " · typing..."}
+            </p>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+        <div className="flex items-center gap-1">
+          {chat.messages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => chatStore.clearMessages()}
+              className="rounded-md p-1.5 text-muted-foreground/40 transition hover:bg-muted/60 hover:text-muted-foreground"
+              title="Clear chat"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => chatStore.close()}
+            className="rounded-md p-1.5 text-muted-foreground/40 transition hover:bg-muted/60 hover:text-muted-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Agent selector */}
-      <div className="border-b border-foreground/[0.06] px-3 py-2">
+      <div className="shrink-0 border-b border-foreground/[0.06] px-4 py-2">
         <div className="relative">
           <button
             type="button"
@@ -176,12 +245,12 @@ function QuickCommandPopover({ onClose }: { onClose: () => void }) {
                   key={a.id}
                   type="button"
                   onClick={() => {
-                    setSelectedAgent(a.id);
+                    chatStore.setAgent(a.id);
                     setShowAgentPicker(false);
                   }}
                   className={cn(
                     "flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-violet-500/10",
-                    a.id === selectedAgent && "bg-violet-500/5"
+                    a.id === chat.agentId && "bg-violet-500/5"
                   )}
                 >
                   <span className="text-[12px] font-medium text-foreground/70">
@@ -192,7 +261,7 @@ function QuickCommandPopover({ onClose }: { onClose: () => void }) {
                       {a.model.split("/").pop()}
                     </span>
                   )}
-                  {a.id === selectedAgent && (
+                  {a.id === chat.agentId && (
                     <Check className="h-3 w-3 shrink-0 text-violet-400" />
                   )}
                 </button>
@@ -202,87 +271,68 @@ function QuickCommandPopover({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
+      {/* Messages */}
+      <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
+        {chat.messages.length === 0 && !chat.sending && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10">
+              <Zap className="h-6 w-6 text-violet-400/60" />
+            </div>
+            <p className="text-[13px] font-medium text-foreground/50">Send a message</p>
+            <p className="max-w-[200px] text-[11px] text-muted-foreground/40">
+              Chat with your agents. History is kept while the app is open.
+            </p>
+          </div>
+        )}
+        {chat.messages.map((msg) => (
+          <ChatBubble key={msg.id} msg={msg} />
+        ))}
+        {chat.sending && (
+          <div className="flex justify-start">
+            <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-foreground/[0.06] bg-foreground/[0.03] px-3.5 py-2.5 shadow-sm">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
+              <span className="text-[11px] text-muted-foreground/60">Agent is thinking...</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Input */}
-      <div className="px-3 py-2">
+      <div className="shrink-0 border-t border-foreground/[0.06] px-4 py-3">
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a quick command for the agent..."
-            rows={2}
-            disabled={state === "sending"}
-            className="flex-1 resize-none rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/60 focus:border-violet-500/30 focus:outline-none disabled:opacity-50"
+            placeholder="Message your agent..."
+            rows={1}
+            disabled={chat.sending || !chat.agentId}
+            className="flex-1 resize-none rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] px-3.5 py-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none disabled:opacity-50"
+            style={{ maxHeight: "80px" }}
+            onInput={(e) => {
+              const ta = e.target as HTMLTextAreaElement;
+              ta.style.height = "auto";
+              ta.style.height = Math.min(ta.scrollHeight, 80) + "px";
+            }}
           />
           <button
             type="button"
-            onClick={send}
-            disabled={!prompt.trim() || !selectedAgent || state === "sending"}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+            onClick={handleSend}
+            disabled={!prompt.trim() || !chat.agentId || chat.sending}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
           >
-            {state === "sending" ? (
+            {chat.sending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Send className="h-3.5 w-3.5" />
             )}
           </button>
         </div>
-        <div className="mt-1 flex items-center justify-between">
-          <span className="text-[10px] text-muted-foreground/40">
-            Enter to send · Shift+Enter for newline
-          </span>
-          {state === "sending" && (
-            <span className="flex items-center gap-1 text-[10px] text-violet-400">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              Agent thinking...
-            </span>
-          )}
-        </div>
+        <p className="mt-1.5 text-[9px] text-muted-foreground/30">
+          Enter to send · Shift+Enter for newline · Esc to close
+        </p>
       </div>
-
-      {/* Response */}
-      {(state === "success" || state === "error") && response && (
-        <div
-          className={cn(
-            "border-t border-foreground/[0.06] px-3 py-2",
-            state === "error" && "bg-red-500/[0.03]"
-          )}
-        >
-          <div className="mb-1 flex items-center gap-1">
-            {state === "success" ? (
-              <Check className="h-3 w-3 text-emerald-400" />
-            ) : (
-              <AlertTriangle className="h-3 w-3 text-red-400" />
-            )}
-            <span
-              className={cn(
-                "text-[10px] font-medium",
-                state === "success" ? "text-emerald-400" : "text-red-400"
-              )}
-            >
-              {state === "success" ? "Agent responded" : "Error"}
-            </span>
-          </div>
-          <p className="max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
-            {response}
-          </p>
-          {state === "success" && (
-            <button
-              type="button"
-              onClick={() => {
-                setPrompt("");
-                setResponse("");
-                setState("idle");
-                inputRef.current?.focus();
-              }}
-              className="mt-1.5 text-[10px] text-violet-400 transition-colors hover:text-violet-300"
-            >
-              Send another →
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -563,7 +613,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
-  const [cmdOpen, setCmdOpen] = useState(false);
+  const chat = useChatState();
   const { paused, busy: pauseBusy, toggle: togglePause } = usePauseState();
   const { status: gwStatus, health: gwHealth } = useGatewayStatus();
 
@@ -593,26 +643,29 @@ export function Header() {
         <div className="flex items-center gap-1.5 md:gap-2">
           {/* ── Actions ── */}
 
-          {/* Quick Command (primary CTA) */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setCmdOpen(!cmdOpen)}
-              className={cn(
-                "flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-xs transition-colors",
-                cmdOpen
-                  ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
-                  : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted/80"
-              )}
-            >
-              <Zap className="h-3.5 w-3.5" />
-              <span className="hidden md:inline">Ping Agent</span>
-            </button>
-
-            {cmdOpen && (
-              <QuickCommandPopover onClose={() => setCmdOpen(false)} />
+          {/* Ping Agent (opens persistent chat panel) */}
+          <button
+            type="button"
+            data-chat-toggle
+            onClick={() => chatStore.toggle()}
+            className={cn(
+              "relative flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-xs transition-colors",
+              chat.open
+                ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
+                : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted/80"
             )}
-          </div>
+          >
+            <Zap className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Ping Agent</span>
+            {chat.unread > 0 && !chat.open && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-500 px-1 text-[9px] font-bold text-white shadow-lg">
+                {chat.unread}
+              </span>
+            )}
+            {chat.sending && !chat.open && (
+              <Loader2 className="h-3 w-3 animate-spin text-violet-400" />
+            )}
+          </button>
 
           {/* Search */}
           <button

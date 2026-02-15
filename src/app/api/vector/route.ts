@@ -98,14 +98,17 @@ export async function GET(request: NextRequest) {
         }))
       );
 
-      // Get embedding config from config.get
+      // Get embedding config + memorySearch from config.get
       let embeddingConfig: Record<string, unknown> | null = null;
+      let memorySearch: Record<string, unknown> | null = null;
+      let configHash: string | null = null;
       try {
         const configData = await gatewayCall<Record<string, unknown>>(
           "config.get",
           undefined,
           10000
         );
+        configHash = (configData.hash as string) || null;
         const resolved = (configData.resolved || {}) as Record<string, unknown>;
         const agents_config = (resolved.agents || {}) as Record<string, unknown>;
         const defaults = (agents_config.defaults || {}) as Record<string, unknown>;
@@ -113,13 +116,32 @@ export async function GET(request: NextRequest) {
           model: defaults.model || null,
           contextTokens: defaults.contextTokens || null,
         };
+        memorySearch = (defaults.memorySearch || null) as Record<string, unknown> | null;
       } catch {
         // config not available
+      }
+
+      // Get authenticated embedding providers
+      let authProviders: string[] = [];
+      try {
+        const modelsRes = await runCliJson<Record<string, unknown>>(["models", "status"], 10000);
+        const auth = ((modelsRes as Record<string, unknown>).auth || {}) as Record<string, unknown>;
+        const providersList = (auth.providers || []) as Array<Record<string, unknown>>;
+        authProviders = providersList
+          .filter((p) => p.effective)
+          .map((p) => String(p.provider));
+      } catch {
+        // fallback: try to detect from env keys
+        if (process.env.OPENAI_API_KEY) authProviders.push("openai");
+        if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) authProviders.push("google");
       }
 
       return NextResponse.json({
         agents: enriched,
         embeddingConfig,
+        memorySearch,
+        configHash,
+        authProviders,
         home: getOpenClawHome(),
       });
     }
@@ -177,6 +199,54 @@ export async function POST(request: NextRequest) {
 
         const output = await runCli(args, 60000);
         return NextResponse.json({ ok: true, action, output });
+      }
+
+      case "setup-memory": {
+        // One-click setup: enable memorySearch with given provider/model
+        const setupProvider = body.provider as string;
+        const setupModel = body.model as string;
+
+        if (!setupProvider || !setupModel) {
+          return NextResponse.json(
+            { error: "provider and model required" },
+            { status: 400 }
+          );
+        }
+
+        const setupConfig = await gatewayCall<Record<string, unknown>>(
+          "config.get",
+          undefined,
+          10000
+        );
+        const setupHash = setupConfig.hash as string;
+
+        const setupPatch = JSON.stringify({
+          agents: {
+            defaults: {
+              memorySearch: {
+                enabled: true,
+                provider: setupProvider,
+                model: setupModel,
+                sources: ["memory"],
+              },
+            },
+          },
+        });
+
+        await gatewayCall(
+          "config.patch",
+          { raw: setupPatch, baseHash: setupHash, restartDelayMs: 2000 },
+          15000
+        );
+
+        // Trigger initial index
+        try {
+          await runCli(["memory", "index"], 30000);
+        } catch {
+          // indexing can fail if no memory files yet, that's fine
+        }
+
+        return NextResponse.json({ ok: true, action, provider: setupProvider, model: setupModel });
       }
 
       case "update-embedding-model": {
