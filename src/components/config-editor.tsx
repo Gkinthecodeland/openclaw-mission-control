@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { requestRestart } from "@/lib/restart-store";
 import {
   ChevronDown,
   ChevronRight,
@@ -1036,6 +1037,7 @@ export function ConfigEditor() {
         setPendingChanges({});
         setDirtyPaths(new Set());
         setShowRestart(true);
+        requestRestart("Configuration was updated — some changes may require a restart.");
         // Refresh to get new hash
         await fetchConfig();
       } else {

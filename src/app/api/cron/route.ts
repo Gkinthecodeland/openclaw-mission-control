@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runCli, runCliJson } from "@/lib/openclaw-cli";
+import { runCli, runCliJson, gatewayCall } from "@/lib/openclaw-cli";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,7 @@ type CronJob = {
   enabled: boolean;
   schedule: { kind: string; expr?: string; everyMs?: number; tz?: string };
   payload: { kind: string; message?: string };
-  delivery: { mode: string; channel?: string };
+  delivery: { mode: string; channel?: string; to?: string };
   state: {
     nextRunAtMs?: number;
     lastRunAtMs?: number;
@@ -38,6 +38,80 @@ type CronRunEntry = {
   nextRunAtMs?: number;
 };
 
+/**
+ * Extract known delivery targets from sessions + existing cron jobs.
+ * Session keys often follow the pattern `channel:chatId:agentId`.
+ */
+async function collectKnownTargets(): Promise<
+  { target: string; channel: string; source: string }[]
+> {
+  const targets: Map<string, { channel: string; source: string }> = new Map();
+
+  // 1. Extract from existing cron jobs
+  try {
+    const data = await runCliJson<CronList>(["cron", "list", "--all"]);
+    for (const job of data.jobs || []) {
+      if (job.delivery?.to) {
+        const ch = job.delivery.channel || detectChannel(job.delivery.to);
+        targets.set(job.delivery.to, { channel: ch, source: `cron: ${job.name}` });
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 2. Extract from active sessions (keys contain channel:id patterns)
+  try {
+    const data = await gatewayCall<{
+      sessions: { key: string }[];
+    }>("sessions.list", undefined, 10000);
+    for (const sess of data.sessions || []) {
+      const parsed = parseSessionKey(sess.key);
+      if (parsed) {
+        if (!targets.has(parsed.target)) {
+          targets.set(parsed.target, { channel: parsed.channel, source: "active session" });
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return Array.from(targets.entries()).map(([target, info]) => ({
+    target,
+    channel: info.channel,
+    source: info.source,
+  }));
+}
+
+function detectChannel(to: string): string {
+  if (to.startsWith("telegram:")) return "telegram";
+  if (to.startsWith("discord:")) return "discord";
+  if (to.startsWith("+")) return "whatsapp";
+  return "";
+}
+
+function parseSessionKey(key: string): { target: string; channel: string } | null {
+  // Session keys: "telegram:1386366527:main", "discord:123456:main", etc.
+  const channels = ["telegram", "whatsapp", "discord"];
+  for (const ch of channels) {
+    if (key.startsWith(`${ch}:`)) {
+      const parts = key.split(":");
+      if (parts.length >= 2 && parts[1]) {
+        return { target: `${ch}:${parts[1]}`, channel: ch };
+      }
+    }
+  }
+  // WhatsApp sessions might start with +
+  if (key.startsWith("+")) {
+    const parts = key.split(":");
+    if (parts[0]) {
+      return { target: parts[0], channel: "whatsapp" };
+    }
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action");
@@ -59,6 +133,12 @@ export async function GET(request: NextRequest) {
         // Fallback: return raw text
         return NextResponse.json({ entries: [], raw: stdout });
       }
+    }
+
+    if (action === "targets") {
+      // Collect known delivery targets from sessions + existing cron jobs
+      const targets = await collectKnownTargets();
+      return NextResponse.json({ targets });
     }
 
     // Default: list all jobs

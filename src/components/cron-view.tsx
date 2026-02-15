@@ -30,6 +30,7 @@ import {
   Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { requestRestart } from "@/lib/restart-store";
 
 /* ── types ────────────────────────────────────────── */
 
@@ -251,6 +252,9 @@ function RunCard({ run }: { run: RunEntry }) {
   );
 }
 
+/* ── Known delivery target type ───────────────────── */
+type KnownTarget = { target: string; channel: string; source: string };
+
 /* ── Edit form ───────────────────────────────────── */
 
 function EditCronForm({
@@ -280,8 +284,44 @@ function EditCronForm({
   const [deliveryMode, setDeliveryMode] = useState(job.delivery.mode || "none");
   const [channel, setChannel] = useState(job.delivery.channel || "");
   const [to, setTo] = useState(job.delivery.to || "");
+  const [customTo, setCustomTo] = useState(false); // true = manual entry mode
+  const [knownTargets, setKnownTargets] = useState<KnownTarget[]>([]);
+  const [targetsLoading, setTargetsLoading] = useState(true);
 
   const [confirmDel, setConfirmDel] = useState(false);
+
+  // Fetch known delivery targets on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/cron?action=targets");
+        const data = await res.json();
+        setKnownTargets(data.targets || []);
+      } catch {
+        /* ignore */
+      }
+      setTargetsLoading(false);
+    })();
+  }, []);
+
+  // Filter targets by selected channel
+  const filteredTargets = useMemo(() => {
+    if (!channel) return knownTargets;
+    return knownTargets.filter(
+      (t) => t.channel === channel || !t.channel
+    );
+  }, [knownTargets, channel]);
+
+  // If the current `to` value isn't in the known targets, switch to custom mode
+  useEffect(() => {
+    if (!targetsLoading && to && filteredTargets.length > 0) {
+      const found = filteredTargets.some((t) => t.target === to);
+      if (!found) setCustomTo(true);
+    }
+    if (!targetsLoading && filteredTargets.length === 0) {
+      setCustomTo(true);
+    }
+  }, [targetsLoading, to, filteredTargets]);
 
   const save = () => {
     const updates: Record<string, unknown> = {};
@@ -434,13 +474,76 @@ function EditCronForm({
               <label className="mb-1 block text-[10px] text-muted-foreground">
                 To (recipient)
               </label>
-              <input
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                disabled={deliveryMode === "none"}
-                placeholder="telegram:CHAT_ID"
-                className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none focus:border-violet-500/30 disabled:opacity-40"
-              />
+              {/* Smart target selector: known targets dropdown or custom input */}
+              {deliveryMode === "none" ? (
+                <input
+                  disabled
+                  value=""
+                  placeholder="—"
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none disabled:opacity-40"
+                />
+              ) : targetsLoading ? (
+                <div className="flex h-[38px] items-center rounded-lg border border-foreground/[0.08] bg-muted/80 px-3">
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
+                  <span className="ml-2 text-[11px] text-muted-foreground/40">
+                    Loading targets...
+                  </span>
+                </div>
+              ) : !customTo && filteredTargets.length > 0 ? (
+                <div className="space-y-1.5">
+                  <select
+                    value={to}
+                    onChange={(e) => {
+                      if (e.target.value === "__custom__") {
+                        setCustomTo(true);
+                      } else {
+                        setTo(e.target.value);
+                      }
+                    }}
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none focus:border-violet-500/30"
+                  >
+                    <option value="">Select a target...</option>
+                    {filteredTargets.map((t) => (
+                      <option key={t.target} value={t.target}>
+                        {t.target} ({t.source})
+                      </option>
+                    ))}
+                    <option value="__custom__">Enter manually...</option>
+                  </select>
+                  {to && (
+                    <p className="text-[10px] text-emerald-500/70">
+                      <CheckCircle className="mr-1 inline h-2.5 w-2.5" />
+                      Target set: <code className="text-emerald-400">{to}</code>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <input
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    placeholder={
+                      channel === "telegram"
+                        ? "telegram:CHAT_ID"
+                        : channel === "discord"
+                          ? "discord:CHANNEL_ID"
+                          : channel === "whatsapp"
+                            ? "+15555550123"
+                            : "telegram:CHAT_ID"
+                    }
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none focus:border-violet-500/30"
+                  />
+                  {filteredTargets.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomTo(false)}
+                      className="text-[10px] text-violet-400 hover:text-violet-300"
+                    >
+                      ← Pick from known targets
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -459,11 +562,13 @@ function EditCronForm({
             </div>
           )}
 
-          <p className="text-[10px] text-muted-foreground/40">
-            Format: <code className="text-muted-foreground/60">telegram:CHAT_ID</code>,{" "}
-            <code className="text-muted-foreground/60">+15555550123</code> (WhatsApp),{" "}
-            <code className="text-muted-foreground/60">discord:CHANNEL_ID</code>
-          </p>
+          {customTo && (
+            <p className="text-[10px] text-muted-foreground/40">
+              Format: <code className="text-muted-foreground/60">telegram:CHAT_ID</code>,{" "}
+              <code className="text-muted-foreground/60">+15555550123</code> (WhatsApp),{" "}
+              <code className="text-muted-foreground/60">discord:CHANNEL_ID</code>
+            </p>
+          )}
         </div>
       </div>
 
@@ -627,6 +732,10 @@ export function CronView() {
           flash(`${action} successful`);
           fetchJobs();
           if (action === "run") setTimeout(() => fetchRuns(id), 5000);
+          // Config-changing actions should prompt a restart
+          if (["edit", "enable", "disable", "delete"].includes(action)) {
+            requestRestart("Cron job configuration was updated.");
+          }
         } else {
           flash(data.error || "Failed", "error");
         }

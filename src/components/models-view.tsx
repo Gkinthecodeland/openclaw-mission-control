@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { requestRestart } from "@/lib/restart-store";
 import {
   ArrowUp,
   ArrowDown,
@@ -701,6 +702,7 @@ export function ModelsView() {
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         flash(successMsg);
+        requestRestart("Model configuration was updated.");
         await fetchModels();
       } catch (err) {
         flash(String(err), "error");

@@ -6,6 +6,7 @@ import { Header } from "@/components/header";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ChatNotificationToast } from "@/components/chat-notification-toast";
+import { RestartAnnouncementBar } from "@/components/restart-announcement-bar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -59,6 +60,7 @@ export default function RootLayout({
             <Sidebar />
             <div className="flex flex-1 flex-col overflow-hidden">
               <Header />
+              <RestartAnnouncementBar />
               <main className="flex flex-1 overflow-hidden">
                 {children}
               </main>

@@ -1,7 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
-import { gatewayCall } from "@/lib/openclaw-cli";
+import { gatewayCall, runCli } from "@/lib/openclaw-cli";
 import { readFile, stat } from "fs/promises";
 import { extname } from "path";
+
+/**
+ * Ask the OpenClaw agent to generate a short, unique TTS test phrase.
+ * Falls back to a dynamic template if the agent is unavailable.
+ */
+async function generateTestPhrase(): Promise<string> {
+  try {
+    const output = await runCli(
+      [
+        "agent", "--agent", "main", "--message",
+        "Generate a single short sentence (max 20 words) for me to test my text-to-speech system. " +
+        "Make it fun, unique, and self-aware — you're an AI assistant named OpenClaw. " +
+        "Don't add quotes or explanation, just the sentence.",
+      ],
+      15000
+    );
+    const phrase = output.trim();
+    // Sanity check: should be a short phrase, not an essay
+    if (phrase && phrase.length > 5 && phrase.length < 300) {
+      return phrase;
+    }
+  } catch {
+    // Agent unavailable — fall through to template
+  }
+
+  // Fallback: dynamic rotating phrases
+  const phrases = [
+    "Hey there, it's OpenClaw. I can talk now — isn't that something?",
+    "This is your friendly neighborhood AI, doing a quick voice check. Sounding good?",
+    "OpenClaw online and speaking. If you can hear this, we're in business.",
+    "Voice systems nominal. This is OpenClaw, live and in stereo.",
+    "Greetings from the other side of the speaker. OpenClaw, at your service.",
+    "Testing, testing, one two three. OpenClaw's got its voice on.",
+    "If I sound this good on a test, imagine what I'll sound like with something important to say.",
+    "This is OpenClaw. I've read the docs so you don't have to. You're welcome.",
+  ];
+  return phrases[Math.floor(Math.random() * phrases.length)];
+}
 
 const MIME_TYPES: Record<string, string> = {
   ".mp3": "audio/mpeg",
@@ -140,22 +178,65 @@ export async function POST(request: NextRequest) {
     const action = body.action as string;
 
     switch (action) {
-      case "enable": {
-        const result = await gatewayCall<Record<string, unknown>>(
-          "tts.enable",
-          undefined,
-          10000
-        );
-        return NextResponse.json({ ok: true, action, ...result });
+      case "set-auto-mode": {
+        // Set auto-TTS mode via config patch (most reliable method)
+        const mode = body.mode as string;
+        if (!["off", "always", "inbound", "tagged"].includes(mode)) {
+          return NextResponse.json(
+            { error: `Invalid mode: ${mode}. Use off, always, inbound, or tagged.` },
+            { status: 400 }
+          );
+        }
+        try {
+          const configData = await gatewayCall<Record<string, unknown>>(
+            "config.get", undefined, 10000
+          );
+          const hash = configData.hash as string;
+          await gatewayCall(
+            "config.patch",
+            { raw: JSON.stringify({ messages: { tts: { auto: mode } } }), baseHash: hash },
+            15000
+          );
+          return NextResponse.json({ ok: true, action, mode });
+        } catch (err) {
+          return NextResponse.json(
+            { ok: false, error: "Could not update auto-TTS mode. Is the gateway running?" },
+            { status: 502 }
+          );
+        }
       }
 
+      case "enable":
       case "disable": {
-        const result = await gatewayCall<Record<string, unknown>>(
-          "tts.disable",
-          undefined,
-          10000
-        );
-        return NextResponse.json({ ok: true, action, ...result });
+        // Try RPC first, fall back to config patch
+        try {
+          const result = await gatewayCall<Record<string, unknown>>(
+            action === "enable" ? "tts.enable" : "tts.disable",
+            undefined,
+            8000
+          );
+          return NextResponse.json({ ok: true, action, ...result });
+        } catch {
+          // Fallback: patch config directly
+          try {
+            const configData = await gatewayCall<Record<string, unknown>>(
+              "config.get", undefined, 10000
+            );
+            const hash = configData.hash as string;
+            const auto = action === "enable" ? "always" : "off";
+            await gatewayCall(
+              "config.patch",
+              { raw: JSON.stringify({ messages: { tts: { auto } } }), baseHash: hash },
+              15000
+            );
+            return NextResponse.json({ ok: true, action, fallback: true });
+          } catch {
+            return NextResponse.json(
+              { ok: false, error: "Could not reach the gateway. Make sure it is running." },
+              { status: 502 }
+            );
+          }
+        }
       }
 
       case "set-provider": {
@@ -166,27 +247,56 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
-        const result = await gatewayCall<Record<string, unknown>>(
-          "tts.setProvider",
-          { provider },
-          10000
-        );
-        return NextResponse.json({ ok: true, action, provider, ...result });
+        try {
+          const result = await gatewayCall<Record<string, unknown>>(
+            "tts.setProvider",
+            { provider },
+            10000
+          );
+          return NextResponse.json({ ok: true, action, provider, ...result });
+        } catch {
+          // Fallback: patch config
+          try {
+            const configData = await gatewayCall<Record<string, unknown>>(
+              "config.get", undefined, 10000
+            );
+            const hash = configData.hash as string;
+            await gatewayCall(
+              "config.patch",
+              { raw: JSON.stringify({ messages: { tts: { provider } } }), baseHash: hash },
+              15000
+            );
+            return NextResponse.json({ ok: true, action, provider, fallback: true });
+          } catch {
+            return NextResponse.json(
+              { ok: false, error: "Could not set provider. Is the gateway running?" },
+              { status: 502 }
+            );
+          }
+        }
       }
 
       case "test": {
-        const text = (body.text as string) || "Hello! This is a test of the text to speech system.";
+        // Use explicit text if provided, otherwise ask the agent for a unique phrase
+        const text = (body.text as string) || await generateTestPhrase();
         const params: Record<string, unknown> = { text };
         if (body.provider) params.provider = body.provider;
         if (body.voice) params.voice = body.voice;
         if (body.model) params.model = body.model;
 
-        const result = await gatewayCall<Record<string, unknown>>(
-          "tts.convert",
-          params,
-          30000
-        );
-        return NextResponse.json({ ok: true, action, ...result });
+        try {
+          const result = await gatewayCall<Record<string, unknown>>(
+            "tts.convert",
+            params,
+            30000
+          );
+          return NextResponse.json({ ok: true, action, text, ...result });
+        } catch {
+          return NextResponse.json(
+            { ok: false, error: "TTS generation failed. Check that the gateway is running and the provider has a valid API key." },
+            { status: 502 }
+          );
+        }
       }
 
       case "update-config": {
@@ -199,35 +309,38 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Get current config hash
-        const configData = await gatewayCall<Record<string, unknown>>(
-          "config.get",
-          undefined,
-          10000
-        );
-        const hash = configData.hash as string;
+        try {
+          const configData = await gatewayCall<Record<string, unknown>>(
+            "config.get", undefined, 10000
+          );
+          const hash = configData.hash as string;
 
-        // Build the patch
-        let patchRaw: string;
-        if (section === "tts") {
-          patchRaw = JSON.stringify({ messages: { tts: config } });
-        } else if (section === "talk") {
-          patchRaw = JSON.stringify({ talk: config });
-        } else if (section === "audio") {
-          patchRaw = JSON.stringify({ tools: { media: { audio: config } } });
-        } else {
+          let patchRaw: string;
+          if (section === "tts") {
+            patchRaw = JSON.stringify({ messages: { tts: config } });
+          } else if (section === "talk") {
+            patchRaw = JSON.stringify({ talk: config });
+          } else if (section === "audio") {
+            patchRaw = JSON.stringify({ tools: { media: { audio: config } } });
+          } else {
+            return NextResponse.json(
+              { error: `Unknown section: ${section}` },
+              { status: 400 }
+            );
+          }
+
+          await gatewayCall(
+            "config.patch",
+            { raw: patchRaw, baseHash: hash },
+            15000
+          );
+          return NextResponse.json({ ok: true, action, section });
+        } catch {
           return NextResponse.json(
-            { error: `Unknown section: ${section}` },
-            { status: 400 }
+            { ok: false, error: `Could not update ${section} config. Is the gateway running?` },
+            { status: 502 }
           );
         }
-
-        await gatewayCall(
-          "config.patch",
-          { raw: patchRaw, baseHash: hash },
-          15000
-        );
-        return NextResponse.json({ ok: true, action, section });
       }
 
       default:

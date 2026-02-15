@@ -102,7 +102,7 @@ Everything runs locally. No cloud. No data leaves your machine.
 Already have OpenClaw running? Just ask your agent:
 
 ```
-Hey, install Mission Control for me
+Hey, install Mission Control for me — here's the repo: https://github.com/robsannaa/openclaw-mission-control
 ```
 
 Your agent will:
@@ -165,17 +165,6 @@ Everything auto-discovers, but you can override if needed:
 | `OPENCLAW_WORKSPACE` | Auto-detected | Path to the default workspace |
 | `OPENCLAW_SKILLS_DIR` | Auto-detected | Path to system skills directory |
 
----
-
-## Install as a PWA (optional)
-
-Mission Control works as a **Progressive Web App**:
-
-1. Open `http://localhost:3000` in Chrome or Edge
-2. Click the install icon in the address bar
-3. Done — it now lives in your dock/taskbar
-
----
 
 ## Project Structure
 

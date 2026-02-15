@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { requestRestart } from "@/lib/restart-store";
 import {
   CheckCircle, XCircle, ExternalLink, Search, RefreshCw,
   AlertTriangle, ChevronRight, X, Loader2, Check, Download,
@@ -329,7 +330,9 @@ export function SkillsView() {
   }), [skills, search, filter]);
 
   const handleAction = useCallback((msg: string) => {
-    setToast({ msg, type: msg.startsWith("Error") ? "error" : "success" });
+    const isError = msg.startsWith("Error");
+    setToast({ msg, type: isError ? "error" : "success" });
+    if (!isError) requestRestart("Skill configuration was updated.");
     fetchAll(); // Refresh list after action
   }, [fetchAll]);
 

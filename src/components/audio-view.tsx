@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { requestRestart } from "@/lib/restart-store";
 import {
   Volume2,
   VolumeX,
@@ -713,50 +714,7 @@ function ConfigField({ label, value }: { label: string; value: string }) {
   );
 }
 
-/* ── TTS Auto-Mode Selector ──────────────────────── */
-
-function AutoModeSelector({
-  current,
-  onSelect,
-  loading,
-}: {
-  current: string;
-  onSelect: (mode: string) => void;
-  loading: boolean;
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-        Auto-TTS Mode
-      </p>
-      <div className="grid grid-cols-2 gap-2">
-        {AUTO_MODES.map((m) => (
-          <button
-            key={m.value}
-            onClick={() => onSelect(m.value)}
-            disabled={loading}
-            className={cn(
-              "rounded-lg border px-3 py-2.5 text-left transition-all",
-              current === m.value
-                ? "border-violet-500/30 bg-violet-500/10"
-                : "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]"
-            )}
-          >
-            <p
-              className={cn(
-                "text-[12px] font-medium",
-                current === m.value ? "text-violet-300" : "text-foreground/70"
-              )}
-            >
-              {m.label}
-            </p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{m.desc}</p>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
+/* AutoModeSelector is now inlined in the main view */
 
 /* ── TTS Settings Panel ──────────────────────────── */
 
@@ -935,41 +893,40 @@ export function AudioView() {
 
   /* ── Actions ───────────── */
 
-  const toggleTts = useCallback(async () => {
-    if (!data) return;
-    const newEnabled = !data.status.enabled;
-    // Optimistic update
-    setData((prev) =>
-      prev ? { ...prev, status: { ...prev.status, enabled: newEnabled } } : prev
-    );
-    setActionLoading(true);
-    try {
-      const action = newEnabled ? "enable" : "disable";
-      const res = await fetch("/api/audio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const json = await res.json();
-      if (json.ok) {
-        setToast({ message: `TTS ${action}d`, type: "success" });
-        await fetchData();
-      } else {
-        setToast({ message: json.error || "Failed", type: "error" });
-        // Revert optimistic update
-        setData((prev) =>
-          prev ? { ...prev, status: { ...prev.status, enabled: !newEnabled } } : prev
-        );
-      }
-    } catch (err) {
-      setToast({ message: String(err), type: "error" });
+  const setAutoMode = useCallback(
+    async (mode: string) => {
+      // Optimistic update
       setData((prev) =>
-        prev ? { ...prev, status: { ...prev.status, enabled: !newEnabled } } : prev
+        prev ? { ...prev, status: { ...prev.status, auto: mode } } : prev
       );
-    } finally {
-      setActionLoading(false);
-    }
-  }, [data, fetchData]);
+      setActionLoading(true);
+      try {
+        const res = await fetch("/api/audio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "set-auto-mode", mode }),
+        });
+        const json = await res.json();
+        if (json.ok) {
+          setToast({
+            message: mode === "off" ? "Auto-TTS turned off" : `Auto-TTS set to "${mode}"`,
+            type: "success",
+          });
+          requestRestart("TTS auto-mode was changed.");
+          await fetchData();
+        } else {
+          setToast({ message: json.error || "Failed to update", type: "error" });
+          await fetchData(); // revert by refetching
+        }
+      } catch {
+        setToast({ message: "Could not reach the gateway", type: "error" });
+        await fetchData();
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [fetchData]
+  );
 
   const setProvider = useCallback(
     async (provider: string) => {
@@ -993,6 +950,7 @@ export function AudioView() {
         const json = await res.json();
         if (json.ok) {
           setToast({ message: `Switched to ${provider}`, type: "success" });
+          requestRestart("TTS provider was changed.");
           await fetchData();
         } else {
           setToast({ message: json.error || "Failed", type: "error" });
@@ -1058,6 +1016,7 @@ export function AudioView() {
         const json = await res.json();
         if (json.ok) {
           setToast({ message: `Updated ${section} config`, type: "success" });
+          requestRestart("Audio provider configuration was updated.");
           // Re-fetch so everything syncs from the source of truth
           await fetchData();
         } else {
@@ -1074,16 +1033,7 @@ export function AudioView() {
     [fetchData]
   );
 
-  const updateAutoMode = useCallback(
-    async (mode: string) => {
-      // Optimistic update
-      setData((prev) =>
-        prev ? { ...prev, status: { ...prev.status, auto: mode } } : prev
-      );
-      await updateConfig("tts", { auto: mode });
-    },
-    [updateConfig]
-  );
+  // Auto-mode is now handled by setAutoMode directly
 
   /* ── Render ────────────── */
 
@@ -1123,30 +1073,7 @@ export function AudioView() {
             Text-to-speech, Talk Mode, and audio understanding configuration
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* TTS toggle */}
-          <button
-            onClick={toggleTts}
-            disabled={actionLoading}
-            className={cn(
-              "flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-medium transition-colors",
-              status.enabled
-                ? "bg-violet-600/20 text-violet-300 hover:bg-violet-600/30"
-                : "bg-muted text-muted-foreground hover:bg-muted hover:text-foreground/70"
-            )}
-          >
-            {status.enabled ? (
-              <>
-                <Volume2 className="h-4 w-4" />
-                TTS Enabled
-              </>
-            ) : (
-              <>
-                <VolumeX className="h-4 w-4" />
-                TTS Disabled
-              </>
-            )}
-          </button>
+        <div className="flex items-center gap-2">
           <button
             onClick={fetchData}
             className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground/70"
@@ -1158,40 +1085,85 @@ export function AudioView() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-        {/* Status overview */}
-        <div className="grid grid-cols-4 gap-3">
-          <StatusCard
-            label="Status"
-            value={status.enabled ? "Active" : "Disabled"}
-            icon={status.enabled ? Volume2 : VolumeX}
-            color={status.enabled ? "text-emerald-400" : "text-muted-foreground"}
-          />
+        {/* Auto-TTS explanation + mode selector */}
+        <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-5 space-y-4">
+          <div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-[14px] font-semibold text-foreground/90 flex items-center gap-2">
+                <Waves className="h-4 w-4 text-violet-400" />
+                Auto-TTS
+              </h2>
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                  status.auto !== "off"
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : "bg-foreground/[0.06] text-muted-foreground"
+                )}
+              >
+                {status.auto === "off" ? "Off" : status.auto}
+              </span>
+            </div>
+            <p className="text-[12px] text-muted-foreground mt-1">
+              Controls whether agent replies are automatically spoken aloud.
+              {status.auto === "off"
+                ? " Currently off — you can still generate speech on-demand below or via /tts audio in chat."
+                : status.auto === "always"
+                  ? " All agent replies will be spoken."
+                  : status.auto === "inbound"
+                    ? " Agent will reply with voice when you send a voice message."
+                    : " Only messages tagged with /tts will be spoken."}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2">
+            {AUTO_MODES.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setAutoMode(m.value)}
+                disabled={actionLoading}
+                className={cn(
+                  "rounded-lg border px-3 py-2.5 text-left transition-all",
+                  status.auto === m.value
+                    ? "border-violet-500/30 bg-violet-500/10"
+                    : "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]"
+                )}
+              >
+                <p
+                  className={cn(
+                    "text-[12px] font-medium",
+                    status.auto === m.value ? "text-violet-300" : "text-foreground/70"
+                  )}
+                >
+                  {m.label}
+                </p>
+                <p className="text-[10px] text-muted-foreground/60 mt-0.5">{m.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Quick status row */}
+        <div className="grid grid-cols-3 gap-3">
           <StatusCard
             label="Active Provider"
-            value={providersData.active || status.provider}
+            value={providersData.active || status.provider || "none"}
             icon={Speaker}
             color="text-violet-400"
           />
           <StatusCard
-            label="Auto Mode"
-            value={status.auto}
-            icon={Waves}
+            label="Configured"
+            value={`${providersData.providers.filter((p) => p.configured).length} provider${providersData.providers.filter((p) => p.configured).length !== 1 ? "s" : ""}`}
+            icon={Globe}
             color="text-sky-400"
           />
           <StatusCard
-            label="Providers"
-            value={`${providersData.providers.filter((p) => p.configured).length} configured`}
-            icon={Globe}
-            color="text-amber-400"
+            label="On-Demand TTS"
+            value="Always available"
+            icon={Headphones}
+            color="text-emerald-400"
           />
         </div>
-
-        {/* Auto mode selector */}
-        <AutoModeSelector
-          current={status.auto}
-          onSelect={updateAutoMode}
-          loading={actionLoading}
-        />
 
         {/* Providers */}
         <div>
