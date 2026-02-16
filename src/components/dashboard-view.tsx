@@ -76,6 +76,35 @@ type SystemData = {
   stats: { totalDevices: number; totalSkills: number; totalChannels: number };
 };
 
+type GatewayDiagnosticsData = {
+  ts: number;
+  status: {
+    service?: {
+      loaded?: boolean;
+      runtime?: { status?: string; state?: string; pid?: number };
+      configAudit?: { ok?: boolean; issues?: unknown[] };
+    };
+    gateway?: { bindMode?: string; bindHost?: string; port?: number };
+    port?: { port?: number; status?: string };
+    rpc?: { ok?: boolean; url?: string };
+  } | null;
+  statusError?: string | null;
+  doctor: {
+    command: string;
+    ok: boolean;
+    exitCode: number;
+    summary: { error: number; warning: number; info: number };
+    lines: string[];
+    raw: string;
+  };
+  summary: { error: number; warning: number; info: number };
+  highlights: Array<{
+    source: "gateway-status" | "doctor";
+    severity: "error" | "warning" | "info";
+    text: string;
+  }>;
+};
+
 /* ── helpers ──────────────────────────────────────── */
 
 function formatTokens(n: number): string {
@@ -139,7 +168,18 @@ type SystemStats = {
     load5: number;
     load15: number;
   };
-  memory: { total: number; used: number; free: number; percent: number };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    percent: number;
+    app?: number;
+    wired?: number;
+    compressed?: number;
+    cached?: number;
+    swapUsed?: number;
+    source?: "os" | "vm_stat" | "proc_meminfo";
+  };
   disk: { total: number; used: number; free: number; percent: number };
   system: {
     hostname: string;
@@ -273,6 +313,70 @@ function MiniBar({ percent, color }: { percent: number; color: string }) {
   );
 }
 
+function MemoryCompositionBar({
+  memory,
+  memoryFreeLabel,
+}: {
+  memory: SystemStats["memory"];
+  memoryFreeLabel: string;
+}) {
+  const seg = (
+    key: string,
+    label: string,
+    value: number | undefined,
+    color: string
+  ): { key: string; label: string; value: number; color: string } | null => {
+    if (typeof value !== "number" || value <= 0) return null;
+    return { key, label, value, color };
+  };
+
+  const segments = [
+    seg("app", "App", memory.app, "#2dd4bf"),
+    seg("wired", "Wired", memory.wired, "#a78bfa"),
+    seg("compressed", "Compressed", memory.compressed, "#fb7185"),
+    seg("cached", "Cached Files", memory.cached, "#60a5fa"),
+    seg("free", memoryFreeLabel, memory.free, "#94a3b8"),
+  ].filter((s): s is { key: string; label: string; value: number; color: string } => Boolean(s));
+
+  if (segments.length === 0) {
+    const fallbackUsed = Math.max(0, memory.used || 0);
+    const fallbackFree = Math.max(0, memory.total - fallbackUsed);
+    if (fallbackUsed > 0) segments.push({ key: "used", label: "Used", value: fallbackUsed, color: "#8b5cf6" });
+    if (fallbackFree > 0) segments.push({ key: "free", label: memoryFreeLabel, value: fallbackFree, color: "#94a3b8" });
+  }
+
+  const known = segments.reduce((sum, item) => sum + item.value, 0);
+  const remainder = Math.max(0, (memory.total || 0) - known);
+  if (remainder > (memory.total || 0) * 0.005) {
+    segments.push({ key: "other", label: "Kernel / Other", value: remainder, color: "#64748b" });
+  }
+
+  const denom = Math.max(memory.total || 0, segments.reduce((sum, item) => sum + item.value, 0), 1);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-foreground/[0.05]">
+        {segments.map((item) => (
+          <div
+            key={item.key}
+            className="h-full first:rounded-l-full last:rounded-r-full transition-all duration-700 ease-out"
+            style={{ width: `${(item.value / denom) * 100}%`, backgroundColor: item.color }}
+            title={`${item.label}: ${formatBytesCompact(item.value)}`}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-muted-foreground/70">
+        {segments.map((item) => (
+          <span key={`${item.key}-legend`} className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: item.color }} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── System Stats Panel ──────────────────────────── */
 
 function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; connected: boolean }) {
@@ -293,6 +397,18 @@ function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; con
     stats.memory.percent > 85 ? "#ef4444" : stats.memory.percent > 65 ? "#f59e0b" : "#8b5cf6";
   const diskColor =
     stats.disk.percent > 90 ? "#ef4444" : stats.disk.percent > 75 ? "#f59e0b" : "#3b82f6";
+  const memorySourceLabel =
+    stats.memory.source === "vm_stat"
+      ? " (Activity-style)"
+      : stats.memory.source === "proc_meminfo"
+        ? " (MemAvailable)"
+        : "";
+  const memoryFreeLabel =
+    stats.memory.source === "vm_stat"
+      ? "Free + Speculative"
+      : stats.memory.source === "proc_meminfo"
+        ? "Available"
+        : "Free";
 
   return (
     <div className="space-y-3">
@@ -378,7 +494,10 @@ function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; con
         <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-3 space-y-2">
           <div className="flex items-center gap-2">
             <MemoryStick className="h-3.5 w-3.5 text-violet-400" />
-            <span className="text-[11px] font-semibold text-foreground/70">Memory</span>
+            <span className="text-[11px] font-semibold text-foreground/70">
+              Memory
+              {memorySourceLabel}
+            </span>
           </div>
           <div className="space-y-1.5">
             <div className="flex justify-between text-[10px]">
@@ -387,13 +506,53 @@ function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; con
                 {formatBytesCompact(stats.memory.used)}
               </span>
             </div>
-            <MiniBar percent={stats.memory.percent} color={memColor} />
+            <MemoryCompositionBar memory={stats.memory} memoryFreeLabel={memoryFreeLabel} />
             <div className="flex justify-between text-[10px]">
-              <span className="text-muted-foreground/60">Free</span>
+              <span className="text-muted-foreground/60">{memoryFreeLabel}</span>
               <span className="font-mono text-muted-foreground">
                 {formatBytesCompact(stats.memory.free)}
               </span>
             </div>
+            {typeof stats.memory.app === "number" && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-muted-foreground/60">App</span>
+                <span className="font-mono text-muted-foreground">
+                  {formatBytesCompact(stats.memory.app)}
+                </span>
+              </div>
+            )}
+            {typeof stats.memory.wired === "number" && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-muted-foreground/60">Wired</span>
+                <span className="font-mono text-muted-foreground">
+                  {formatBytesCompact(stats.memory.wired)}
+                </span>
+              </div>
+            )}
+            {typeof stats.memory.compressed === "number" && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-muted-foreground/60">Compressed</span>
+                <span className="font-mono text-muted-foreground">
+                  {formatBytesCompact(stats.memory.compressed)}
+                </span>
+              </div>
+            )}
+            {typeof stats.memory.cached === "number" && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-muted-foreground/60">Cached Files</span>
+                <span className="font-mono text-muted-foreground">
+                  {formatBytesCompact(stats.memory.cached)}
+                </span>
+              </div>
+            )}
+            {typeof stats.memory.swapUsed === "number" && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-muted-foreground/60">Swap Used</span>
+                <span className="font-mono text-muted-foreground">
+                  {formatBytesCompact(stats.memory.swapUsed)}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between text-[10px]">
               <span className="text-muted-foreground/60">Total</span>
               <span className="font-mono text-muted-foreground">
@@ -499,6 +658,162 @@ function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; con
   );
 }
 
+function GatewayDiagnosticsPanel({
+  data,
+  loading,
+  error,
+  onRefresh,
+}: {
+  data: GatewayDiagnosticsData | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  const status = data?.status;
+  const summary = data?.summary || { error: 0, warning: 0, info: 0 };
+  const runtimeStatus = status?.service?.runtime?.status || "unknown";
+  const bind = status?.gateway?.bindMode || "unknown";
+  const rpcLabel = status?.rpc?.ok ? "reachable" : "unreachable";
+  const portLabel = status?.port?.port || status?.gateway?.port || "—";
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[15px] font-semibold text-foreground/90">Gateway Diagnostics</p>
+            <p className="text-[12px] text-muted-foreground/65">
+              Live snapshot from <code>openclaw gateway status --json</code> and{" "}
+              <code>openclaw doctor --non-interactive</code>.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-card px-2.5 py-1.5 text-[11px] text-foreground/80 transition-colors hover:bg-muted/70 disabled:opacity-60"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+            Refresh
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-red-500/20 bg-red-500/[0.04] px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-red-300/80">Errors</p>
+            <p className="mt-1 text-[18px] font-semibold text-red-200">{summary.error}</p>
+          </div>
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-amber-300/80">Warnings</p>
+            <p className="mt-1 text-[18px] font-semibold text-amber-200">{summary.warning}</p>
+          </div>
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/[0.04] px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-blue-300/80">Signals</p>
+            <p className="mt-1 text-[18px] font-semibold text-blue-200">{summary.info}</p>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
+            <p className="text-[10px] text-muted-foreground/60">Runtime</p>
+            <p className="mt-1 text-[12px] font-medium text-foreground/85">{runtimeStatus}</p>
+          </div>
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
+            <p className="text-[10px] text-muted-foreground/60">Bind</p>
+            <p className="mt-1 text-[12px] font-medium text-foreground/85">{bind}</p>
+          </div>
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
+            <p className="text-[10px] text-muted-foreground/60">Port</p>
+            <p className="mt-1 text-[12px] font-medium text-foreground/85">{portLabel}</p>
+          </div>
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
+            <p className="text-[10px] text-muted-foreground/60">RPC</p>
+            <p className="mt-1 text-[12px] font-medium text-foreground/85">{rpcLabel}</p>
+          </div>
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
+            <p className="text-[10px] text-muted-foreground/60">Doctor</p>
+            <p className="mt-1 text-[12px] font-medium text-foreground/85">
+              {data?.doctor?.ok ? "ok" : `exit ${data?.doctor?.exitCode ?? "?"}`}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/[0.04] p-3 text-[12px] text-red-200">
+          {error}
+        </div>
+      )}
+
+      {loading && !data && (
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/70 px-4 py-8 text-center text-[12px] text-muted-foreground/70">
+          <RefreshCw className="mx-auto mb-2 h-4 w-4 animate-spin" />
+          Running gateway checks...
+        </div>
+      )}
+
+      {data && (
+        <>
+          <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-3">
+            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              Alerts & Recommendations
+            </h3>
+            <div className="space-y-1.5">
+              {data.highlights.slice(0, 14).map((item, idx) => {
+                const cfg =
+                  item.severity === "error"
+                    ? {
+                        icon: AlertCircle,
+                        row: "border-red-500/20 bg-red-500/[0.04] text-red-200",
+                        chip: "bg-red-500/15 text-red-300",
+                      }
+                    : item.severity === "warning"
+                      ? {
+                          icon: AlertTriangle,
+                          row: "border-amber-500/20 bg-amber-500/[0.04] text-amber-100",
+                          chip: "bg-amber-500/15 text-amber-300",
+                        }
+                      : {
+                          icon: Info,
+                          row: "border-blue-500/20 bg-blue-500/[0.04] text-blue-100",
+                          chip: "bg-blue-500/15 text-blue-300",
+                        };
+                const Icon = cfg.icon;
+                return (
+                  <div
+                    key={`${item.source}-${idx}-${item.text}`}
+                    className={cn("flex items-start gap-2 rounded-lg border px-2.5 py-2", cfg.row)}
+                  >
+                    <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <div className="min-w-0 flex-1 text-[11px] leading-5">{item.text}</div>
+                    <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wide", cfg.chip)}>
+                      {item.source === "doctor" ? "doctor" : "status"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-3">
+            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              Doctor Output
+            </h3>
+            <div className="max-h-[320px] overflow-y-auto rounded-lg border border-foreground/[0.08] bg-background/40 p-2 font-mono text-[10px] leading-5 text-muted-foreground/85">
+              {(data.doctor.lines || []).slice(0, 120).map((line, idx) => (
+                <div key={`${idx}-${line}`} className="truncate">
+                  {line}
+                </div>
+              ))}
+              {(data.doctor.lines || []).length === 0 && <div>No doctor output.</div>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function OcStatMini({
   icon: Icon,
   label,
@@ -532,6 +847,10 @@ export function DashboardView() {
   const [_tick, setTick] = useState(0); // for countdown refresh
   const [lastRefresh, setLastRefresh] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [dashboardTab, setDashboardTab] = useState<"overview" | "gateway">("overview");
+  const [gatewayDiag, setGatewayDiag] = useState<GatewayDiagnosticsData | null>(null);
+  const [gatewayDiagError, setGatewayDiagError] = useState<string | null>(null);
+  const [gatewayDiagLoading, setGatewayDiagLoading] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { stats: sysStats, connected: sseConnected } = useSystemStats();
@@ -544,6 +863,24 @@ export function DashboardView() {
       setLastRefresh(Date.now());
     } catch { /* retry next interval */ }
   }, []);
+
+  const fetchGatewayDiagnostics = useCallback(
+    async (silent = false) => {
+      if (!silent) setGatewayDiagLoading(true);
+      try {
+        const res = await fetch("/api/gateway/diagnostics", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as GatewayDiagnosticsData;
+        setGatewayDiag(data);
+        setGatewayDiagError(null);
+      } catch (err) {
+        setGatewayDiagError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!silent) setGatewayDiagLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     queueMicrotask(() => fetchLive());
@@ -561,6 +898,15 @@ export function DashboardView() {
       if (tickRef.current) clearInterval(tickRef.current);
     };
   }, [fetchLive]);
+
+  useEffect(() => {
+    if (dashboardTab !== "gateway") return;
+    void fetchGatewayDiagnostics();
+    const id = setInterval(() => {
+      void fetchGatewayDiagnostics(true);
+    }, 30000);
+    return () => clearInterval(id);
+  }, [dashboardTab, fetchGatewayDiagnostics]);
 
   if (!live) {
     return (
@@ -702,6 +1048,48 @@ export function DashboardView() {
       </div>
 
       <div className="mx-auto w-full space-y-5 px-4 py-5 md:px-6 lg:max-w-6xl">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex rounded-xl border border-foreground/[0.08] bg-card/70 p-1">
+            <button
+              type="button"
+              onClick={() => setDashboardTab("overview")}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors",
+                dashboardTab === "overview"
+                  ? "bg-violet-500/20 text-violet-200"
+                  : "text-muted-foreground/70 hover:text-foreground/80"
+              )}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              onClick={() => setDashboardTab("gateway")}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors",
+                dashboardTab === "gateway"
+                  ? "bg-blue-500/20 text-blue-200"
+                  : "text-muted-foreground/70 hover:text-foreground/80"
+              )}
+            >
+              Gateway Diagnostics
+              {gatewayDiag && (gatewayDiag.summary.error > 0 || gatewayDiag.summary.warning > 0) && (
+                <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-200">
+                  {gatewayDiag.summary.error > 0
+                    ? `${gatewayDiag.summary.error} err`
+                    : `${gatewayDiag.summary.warning} warn`}
+                </span>
+              )}
+            </button>
+          </div>
+          {dashboardTab === "gateway" && (
+            <span className="text-[10px] text-muted-foreground/65">
+              Auto-refresh every 30s while this tab is open
+            </span>
+          )}
+        </div>
+
+        <div className={cn("space-y-5", dashboardTab !== "overview" && "hidden")}>
         {/* ── Stat cards ─────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <StatCard
@@ -1103,6 +1491,16 @@ export function DashboardView() {
             </div>
           </div>
         </div>
+        </div>
+
+        {dashboardTab === "gateway" && (
+          <GatewayDiagnosticsPanel
+            data={gatewayDiag}
+            loading={gatewayDiagLoading}
+            error={gatewayDiagError}
+            onRefresh={() => void fetchGatewayDiagnostics()}
+          />
+        )}
       </div>
     </div>
   );

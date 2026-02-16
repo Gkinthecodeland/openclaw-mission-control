@@ -11,14 +11,62 @@ import {
   Pencil,
   ClipboardCopy,
   ExternalLink,
+  CheckCircle2,
+  AlertTriangle,
+  CircleDashed,
+  HelpCircle,
+  GitBranch,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InlineMarkdownEditor } from "./inline-markdown-editor";
+import { MemoryGraphView } from "./memory-graph-view";
 
 type CtxMenuState = { x: number; y: number; entry: DailyEntry } | null;
 
-type DailyEntry = { name: string; date: string; size?: number; words?: number; mtime?: string };
+type VectorState = "indexed" | "stale" | "not_indexed" | "unknown";
+type DailyEntry = {
+  name: string;
+  date: string;
+  size?: number;
+  words?: number;
+  mtime?: string;
+  vectorState?: VectorState;
+};
 type MemoryMd = { content: string; words: number; size: number; mtime?: string } | null;
+
+function vectorBadge(entry: DailyEntry): {
+  label: string;
+  className: string;
+  Icon: React.ComponentType<{ className?: string }>;
+} {
+  switch (entry.vectorState) {
+    case "indexed":
+      return {
+        label: "Indexed",
+        className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+        Icon: CheckCircle2,
+      };
+    case "stale":
+      return {
+        label: "Stale",
+        className: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+        Icon: AlertTriangle,
+      };
+    case "not_indexed":
+      return {
+        label: "Not Indexed",
+        className: "border-zinc-500/30 bg-zinc-500/10 text-zinc-300",
+        Icon: CircleDashed,
+      };
+    default:
+      return {
+        label: "Unknown",
+        className: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+        Icon: HelpCircle,
+      };
+  }
+}
 
 function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
@@ -80,6 +128,7 @@ function groupByPeriod(entries: DailyEntry[]): { key: string; entries: DailyEntr
 }
 
 export function MemoryView() {
+  const [activeTab, setActiveTab] = useState<"journal" | "graph">("journal");
   const [daily, setDaily] = useState<DailyEntry[]>([]);
   const [memoryMd, setMemoryMd] = useState<MemoryMd>(null);
   const [selected, setSelected] = useState<"memory" | string | null>("memory");
@@ -94,6 +143,7 @@ export function MemoryView() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | null>(null);
+  const [indexingFile, setIndexingFile] = useState<string | null>(null);
   const [collapsedPeriods, setCollapsedPeriods] = useState<Set<string>>(new Set());
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasInitializedCollapse = useRef(false);
@@ -192,6 +242,28 @@ export function MemoryView() {
     []
   );
 
+  const fetchMemoryData = useCallback(async (initializeDetail = false) => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/memory");
+      const data = await r.json();
+      setDaily(data.daily || []);
+      setMemoryMd(data.memoryMd || null);
+      if (initializeDetail && data.memoryMd) {
+        setDetailContent(data.memoryMd.content);
+        setDetailMeta({
+          title: "Long-Term Memory",
+          words: data.memoryMd.words,
+          size: data.memoryMd.size,
+          fileKey: "memory",
+          mtime: data.memoryMd.mtime,
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const deleteEntry = useCallback(
     async (entry: DailyEntry) => {
       try {
@@ -273,10 +345,7 @@ export function MemoryView() {
       });
       const data = await res.json();
       if (data.ok) {
-        // Refresh to pick up new file
-        fetch("/api/memory")
-          .then((r) => r.json())
-          .then((d) => setDaily(d.daily || []));
+        await fetchMemoryData();
         setActionMsg({ ok: true, msg: `Duplicated as ${data.file}` });
       } else {
         setActionMsg({ ok: false, msg: data.error || "Duplicate failed" });
@@ -285,7 +354,7 @@ export function MemoryView() {
       setActionMsg({ ok: false, msg: "Duplicate failed" });
     }
     setTimeout(() => setActionMsg(null), 3000);
-  }, []);
+  }, [fetchMemoryData]);
 
   const copyEntryName = useCallback((entry: DailyEntry) => {
     navigator.clipboard.writeText(entry.name).then(() => {
@@ -294,26 +363,36 @@ export function MemoryView() {
     });
   }, []);
 
-  useEffect(() => {
-    fetch("/api/memory")
-      .then((r) => r.json())
-      .then((data) => {
-        setDaily(data.daily || []);
-        setMemoryMd(data.memoryMd || null);
-        if (data.memoryMd) {
-          setDetailContent(data.memoryMd.content);
-          setDetailMeta({
-            title: "Long-Term Memory",
-            words: data.memoryMd.words,
-            size: data.memoryMd.size,
-            fileKey: "memory",
-            mtime: data.memoryMd.mtime,
-          });
+  const indexEntry = useCallback(
+    async (entry: DailyEntry) => {
+      if (indexingFile) return;
+      setIndexingFile(entry.name);
+      try {
+        const res = await fetch("/api/memory", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "index-memory", file: entry.name }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          await fetchMemoryData();
+          setActionMsg({ ok: true, msg: `Indexed ${entry.name}` });
+        } else {
+          setActionMsg({ ok: false, msg: data.error || "Indexing failed" });
         }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+      } catch {
+        setActionMsg({ ok: false, msg: "Indexing failed" });
+      } finally {
+        setIndexingFile(null);
+        setTimeout(() => setActionMsg(null), 3000);
+      }
+    },
+    [fetchMemoryData, indexingFile]
+  );
+
+  useEffect(() => {
+    void fetchMemoryData(true);
+  }, [fetchMemoryData]);
 
   const filteredDaily = search
     ? daily.filter(
@@ -369,9 +448,61 @@ export function MemoryView() {
     });
   };
   const isExpanded = (key: string) => !collapsedPeriods.has(key);
+  const selectedDailyEntry =
+    selected && selected !== "memory"
+      ? daily.find((d) => d.name === selected) || null
+      : null;
+  const canIndexSelected =
+    !!selectedDailyEntry &&
+    (selectedDailyEntry.vectorState === "stale" ||
+      selectedDailyEntry.vectorState === "not_indexed");
+
+  const tabBar = (
+    <div className="shrink-0 border-b border-foreground/[0.06] bg-card/50 px-3 py-2">
+      <div className="inline-flex rounded-lg border border-foreground/[0.08] bg-card p-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab("journal")}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors",
+            activeTab === "journal"
+              ? "bg-violet-500/15 text-violet-300"
+              : "text-muted-foreground hover:text-foreground/80"
+          )}
+        >
+          <Brain className="h-3.5 w-3.5" />
+          Journal Memory
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("graph")}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors",
+            activeTab === "graph"
+              ? "bg-sky-500/15 text-sky-300"
+              : "text-muted-foreground hover:text-foreground/80"
+          )}
+        >
+          <GitBranch className="h-3.5 w-3.5" />
+          Knowledge Graph
+        </button>
+      </div>
+    </div>
+  );
+
+  if (activeTab === "graph") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {tabBar}
+        <MemoryGraphView />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {tabBar}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
       {/* Left panel: search + memory list */}
       <div className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-hidden border-b border-foreground/[0.06] bg-card/60 md:max-h-none md:w-[340px] md:border-b-0 md:border-r">
         <div className="shrink-0 p-3">
@@ -539,8 +670,26 @@ export function MemoryView() {
                                       });
                                 })()}
                               </span>
-                              <span className="text-[11px] text-muted-foreground/60">
-                                {e.words ?? 0}w
+                              <span className="flex items-center gap-2">
+                                <span className="text-[11px] text-muted-foreground/60">
+                                  {e.words ?? 0}w
+                                </span>
+                                {(() => {
+                                  const badge = vectorBadge(e);
+                                  const Icon = badge.Icon;
+                                  return (
+                                    <span
+                                      className={cn(
+                                        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium",
+                                        badge.className
+                                      )}
+                                      title={`Vector status: ${badge.label}`}
+                                    >
+                                      <Icon className="h-2.5 w-2.5" />
+                                      {badge.label}
+                                    </span>
+                                  );
+                                })()}
                               </span>
                             </button>
                           );
@@ -573,6 +722,23 @@ export function MemoryView() {
                 )}
                 {saveStatus === "unsaved" && (
                   <span className="text-[11px] text-amber-500">Unsaved</span>
+                )}
+                {canIndexSelected && selectedDailyEntry && (
+                  <button
+                    type="button"
+                    onClick={() => indexEntry(selectedDailyEntry)}
+                    disabled={indexingFile === selectedDailyEntry.name}
+                    className="inline-flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-300 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    title="Re-index this memory entry"
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "h-3 w-3",
+                        indexingFile === selectedDailyEntry.name && "animate-spin"
+                      )}
+                    />
+                    {indexingFile === selectedDailyEntry.name ? "Indexing..." : "Index now"}
+                  </button>
                 )}
               </div>
               <p className="mt-1 text-[12px] text-muted-foreground/60">
@@ -625,6 +791,26 @@ export function MemoryView() {
             <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
             Open
           </button>
+          {(ctxMenu.entry.vectorState === "stale" ||
+            ctxMenu.entry.vectorState === "not_indexed") && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-sky-300 transition-colors hover:bg-sky-500/10"
+              onClick={() => {
+                void indexEntry(ctxMenu.entry);
+                setCtxMenu(null);
+              }}
+              disabled={indexingFile === ctxMenu.entry.name}
+            >
+              <RefreshCw
+                className={cn(
+                  "h-3.5 w-3.5",
+                  indexingFile === ctxMenu.entry.name && "animate-spin"
+                )}
+              />
+              {indexingFile === ctxMenu.entry.name ? "Indexing..." : "Index now"}
+            </button>
+          )}
           <div className="mx-2 my-1 h-px bg-foreground/[0.06]" />
           <button
             type="button"
@@ -688,6 +874,7 @@ export function MemoryView() {
           {actionMsg.msg}
         </div>
       )}
+      </div>
     </div>
   );
 }

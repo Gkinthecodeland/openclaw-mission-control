@@ -1,9 +1,12 @@
 import { getOpenClawHome, getDefaultWorkspaceSync } from "@/lib/paths";
 import { cpus, totalmem, freemem, loadavg, uptime, hostname, platform, arch } from "os";
 import { statfs, readdir, stat, readFile } from "fs/promises";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { join } from "path";
 
 export const dynamic = "force-dynamic";
+const exec = promisify(execFile);
 
 /* ── TTL Cache ───────────────────────────────────── */
 
@@ -132,21 +135,13 @@ async function getSessionCount(home: string): Promise<number> {
 }
 
 async function getProcessCount(): Promise<number> {
-  // Use /proc on Linux, rough count on macOS
+  const osPlatform = platform();
   try {
-    const { execFile } = await import("child_process");
-    const { promisify } = await import("util");
-    const exec = promisify(execFile);
-    const { stdout } = await exec("ps", ["-e", "--no-headers"], {
-      timeout: 2000,
-    });
-    return stdout.trim().split("\n").length;
+    const args = osPlatform === "darwin" ? ["-A", "-o", "pid="] : ["-e", "-o", "pid="];
+    const { stdout } = await exec("ps", args, { timeout: 2000 });
+    return stdout.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
   } catch {
     try {
-      const { execFile } = await import("child_process");
-      const { promisify } = await import("util");
-      const exec = promisify(execFile);
-      // macOS fallback
       const { stdout } = await exec("ps", ["-ax"], { timeout: 2000 });
       return Math.max(0, stdout.trim().split("\n").length - 1); // minus header
     } catch {
@@ -155,27 +150,233 @@ async function getProcessCount(): Promise<number> {
   }
 }
 
+type MemoryStats = {
+  total: number;
+  used: number;
+  free: number;
+  percent: number;
+  app?: number;
+  wired?: number;
+  compressed?: number;
+  cached?: number;
+  swapUsed?: number;
+  source: "os" | "vm_stat" | "proc_meminfo";
+};
+
+function parsePages(line: string): number | null {
+  const m = line.match(/:\s+([0-9]+)/);
+  if (!m?.[1]) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseSwapUsedBytes(raw: string): number {
+  const m = raw.match(/used\s*=\s*([0-9.]+)([KMGTP])?/i);
+  if (!m?.[1]) return 0;
+  const value = Number(m[1]);
+  if (!Number.isFinite(value)) return 0;
+  const unit = (m[2] || "B").toUpperCase();
+  const mult: Record<string, number> = {
+    B: 1,
+    K: 1024,
+    M: 1024 * 1024,
+    G: 1024 * 1024 * 1024,
+    T: 1024 * 1024 * 1024 * 1024,
+    P: 1024 * 1024 * 1024 * 1024 * 1024,
+  };
+  return Math.round(value * (mult[unit] || 1));
+}
+
+async function readMacMemoryStats(total: number): Promise<MemoryStats | null> {
+  try {
+    const [{ stdout: vmRaw }, { stdout: swapRaw }] = await Promise.all([
+      exec("vm_stat", [], { timeout: 2000 }),
+      exec("sysctl", ["vm.swapusage"], { timeout: 2000 }),
+    ]);
+
+    const lines = vmRaw.split(/\r?\n/);
+    const pageSizeMatch = vmRaw.match(/page size of\s+(\d+)\s+bytes/i);
+    const pageSize = Number(pageSizeMatch?.[1] || 0);
+    if (!Number.isFinite(pageSize) || pageSize <= 0) return null;
+
+    let freePages = 0;
+    let speculativePages = 0;
+    let wiredPages = 0;
+    let anonymousPages = 0;
+    let compressedPages = 0;
+    let fileBackedPages = 0;
+
+    for (const line of lines) {
+      const [keyRaw] = line.split(":");
+      const key = keyRaw?.trim().toLowerCase() || "";
+      const pages = parsePages(line);
+      if (pages == null) continue;
+      if (key === "pages free") freePages = pages;
+      else if (key === "pages speculative") speculativePages = pages;
+      else if (key === "pages wired down") wiredPages = pages;
+      else if (key === "anonymous pages") anonymousPages = pages;
+      else if (key === "pages occupied by compressor") compressedPages = pages;
+      else if (key === "file-backed pages") fileBackedPages = pages;
+    }
+
+    const app = anonymousPages * pageSize;
+    const wired = wiredPages * pageSize;
+    const compressed = compressedPages * pageSize;
+    const used = Math.min(total, Math.max(0, app + wired + compressed));
+    const cached = fileBackedPages * pageSize;
+    const free = Math.max(0, (freePages + speculativePages) * pageSize);
+    const percent = total > 0 ? Math.round((used / total) * 100) : 0;
+    const swapUsed = parseSwapUsedBytes(swapRaw);
+
+    if (used === 0 && free === 0 && cached === 0) return null;
+
+    return {
+      total,
+      used,
+      free,
+      percent,
+      app,
+      wired,
+      compressed,
+      cached,
+      swapUsed,
+      source: "vm_stat",
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readLinuxMemoryStats(): Promise<MemoryStats | null> {
+  try {
+    const raw = await readFile("/proc/meminfo", "utf-8");
+    const kv = new Map<string, number>();
+
+    for (const line of raw.split(/\r?\n/)) {
+      const m = line.match(/^([A-Za-z0-9_()]+):\s+([0-9]+)\s+kB/i);
+      if (!m?.[1] || !m[2]) continue;
+      const n = Number(m[2]);
+      if (Number.isFinite(n)) kv.set(m[1], n);
+    }
+
+    const memTotalKb = kv.get("MemTotal") || 0;
+    if (memTotalKb <= 0) return null;
+
+    const memFreeKb = kv.get("MemFree") || 0;
+    const memAvailableKb = kv.get("MemAvailable") || 0;
+    const buffersKb = kv.get("Buffers") || 0;
+    const cachedKb = kv.get("Cached") || 0;
+    const reclaimKb = kv.get("SReclaimable") || 0;
+    const shmemKb = kv.get("Shmem") || 0;
+    const swapTotalKb = kv.get("SwapTotal") || 0;
+    const swapFreeKb = kv.get("SwapFree") || 0;
+
+    const total = memTotalKb * 1024;
+    const cacheBytes = Math.max(0, (cachedKb + reclaimKb - shmemKb) * 1024);
+    const availableKb =
+      memAvailableKb > 0
+        ? memAvailableKb
+        : Math.max(0, memFreeKb + buffersKb + cachedKb + reclaimKb);
+    const free = Math.max(0, availableKb * 1024);
+    const used = Math.min(total, Math.max(0, total - free));
+    const percent = total > 0 ? Math.round((used / total) * 100) : 0;
+    const swapUsed = Math.max(0, (swapTotalKb - swapFreeKb) * 1024);
+
+    return {
+      total,
+      used,
+      free,
+      percent,
+      cached: cacheBytes,
+      swapUsed,
+      source: "proc_meminfo",
+    };
+  } catch {
+    return null;
+  }
+}
+
+type DiskStats = {
+  total: number;
+  used: number;
+  free: number;
+};
+
+function parseDfBytes(stdout: string): DiskStats | null {
+  const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return null;
+  const row = lines[lines.length - 1] || "";
+  const cols = row.trim().split(/\s+/);
+  if (cols.length < 6) return null;
+
+  const totalKb = Number(cols[cols.length - 5]);
+  const usedKb = Number(cols[cols.length - 4]);
+  const freeKb = Number(cols[cols.length - 3]);
+  if (!Number.isFinite(totalKb) || totalKb <= 0) return null;
+  if (!Number.isFinite(usedKb) || !Number.isFinite(freeKb)) return null;
+
+  return {
+    total: Math.round(totalKb * 1024),
+    used: Math.round(usedKb * 1024),
+    free: Math.round(freeKb * 1024),
+  };
+}
+
+async function readDiskStats(pathname: string, osPlatform: string): Promise<DiskStats> {
+  const candidates = [...new Set([pathname, "/"])];
+
+  // On macOS, `df -kP` aligns better with user-facing disk tools.
+  // On Linux, try statfs first, then fall back to df.
+  if (osPlatform === "darwin") {
+    for (const p of candidates) {
+      try {
+        const { stdout } = await exec("df", ["-kP", p], { timeout: 2000 });
+        const parsed = parseDfBytes(stdout);
+        if (parsed) return parsed;
+      } catch {
+        /* try next candidate */
+      }
+    }
+  }
+
+  for (const p of candidates) {
+    try {
+      const fs = await statfs(p);
+      const total = fs.bsize * fs.blocks;
+      const free = fs.bsize * fs.bavail;
+      const used = total - free;
+      if (Number.isFinite(total) && total > 0) return { total, used, free };
+    } catch {
+      /* try next candidate */
+    }
+  }
+
+  for (const p of candidates) {
+    try {
+      const { stdout } = await exec("df", ["-kP", p], { timeout: 2000 });
+      const parsed = parseDfBytes(stdout);
+      if (parsed) return parsed;
+    } catch {
+      /* try next candidate */
+    }
+  }
+
+  return { total: 0, used: 0, free: 0 };
+}
+
 /* ── Snapshot builder ─────────────────────────────── */
 
 async function buildSnapshot(home: string) {
   const cores = cpus();
+  const osPlatform = platform();
+  const workspacePath = getDefaultWorkspaceSync();
   const totalMem = totalmem();
   const freeMem = freemem();
   const usedMem = totalMem - freeMem;
   const load = loadavg();
 
-  // Disk (root filesystem)
-  let diskTotal = 0;
-  let diskFree = 0;
-  let diskUsed = 0;
-  try {
-    const fs = await statfs("/");
-    diskTotal = fs.bsize * fs.blocks;
-    diskFree = fs.bsize * fs.bavail;
-    diskUsed = diskTotal - diskFree;
-  } catch {
-    /* statfs not available */
-  }
+  // Disk (workspace filesystem, OS-aware)
+  const disk = await readDiskStats(workspacePath, osPlatform);
 
   // CPU usage (measured over 500ms)
   const cpuUsage = await measureCpuUsage();
@@ -197,6 +398,27 @@ async function buildSnapshot(home: string) {
     cached("processCount", 15_000, () => getProcessCount()),
   ]);
 
+  const fallbackMemory: MemoryStats = {
+    total: totalMem,
+    used: usedMem,
+    free: freeMem,
+    percent: Math.round((usedMem / totalMem) * 100),
+    source: "os",
+  };
+  const memory = await (async () => {
+    if (osPlatform === "darwin") {
+      return cached("macMemoryStats", 2000, async () => {
+        return (await readMacMemoryStats(totalMem)) || fallbackMemory;
+      });
+    }
+    if (osPlatform === "linux") {
+      return cached("linuxMemoryStats", 2000, async () => {
+        return (await readLinuxMemoryStats()) || fallbackMemory;
+      });
+    }
+    return fallbackMemory;
+  })();
+
   return {
     ts: Date.now(),
 
@@ -212,25 +434,20 @@ async function buildSnapshot(home: string) {
     },
 
     // Memory
-    memory: {
-      total: totalMem,
-      used: usedMem,
-      free: freeMem,
-      percent: Math.round((usedMem / totalMem) * 100),
-    },
+    memory,
 
     // Disk
     disk: {
-      total: diskTotal,
-      used: diskUsed,
-      free: diskFree,
-      percent: diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0,
+      total: disk.total,
+      used: disk.used,
+      free: disk.free,
+      percent: disk.total > 0 ? Math.round((disk.used / disk.total) * 100) : 0,
     },
 
     // System
     system: {
       hostname: hostname(),
-      platform: platform(),
+      platform: osPlatform,
       arch: arch(),
       uptime: Math.round(uptime()),
       uptimeDisplay: formatUptime(Math.round(uptime())),

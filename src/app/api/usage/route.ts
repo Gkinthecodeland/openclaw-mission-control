@@ -44,6 +44,18 @@ type ModelStatusData = {
   };
 };
 
+type Period = "last1h" | "last24h" | "last7d" | "allTime";
+
+type ActivityPoint = {
+  ts: number;
+  input: number;
+  output: number;
+  total: number;
+  sessions: number;
+};
+
+type SessionWithAgent = SessionEntry & { agentId: string };
+
 async function readJsonSafe<T>(path: string, fallback: T): Promise<T> {
   try {
     const raw = await readFile(path, "utf-8");
@@ -51,6 +63,51 @@ async function readJsonSafe<T>(path: string, fallback: T): Promise<T> {
   } catch {
     return fallback;
   }
+}
+
+function buildActivitySeries(
+  sessions: SessionWithAgent[],
+  now: number
+): Record<Period, ActivityPoint[]> {
+  const buildFixed = (windowMs: number, binMs: number): ActivityPoint[] => {
+    const bins = Math.max(1, Math.ceil(windowMs / binMs));
+    const start = now - bins * binMs;
+    const points: ActivityPoint[] = Array.from({ length: bins }, (_, i) => ({
+      ts: start + i * binMs,
+      input: 0,
+      output: 0,
+      total: 0,
+      sessions: 0,
+    }));
+    for (const s of sessions) {
+      if (!s.updatedAt || s.updatedAt < start || s.updatedAt > now) continue;
+      const idx = Math.floor((s.updatedAt - start) / binMs);
+      if (idx < 0 || idx >= points.length) continue;
+      points[idx].input += s.inputTokens;
+      points[idx].output += s.outputTokens;
+      points[idx].total += s.totalTokens;
+      points[idx].sessions += 1;
+    }
+    return points;
+  };
+
+  const validTimestamps = sessions
+    .map((s) => s.updatedAt)
+    .filter((t): t is number => Number.isFinite(t) && t > 0);
+  const earliest = validTimestamps.length ? Math.min(...validTimestamps) : now - 24 * 3600_000;
+  const spanMs = Math.max(now - earliest, 3600_000);
+  const targetBins = 30;
+  const rawBinMs = Math.ceil(spanMs / targetBins);
+  const binFloor = 15 * 60_000;
+  const dynamicBinMs = Math.max(binFloor, Math.ceil(rawBinMs / binFloor) * binFloor);
+  const dynamicWindowMs = dynamicBinMs * targetBins;
+
+  return {
+    last1h: buildFixed(3600_000, 5 * 60_000),
+    last24h: buildFixed(24 * 3600_000, 3600_000),
+    last7d: buildFixed(7 * 24 * 3600_000, 6 * 3600_000),
+    allTime: buildFixed(dynamicWindowMs, dynamicBinMs),
+  };
 }
 
 /* ── GET /api/usage ──────────────────────────────── */
@@ -80,7 +137,7 @@ export async function GET() {
     } catch { /* ok */ }
 
     // 2. Read sessions for every agent
-    const allSessions: (SessionEntry & { agentId: string })[] = [];
+    const allSessions: SessionWithAgent[] = [];
 
     for (const agentId of agentIds) {
       const sessPath = join(OPENCLAW_HOME, "agents", agentId, "sessions", "sessions.json");
@@ -294,6 +351,8 @@ export async function GET() {
       }))
       .sort((a, b) => b.totalTokens - a.totalTokens);
 
+    const activitySeries = buildActivitySeries(allSessions, now);
+
     return NextResponse.json({
       totals: {
         sessions: allSessions.length,
@@ -304,6 +363,7 @@ export async function GET() {
         agents: agentIds.length,
       },
       buckets,
+      activitySeries,
       modelBreakdown,
       agentBreakdown,
       sessions: allSessions.slice(0, 50), // top 50 most recent

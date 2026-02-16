@@ -120,9 +120,65 @@ function fmtFullDate(ms: number | undefined): string {
   });
 }
 
+/** Turn a cron expression into a short human-readable phrase (e.g. "Every 6 hours", "Daily at 8:00 AM"). */
+function cronToHuman(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length < 5) return expr;
+  const [min, hour, day, month, dow] = parts;
+  // Every N minutes: */N * * * *
+  if (min.startsWith("*/") && hour === "*" && day === "*" && month === "*" && dow === "*") {
+    const n = min.slice(2);
+    if (/^\d+$/.test(n)) return `Every ${n} minutes`;
+  }
+  // Every N hours: 0 */N * * *
+  if (min === "0" && hour.startsWith("*/") && day === "*" && month === "*" && dow === "*") {
+    const n = hour.slice(2);
+    if (/^\d+$/.test(n)) return n === "1" ? "Every hour" : `Every ${n} hours`;
+  }
+  // Every hour: 0 * * * *
+  if (min === "0" && hour === "*" && day === "*" && month === "*" && dow === "*")
+    return "Every hour";
+  // Daily at H:M
+  if (min !== "*" && !min.includes("/") && !min.includes(",") && hour !== "*" && !hour.includes("/") && !hour.includes(",") && day === "*" && month === "*" && dow === "*") {
+    const h = parseInt(hour, 10);
+    const m = min === "0" ? "" : `:${min.padStart(2, "0")}`;
+    const ampm = h === 0 ? "12" : h > 12 ? String(h - 12) : String(h);
+    const suffix = h < 12 ? "AM" : "PM";
+    return `Daily at ${ampm}${m || ":00"} ${suffix}`;
+  }
+  // Twice a day: 0 8,20 * * *
+  if (min === "0" && /^\d+,\d+$/.test(hour) && day === "*" && month === "*" && dow === "*") {
+    const [h1, h2] = hour.split(",").map((x) => parseInt(x, 10));
+    const fmt = (h: number) => (h === 0 ? "12" : h > 12 ? String(h - 12) : String(h)) + (h < 12 ? "AM" : "PM");
+    return `Twice a day (${fmt(h1)} & ${fmt(h2)})`;
+  }
+  // Weekdays at noon: 0 12 * * 1-5
+  if (min === "0" && hour === "12" && day === "*" && month === "*" && dow === "1-5")
+    return "Weekdays at noon";
+  // Weekdays at H
+  if (min === "0" && day === "*" && month === "*" && dow === "1-5") {
+    const h = parseInt(hour, 10);
+    const ampm = h === 0 ? "12" : h > 12 ? String(h - 12) : String(h);
+    const suffix = h < 12 ? "AM" : "PM";
+    return `Weekdays at ${ampm}:00 ${suffix}`;
+  }
+  // Specific weekday: 0 9 * * 1 = Monday at 9am
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  if (min === "0" && day === "*" && month === "*" && /^\d+$/.test(dow)) {
+    const d = parseInt(dow, 10);
+    const h = parseInt(hour, 10);
+    const ampm = h === 0 ? "12" : h > 12 ? String(h - 12) : String(h);
+    const suffix = h < 12 ? "AM" : "PM";
+    if (d >= 0 && d <= 6) return `Every ${dayNames[d]} at ${ampm}:00 ${suffix}`;
+  }
+  return expr;
+}
+
 function scheduleDisplay(s: CronJob["schedule"]): string {
-  if (s.kind === "cron" && s.expr)
-    return `${s.expr}${s.tz ? ` (${s.tz})` : ""}`;
+  if (s.kind === "cron" && s.expr) {
+    const human = cronToHuman(s.expr);
+    return human !== s.expr ? `${human}${s.tz ? ` (${s.tz})` : ""}` : `${s.expr}${s.tz ? ` (${s.tz})` : ""}`;
+  }
   if (s.kind === "every" && s.everyMs) {
     const mins = Math.round(s.everyMs / 60000);
     return mins < 60 ? `Every ${mins}m` : `Every ${Math.round(mins / 60)}h`;
@@ -636,17 +692,27 @@ function EditCronForm({
   );
 }
 
-/* ── Cron presets for quick creation ──────────────── */
+/* ── Schedule options: friendly labels + cron/interval ──────────────── */
 
-const CRON_PRESETS = [
-  { label: "Every morning at 8am", expr: "0 8 * * *", kind: "cron" as const },
-  { label: "Every evening at 6pm", expr: "0 18 * * *", kind: "cron" as const },
-  { label: "Every Monday at 9am", expr: "0 9 * * 1", kind: "cron" as const },
-  { label: "Every hour", interval: "1h", kind: "every" as const },
-  { label: "Every 30 minutes", interval: "30m", kind: "every" as const },
-  { label: "Every 5 minutes", interval: "5m", kind: "every" as const },
-  { label: "Twice a day (8am & 8pm)", expr: "0 8,20 * * *", kind: "cron" as const },
-  { label: "Weekdays at noon", expr: "0 12 * * 1-5", kind: "cron" as const },
+type ScheduleOption =
+  | { id: string; label: string; kind: "cron"; expr: string }
+  | { id: string; label: string; kind: "every"; interval: string }
+  | { id: string; label: string; kind: "at" }
+  | { id: string; label: string; kind: "custom" };
+
+const SCHEDULE_SIMPLE_OPTIONS: ScheduleOption[] = [
+  { id: "daily-8am", label: "Every day at 8:00 AM", kind: "cron", expr: "0 8 * * *" },
+  { id: "daily-6pm", label: "Every day at 6:00 PM", kind: "cron", expr: "0 18 * * *" },
+  { id: "monday-9am", label: "Every Monday at 9:00 AM", kind: "cron", expr: "0 9 * * 1" },
+  { id: "weekdays-noon", label: "Weekdays at noon", kind: "cron", expr: "0 12 * * 1-5" },
+  { id: "twice-day", label: "Twice a day (8am & 8pm)", kind: "cron", expr: "0 8,20 * * *" },
+  { id: "every-hour", label: "Every hour", kind: "every", interval: "1h" },
+  { id: "every-6h", label: "Every 6 hours", kind: "cron", expr: "0 */6 * * *" },
+  { id: "every-12h", label: "Every 12 hours", kind: "cron", expr: "0 */12 * * *" },
+  { id: "every-30m", label: "Every 30 minutes", kind: "every", interval: "30m" },
+  { id: "every-5m", label: "Every 5 minutes", kind: "every", interval: "5m" },
+  { id: "at", label: "Run once at a specific time", kind: "at" },
+  { id: "custom", label: "Custom schedule (advanced)", kind: "custom" },
 ];
 
 /* ── Timezone suggestions ────────────────────────── */
@@ -690,6 +756,8 @@ function CreateCronForm({
   const [everyInterval, setEveryInterval] = useState("1h");
   const [atTime, setAtTime] = useState("");
   const [tz, setTz] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  /** Which simple schedule option is selected (id from SCHEDULE_SIMPLE_OPTIONS); "custom" shows advanced form. */
+  const [simpleScheduleOption, setSimpleScheduleOption] = useState<string>("daily-8am");
   const [sessionTarget, setSessionTarget] = useState<"main" | "isolated">("isolated");
   const [payloadKind, setPayloadKind] = useState<"agentTurn" | "systemEvent">("agentTurn");
   const [message, setMessage] = useState("");
@@ -881,104 +949,125 @@ function CreateCronForm({
         {step === 2 && (
           <div className="space-y-4">
             <div>
-              <h4 className="text-[12px] font-medium text-foreground/80 mb-1">When should it run?</h4>
-              <p className="text-[10px] text-muted-foreground/60 mb-3">Pick a schedule type or use a quick preset.</p>
+              <h4 className="text-[12px] font-medium text-foreground/80 mb-1">How often should it run?</h4>
+              <p className="text-[10px] text-muted-foreground/60 mb-3">Choose a schedule below. Timezone applies to daily/weekly times.</p>
             </div>
 
-            {/* Quick presets */}
-            <div>
-              <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Quick Presets</label>
-              <div className="flex flex-wrap gap-1.5">
-                {CRON_PRESETS.map((p) => (
+            {/* Friendly schedule options (cards) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[280px] overflow-y-auto pr-1">
+              {SCHEDULE_SIMPLE_OPTIONS.map((opt) => {
+                const isSelected = simpleScheduleOption === opt.id;
+                return (
                   <button
-                    key={p.label}
+                    key={opt.id}
                     type="button"
                     onClick={() => {
-                      setScheduleKind(p.kind);
-                      if (p.kind === "cron" && p.expr) setCronExpr(p.expr);
-                      if (p.kind === "every" && p.interval) setEveryInterval(p.interval);
+                      setSimpleScheduleOption(opt.id);
+                      if (opt.kind === "cron" && "expr" in opt) {
+                        setScheduleKind("cron");
+                        setCronExpr(opt.expr);
+                      } else if (opt.kind === "every" && "interval" in opt) {
+                        setScheduleKind("every");
+                        setEveryInterval(opt.interval);
+                      } else if (opt.kind === "at") {
+                        setScheduleKind("at");
+                      }
+                      // "custom" leaves kind/expr/interval as-is and shows advanced form
                     }}
                     className={cn(
-                      "rounded-lg border px-2.5 py-1.5 text-[10px] transition-colors",
-                      (scheduleKind === "cron" && p.kind === "cron" && cronExpr === p.expr) ||
-                        (scheduleKind === "every" && p.kind === "every" && everyInterval === p.interval)
-                        ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
-                        : "border-foreground/[0.06] bg-muted/50 text-muted-foreground/70 hover:bg-muted/80 hover:text-foreground/70"
+                      "rounded-lg border px-3 py-2.5 text-left text-[12px] transition-colors",
+                      isSelected
+                        ? "border-violet-500/40 bg-violet-500/15 text-violet-200"
+                        : "border-foreground/[0.06] bg-muted/50 text-muted-foreground/80 hover:bg-muted/80 hover:text-foreground/80"
                     )}
                   >
-                    {p.label}
+                    {opt.label}
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
 
-            {/* Schedule type + expression */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Run once: show datetime picker */}
+            {simpleScheduleOption === "at" && (
               <div>
-                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Type</label>
-                <select
-                  value={scheduleKind}
-                  onChange={(e) => setScheduleKind(e.target.value as "cron" | "every" | "at")}
-                  className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 text-[12px] text-foreground/70 outline-none"
-                >
-                  <option value="cron">Cron Expression (recurring)</option>
-                  <option value="every">Fixed Interval (every X)</option>
-                  <option value="at">One-Shot (run once)</option>
-                </select>
+                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Run at</label>
+                <input
+                  type="datetime-local"
+                  value={atTime}
+                  onChange={(e) => setAtTime(e.target.value)}
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 text-[12px] text-foreground/70 outline-none focus:border-violet-500/30"
+                />
               </div>
-              <div>
-                {scheduleKind === "cron" && (
-                  <>
-                    <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Cron Expression</label>
-                    <input
-                      value={cronExpr}
-                      onChange={(e) => setCronExpr(e.target.value)}
-                      placeholder="0 8 * * *"
-                      className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none focus:border-violet-500/30"
-                    />
-                    <p className="mt-1 text-[9px] text-muted-foreground/40">min hour day month weekday (e.g. &quot;0 8 * * *&quot; = 8am daily)</p>
-                  </>
-                )}
-                {scheduleKind === "every" && (
-                  <>
-                    <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Interval</label>
-                    <input
-                      value={everyInterval}
-                      onChange={(e) => setEveryInterval(e.target.value)}
-                      placeholder="5m, 1h, 30s"
-                      className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none focus:border-violet-500/30"
-                    />
-                    <p className="mt-1 text-[9px] text-muted-foreground/40">Use s/m/h (e.g. &quot;30m&quot;, &quot;2h&quot;, &quot;45s&quot;)</p>
-                  </>
-                )}
-                {scheduleKind === "at" && (
-                  <>
-                    <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Run At</label>
-                    <input
-                      type="datetime-local"
-                      value={atTime}
-                      onChange={(e) => setAtTime(e.target.value)}
-                      className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 text-[12px] text-foreground/70 outline-none focus:border-violet-500/30"
-                    />
-                    <p className="mt-1 text-[9px] text-muted-foreground/40">Or use a duration like &quot;20m&quot; for 20 minutes from now</p>
-                  </>
-                )}
-              </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Timezone</label>
-                <select
-                  value={tz}
-                  onChange={(e) => setTz(e.target.value)}
-                  className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 text-[12px] text-foreground/70 outline-none"
-                >
-                  {TZ_SUGGESTIONS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                  {!TZ_SUGGESTIONS.includes(tz) && tz && (
-                    <option value={tz}>{tz}</option>
+            )}
+
+            {/* Custom: show type + cron/interval input */}
+            {simpleScheduleOption === "custom" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-foreground/[0.06] bg-muted/30 p-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Type</label>
+                  <select
+                    value={scheduleKind}
+                    onChange={(e) => setScheduleKind(e.target.value as "cron" | "every" | "at")}
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 text-[12px] text-foreground/70 outline-none"
+                  >
+                    <option value="cron">Cron expression</option>
+                    <option value="every">Every X (interval)</option>
+                    <option value="at">One-shot (run once)</option>
+                  </select>
+                </div>
+                <div>
+                  {scheduleKind === "cron" && (
+                    <>
+                      <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Cron</label>
+                      <input
+                        value={cronExpr}
+                        onChange={(e) => setCronExpr(e.target.value)}
+                        placeholder="0 8 * * *"
+                        className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none focus:border-violet-500/30"
+                      />
+                    </>
                   )}
-                </select>
+                  {scheduleKind === "every" && (
+                    <>
+                      <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Interval</label>
+                      <input
+                        value={everyInterval}
+                        onChange={(e) => setEveryInterval(e.target.value)}
+                        placeholder="5m, 1h"
+                        className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none focus:border-violet-500/30"
+                      />
+                    </>
+                  )}
+                  {scheduleKind === "at" && (
+                    <>
+                      <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Run at</label>
+                      <input
+                        type="datetime-local"
+                        value={atTime}
+                        onChange={(e) => setAtTime(e.target.value)}
+                        className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 text-[12px] text-foreground/70 outline-none"
+                      />
+                    </>
+                  )}
+                </div>
               </div>
+            )}
+
+            {/* Timezone (always) */}
+            <div>
+              <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Timezone</label>
+              <select
+                value={tz}
+                onChange={(e) => setTz(e.target.value)}
+                className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 text-[12px] text-foreground/70 outline-none"
+              >
+                {TZ_SUGGESTIONS.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+                {!TZ_SUGGESTIONS.includes(tz) && tz && (
+                  <option value={tz}>{tz}</option>
+                )}
+              </select>
             </div>
           </div>
         )}
@@ -1207,10 +1296,17 @@ function CreateCronForm({
               {/* Schedule */}
               <div className="flex items-center justify-between px-3 py-2.5">
                 <span className="text-[10px] text-muted-foreground/60">Schedule</span>
-                <span className="text-[12px] font-mono text-foreground/70">
-                  {scheduleKind === "cron" && cronExpr}
-                  {scheduleKind === "every" && `every ${everyInterval}`}
-                  {scheduleKind === "at" && atTime}
+                <span className="text-[12px] text-foreground/70">
+                  {simpleScheduleOption !== "custom" && simpleScheduleOption !== "at"
+                    ? (() => {
+                        const opt = SCHEDULE_SIMPLE_OPTIONS.find((o) => o.id === simpleScheduleOption);
+                        return opt ? opt.label : (scheduleKind === "cron" ? cronToHuman(cronExpr) : `Every ${everyInterval}`);
+                      })()
+                    : scheduleKind === "cron"
+                      ? cronToHuman(cronExpr)
+                      : scheduleKind === "every"
+                        ? `Every ${everyInterval}`
+                        : atTime}
                   {tz && <span className="text-muted-foreground/50"> ({tz})</span>}
                 </span>
               </div>

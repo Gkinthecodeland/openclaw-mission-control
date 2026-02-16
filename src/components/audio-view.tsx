@@ -22,8 +22,6 @@ import {
   Loader2,
   X,
   Ear,
-  Sparkles,
-  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -175,9 +173,14 @@ function ProviderCard({
   onTest: (provider: string, voice?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
+  const [selectedVoice, setSelectedVoice] = useState<string>("");
   const color = PROVIDER_COLORS[provider.id] || "bg-zinc-500/15 text-muted-foreground border-zinc-500/20";
   const icon = PROVIDER_ICONS[provider.id] || "🔈";
+  const availableVoices = provider.voices || [];
+  const activeVoice =
+    selectedVoice && availableVoices.includes(selectedVoice)
+      ? selectedVoice
+      : (availableVoices[0] ?? "");
 
   return (
     <div
@@ -278,22 +281,36 @@ function ProviderCard({
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
                 Voices
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                {provider.voices.map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setSelectedVoice(selectedVoice === v ? null : v)}
-                    className={cn(
-                      "rounded-md border px-2 py-1 text-[11px] transition-all",
-                      selectedVoice === v
-                        ? "border-violet-500/40 bg-violet-500/15 text-violet-300"
-                        : "border-foreground/[0.08] bg-foreground/[0.03] text-muted-foreground hover:border-foreground/[0.15] hover:text-foreground/70"
-                    )}
-                  >
-                    {v}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                <select
+                  value={activeVoice}
+                  onChange={(e) => {
+                    const voice = e.target.value;
+                    setSelectedVoice(voice);
+                    if (provider.configured && voice) {
+                      onTest(provider.id, voice);
+                    }
+                  }}
+                  className="flex-1 rounded-md border border-foreground/[0.08] bg-muted px-2.5 py-1.5 text-[12px] text-foreground/80 outline-none focus:border-violet-500/30"
+                >
+                  {provider.voices.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => onTest(provider.id, activeVoice || undefined)}
+                  disabled={!provider.configured}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1.5 text-[11px] font-medium text-violet-300 transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Play className="h-3 w-3" />
+                  Play
+                </button>
               </div>
+              <p className="mt-1 text-[10px] text-muted-foreground/70">
+                Selecting a voice plays an instant sample.
+              </p>
             </div>
           )}
 
@@ -301,12 +318,12 @@ function ProviderCard({
           {provider.configured && (
             <div className="pt-1">
               <button
-                onClick={() => onTest(provider.id, selectedVoice || undefined)}
+                onClick={() => onTest(provider.id, activeVoice || undefined)}
                 className="flex items-center gap-2 rounded-lg bg-violet-600/20 px-3 py-2 text-[12px] font-medium text-violet-300 transition-colors hover:bg-violet-600/30"
               >
                 <Play className="h-3.5 w-3.5" />
                 Test {provider.name}
-                {selectedVoice && ` · ${selectedVoice}`}
+                {activeVoice && ` · ${activeVoice}`}
               </button>
             </div>
           )}
@@ -471,87 +488,137 @@ function AudioPlayer({
 
 /* ── TTS Test Panel ─────────────────────────────── */
 
-function TtsTestPanel({ onTest, testing }: { onTest: (text: string, provider?: string, voice?: string) => void; testing: boolean }) {
-  const [text, setText] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [personalized, setPersonalized] = useState(false);
-  const hasFetched = useRef(false);
-
-  // Auto-generate a personalized phrase on mount
-  const generatePhrase = useCallback(async () => {
-    setGenerating(true);
-    try {
-      const res = await fetch("/api/audio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate-phrase" }),
-      });
-      const data = await res.json();
-      if (data.ok && data.phrase) {
-        setText(data.phrase);
-        setPersonalized(true);
-      }
-    } catch {
-      // Fallback if API fails
-      setText("Hello! This is a test of the text to speech system.");
-    }
-    setGenerating(false);
+function TtsTestPanel({
+  onTest,
+  testing,
+  providers,
+  activeProvider,
+}: {
+  onTest: (text: string, provider?: string, voice?: string) => void;
+  testing: boolean;
+  providers: TtsProvider[];
+  activeProvider?: string;
+}) {
+  const getDefaultSample = useCallback(() => {
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    return `${greeting}. This is a voice sample for OpenClaw.`;
   }, []);
+  const [text, setText] = useState(() => getDefaultSample());
+  const [providerChoice, setProviderChoice] = useState(activeProvider || "");
+  const [voiceChoice, setVoiceChoice] = useState("");
 
-  useEffect(() => {
-    if (hasFetched.current) return;
-    hasFetched.current = true;
-    queueMicrotask(() => generatePhrase());
-  }, [generatePhrase]);
+  const configuredProviders = providers.filter((p) => p.configured);
+  const effectiveProviderId =
+    configuredProviders.find((p) => p.id === providerChoice)?.id ||
+    configuredProviders.find((p) => p.id === activeProvider)?.id ||
+    configuredProviders[0]?.id ||
+    "";
+  const effectiveProvider = providers.find((p) => p.id === effectiveProviderId) || null;
+  const availableVoices = effectiveProvider?.voices || [];
+  const effectiveVoice =
+    voiceChoice && availableVoices.includes(voiceChoice)
+      ? voiceChoice
+      : (availableVoices[0] ?? "");
+
+  const samplePresets = [
+    "Good morning. This is a voice sample for OpenClaw.",
+    "Quick update: your dashboard is online, audio is configured, and responses are ready.",
+    "Let's test pacing, clarity, and tone. If this sounds natural, this voice is a strong fit.",
+    "Heads up: your assistant can now respond in voice with low latency and clean playback.",
+  ];
 
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90">
-          <Headphones className="h-4 w-4 text-violet-400" />
-          Generate Sample Voice
-        </div>
-        <button
-          type="button"
-          onClick={generatePhrase}
-          disabled={generating}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-muted-foreground/60 transition-colors hover:bg-foreground/[0.05] hover:text-foreground/80 disabled:opacity-40"
-          title="Generate a new personalized phrase"
-        >
-          {generating ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RotateCcw className="h-3 w-3" />
-          )}
-          New phrase
-        </button>
+      <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90">
+        <Headphones className="h-4 w-4 text-violet-400" />
+        Voice Sample Lab
       </div>
 
-      {generating && !text ? (
-        <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-muted px-3 py-3 text-[12px] text-muted-foreground/50">
-          <Sparkles className="h-3.5 w-3.5 animate-pulse text-violet-400" />
-          Crafting a personalized message just for you...
-        </div>
-      ) : (
-        <textarea
-          value={text}
-          onChange={(e) => { setText(e.target.value); setPersonalized(false); }}
-          rows={3}
-          className="w-full rounded-lg border border-foreground/[0.08] bg-muted px-3 py-2 text-[13px] text-foreground/90 placeholder-zinc-600 outline-none focus:border-violet-500/30 resize-none"
-          placeholder="Enter text to convert to speech..."
-        />
-      )}
+      <div className="flex flex-wrap gap-1.5">
+        {samplePresets.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            onClick={() => setText(preset)}
+            className={cn(
+              "rounded-md border px-2.5 py-1 text-[11px] transition-colors",
+              text === preset
+                ? "border-violet-500/35 bg-violet-500/15 text-violet-300"
+                : "border-foreground/[0.08] bg-muted text-muted-foreground hover:text-foreground/70"
+            )}
+          >
+            {preset.slice(0, 28)}...
+          </button>
+        ))}
+      </div>
 
-      {personalized && text && (
-        <p className="flex items-center gap-1 text-[10px] text-violet-400/70">
-          <Sparkles className="h-2.5 w-2.5" />
-          Personalized from your profile & agent context
-        </p>
-      )}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        className="w-full rounded-lg border border-foreground/[0.08] bg-muted px-3 py-2 text-[13px] text-foreground/90 placeholder-zinc-600 outline-none focus:border-violet-500/30 resize-none"
+        placeholder="Enter text to convert to speech..."
+      />
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            Provider
+          </p>
+          <select
+            value={effectiveProviderId}
+            onChange={(e) => {
+              const nextProvider = e.target.value;
+              setProviderChoice(nextProvider);
+              setVoiceChoice("");
+              const nextVoices = providers.find((p) => p.id === nextProvider)?.voices || [];
+              const firstVoice = nextVoices[0];
+              if (nextProvider) {
+                onTest(text, nextProvider, firstVoice);
+              }
+            }}
+            className="w-full rounded-md border border-foreground/[0.08] bg-muted px-2.5 py-2 text-[12px] text-foreground/80 outline-none focus:border-violet-500/30"
+          >
+            {configuredProviders.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            Voice
+          </p>
+          <select
+            value={effectiveVoice}
+            onChange={(e) => {
+              const nextVoice = e.target.value;
+              setVoiceChoice(nextVoice);
+              if (effectiveProviderId && nextVoice) {
+                onTest(text, effectiveProviderId, nextVoice);
+              }
+            }}
+            disabled={!effectiveProviderId || availableVoices.length === 0}
+            className="w-full rounded-md border border-foreground/[0.08] bg-muted px-2.5 py-2 text-[12px] text-foreground/80 outline-none focus:border-violet-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {availableVoices.length > 0 ? (
+              availableVoices.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))
+            ) : (
+              <option value="">No voices available</option>
+            )}
+          </select>
+        </div>
+      </div>
 
       <button
-        onClick={() => onTest(text)}
-        disabled={testing || !text.trim() || generating}
+        onClick={() => onTest(text, effectiveProviderId || undefined, effectiveVoice || undefined)}
+        disabled={testing || !text.trim() || !effectiveProviderId}
         className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
       >
         {testing ? (
@@ -932,6 +999,13 @@ export function AudioView() {
     voiceCompatible: boolean;
     key: number; // force remount for auto-play
   } | null>(null);
+  const previewAbortRef = useRef<AbortController | null>(null);
+  const previewCacheRef = useRef(
+    new Map<
+      string,
+      { provider: string; format: string; path: string; voiceCompatible: boolean }
+    >()
+  );
 
   /* ── Fetch ─────────────── */
 
@@ -951,6 +1025,12 @@ export function AudioView() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    return () => {
+      previewAbortRef.current?.abort();
+    };
+  }, []);
 
   /* ── Actions ───────────── */
 
@@ -1029,40 +1109,64 @@ export function AudioView() {
 
   const testTts = useCallback(
     async (text: string, provider?: string, voice?: string) => {
+      const cleanText = text.trim() || "This is a voice sample for OpenClaw.";
+      const activeProvider = provider || data?.providers.active || data?.status.provider || "auto";
+      const cacheKey = `${activeProvider}::${voice || "default"}::${cleanText}`;
+      const cached = previewCacheRef.current.get(cacheKey);
+      if (cached) {
+        setTestResult({ ...cached, key: Date.now() });
+        setToast({
+          message: `Playing cached sample`,
+          type: "success",
+        });
+        return;
+      }
+
+      previewAbortRef.current?.abort();
+      const controller = new AbortController();
+      previewAbortRef.current = controller;
+
       setTesting(true);
       setTestResult(null);
       try {
-        const body: Record<string, unknown> = { action: "test", text };
+        const body: Record<string, unknown> = { action: "test", text: cleanText };
         if (provider) body.provider = provider;
         if (voice) body.voice = voice;
         const res = await fetch("/api/audio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          signal: controller.signal,
         });
+        if (controller.signal.aborted) return;
         const json = await res.json();
         if (json.ok) {
-          setTestResult({
+          const result = {
             provider: json.provider || "unknown",
             format: json.outputFormat || "mp3",
             path: json.audioPath || "",
             voiceCompatible: json.voiceCompatible ?? false,
-            key: Date.now(),
-          });
+          };
+          previewCacheRef.current.set(cacheKey, result);
+          setTestResult({ ...result, key: Date.now() });
           setToast({
-            message: `Audio generated — click play to listen`,
+            message: `Voice sample ready`,
             type: "success",
           });
         } else {
           setToast({ message: json.error || "Generation failed", type: "error" });
         }
       } catch (err) {
+        if (controller.signal.aborted) return;
         setToast({ message: String(err), type: "error" });
       } finally {
-        setTesting(false);
+        if (previewAbortRef.current === controller) {
+          previewAbortRef.current = null;
+          setTesting(false);
+        }
       }
     },
-    []
+    [data]
   );
 
   const updateConfig = useCallback(
@@ -1253,7 +1357,12 @@ export function AudioView() {
         </div>
 
         {/* Test TTS */}
-        <TtsTestPanel onTest={testTts} testing={testing} />
+        <TtsTestPanel
+          onTest={testTts}
+          testing={testing}
+          providers={providersData.providers}
+          activeProvider={providersData.active || status.provider}
+        />
 
         {/* Test result with audio player */}
         {testResult && <AudioPlayer key={testResult.key} result={testResult} />}

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { getOpenClawHome } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";
@@ -7,15 +7,67 @@ export const dynamic = "force-dynamic";
 /* ── Session store (module-level, persists across requests) ── */
 
 type ShellSession = {
-  proc: ChildProcess;
-  buffer: string[];
+  proc: ChildProcessWithoutNullStreams;
+  buffer: TerminalEvent[];
   created: number;
   cwd: string;
   alive: boolean;
-  listeners: Set<(chunk: string) => void>;
+  listeners: Set<(event: TerminalEvent) => void>;
 };
 
+type TerminalEvent =
+  | { type: "output"; text: string }
+  | { type: "status"; alive: boolean };
+
 const sessions = new Map<string, ShellSession>();
+
+const PY_PTY_BRIDGE = String.raw`import os, pty, select, signal, sys
+shell = sys.argv[1] if len(sys.argv) > 1 else "/bin/zsh"
+pid, fd = pty.fork()
+if pid == 0:
+  os.execvp(shell, [shell, "-i"])
+
+stdin_open = True
+child_alive = True
+
+def _terminate(_signum, _frame):
+  global child_alive
+  if child_alive:
+    try:
+      os.kill(pid, signal.SIGTERM)
+    except Exception:
+      pass
+    child_alive = False
+
+signal.signal(signal.SIGTERM, _terminate)
+signal.signal(signal.SIGINT, _terminate)
+
+while True:
+  fds = [fd]
+  if stdin_open:
+    fds.append(sys.stdin.fileno())
+
+  try:
+    r, _, _ = select.select(fds, [], [])
+  except Exception:
+    break
+
+  if fd in r:
+    try:
+      data = os.read(fd, 4096)
+    except OSError:
+      break
+    if not data:
+      break
+    os.write(sys.stdout.fileno(), data)
+
+  if stdin_open and sys.stdin.fileno() in r:
+    data = os.read(sys.stdin.fileno(), 4096)
+    if not data:
+      stdin_open = False
+    else:
+      os.write(fd, data)
+`;
 
 // Cleanup stale sessions every 5 minutes
 if (typeof globalThis !== "undefined") {
@@ -41,11 +93,8 @@ function createSession(): string {
   const home = getOpenClawHome();
   const shell = process.env.SHELL || "/bin/zsh";
 
-  // Spawn the shell directly. We do NOT use `script` here because the Next.js
-  // API runs in a non-TTY context (stdio is sockets), so `script` fails with
-  // "tcgetattr/ioctl: Operation not supported on socket" and the session dies.
-  // The frontend handles local echo so the user still sees what they type.
-  const proc = spawn(shell, ["-i"], {
+  // Spawn a PTY bridge process so the shell has a real TTY.
+  const proc = spawn("python3", ["-u", "-c", PY_PTY_BRIDGE, shell], {
     cwd: home,
     env: {
       ...process.env,
@@ -69,27 +118,33 @@ function createSession(): string {
     listeners: new Set(),
   };
 
-  const pushData = (text: string) => {
-    // Keep last 5000 lines in buffer for reconnection
-    session.buffer.push(text);
+  const pushEvent = (event: TerminalEvent) => {
+    // Keep last 5000 events in buffer for reconnection
+    session.buffer.push(event);
     if (session.buffer.length > 5000) session.buffer.shift();
     // Notify all SSE listeners
     for (const fn of session.listeners) {
-      try { fn(text); } catch { /* */ }
+      try { fn(event); } catch { /* */ }
     }
   };
 
-  proc.stdout?.on("data", (data: Buffer) => pushData(data.toString()));
-  proc.stderr?.on("data", (data: Buffer) => pushData(data.toString()));
+  proc.stdout.on("data", (data: Buffer) =>
+    pushEvent({ type: "output", text: data.toString() })
+  );
+  proc.stderr.on("data", (data: Buffer) =>
+    pushEvent({ type: "output", text: data.toString() })
+  );
 
   proc.on("close", () => {
     session.alive = false;
-    pushData("\r\n\x1b[90m[Session ended]\x1b[0m\r\n");
+    pushEvent({ type: "output", text: "\r\n\x1b[90m[Session ended]\x1b[0m\r\n" });
+    pushEvent({ type: "status", alive: false });
   });
 
   proc.on("error", (err) => {
     session.alive = false;
-    pushData(`\r\n\x1b[31m[Error: ${err.message}]\x1b[0m\r\n`);
+    pushEvent({ type: "output", text: `\r\n\x1b[31m[Error: ${err.message}]\x1b[0m\r\n` });
+    pushEvent({ type: "status", alive: false });
   });
 
   sessions.set(id, session);
@@ -126,10 +181,9 @@ export async function GET(request: NextRequest) {
     start(controller) {
       // Send buffered output first (for reconnection)
       if (session.buffer.length > 0) {
-        const replay = session.buffer.join("");
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: "output", text: replay })}\n\n`)
-        );
+        for (const event of session.buffer) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        }
       }
 
       // Send alive status
@@ -138,11 +192,9 @@ export async function GET(request: NextRequest) {
       );
 
       // Listen for new output
-      const listener = (text: string) => {
+      const listener = (event: TerminalEvent) => {
         try {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "output", text })}\n\n`)
-          );
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         } catch {
           session.listeners.delete(listener);
         }
@@ -199,7 +251,22 @@ export async function POST(request: NextRequest) {
       if (!session || !session.alive) {
         return Response.json({ error: "Session not found or dead" }, { status: 404 });
       }
-      session.proc.stdin?.write(data);
+      session.proc.stdin.write(data);
+      return Response.json({ ok: true });
+    }
+
+    case "resize": {
+      const sessionId = body.session as string;
+      const cols = Number(body.cols);
+      const rows = Number(body.rows);
+      const session = sessions.get(sessionId);
+      if (!session || !session.alive) {
+        return Response.json({ error: "Session not found or dead" }, { status: 404 });
+      }
+      if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) {
+        return Response.json({ error: "Invalid cols/rows" }, { status: 400 });
+      }
+      // PTY bridge currently ignores explicit resize.
       return Response.json({ ok: true });
     }
 

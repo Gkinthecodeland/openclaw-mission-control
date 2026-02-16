@@ -34,6 +34,7 @@ const navItems: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   dividerAfter?: boolean;
+  comingSoon?: boolean;
 }[] = [
   { section: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { section: "agents", label: "Agents", icon: Users },
@@ -69,28 +70,42 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-4 overflow-y-auto">
       {navItems.map((item) => {
         const Icon = item.icon;
-        const isActive = section === item.section;
+        const isActive = section === item.section && !item.comingSoon;
         const showBadge = item.section === "chat" && chatUnread > 0;
+        const isDisabled = item.comingSoon;
+        const linkClass = cn(
+          "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
+          isDisabled
+            ? "cursor-not-allowed opacity-60 text-muted-foreground dark:text-zinc-500"
+            : isActive
+              ? "bg-violet-600/20 text-violet-700 dark:text-violet-300"
+              : "text-muted-foreground dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-zinc-200"
+        );
         return (
           <div key={item.section}>
-            <Link
-              href={`/?section=${item.section}`}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
-                isActive
-                  ? "bg-violet-600/20 text-violet-700 dark:text-violet-300"
-                  : "text-muted-foreground dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-zinc-200"
-              )}
-            >
-              <Icon className="h-[18px] w-[18px] shrink-0" />
-              <span className="flex-1">{item.label}</span>
-              {showBadge && (
-                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-violet-600 px-1.5 text-[10px] font-bold text-white">
-                  {chatUnread > 9 ? "9+" : chatUnread}
+            {isDisabled ? (
+              <span className={linkClass} aria-disabled>
+                <Icon className="h-[18px] w-[18px] shrink-0" />
+                <span className="flex-1">{item.label}</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  Coming soon
                 </span>
-              )}
-            </Link>
+              </span>
+            ) : (
+              <Link
+                href={`/?section=${item.section}`}
+                onClick={onNavigate}
+                className={linkClass}
+              >
+                <Icon className="h-[18px] w-[18px] shrink-0" />
+                <span className="flex-1">{item.label}</span>
+                {showBadge && (
+                  <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-violet-600 px-1.5 text-[10px] font-bold text-white">
+                    {chatUnread > 9 ? "9+" : chatUnread}
+                  </span>
+                )}
+              </Link>
+            )}
             {item.dividerAfter && (
               <div className="my-2 border-t border-border" />
             )}

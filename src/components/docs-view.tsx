@@ -35,6 +35,12 @@ type Doc = {
 type WorkspaceGroup = {
   name: string;
   label: string;
+  typeGroups: DocTypeGroup[];
+};
+
+type DocTypeGroup = {
+  key: string;
+  label: string;
   docs: Doc[];
 };
 
@@ -82,6 +88,7 @@ const WORKSPACE_ICONS: Record<string, string> = {
 };
 
 const TAG_COLORS: Record<string, string> = {
+  "Core Prompt": "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30",
   Journal: "bg-amber-500/20 text-amber-300 border-amber-500/30",
   Other: "bg-zinc-600/20 text-muted-foreground border-zinc-500/30",
   Notes: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -89,6 +96,17 @@ const TAG_COLORS: Record<string, string> = {
   Newsletters: "bg-purple-500/20 text-purple-300 border-purple-500/30",
   "YouTube Scripts": "bg-red-500/20 text-red-300 border-red-500/30",
 };
+
+const TYPE_ORDER = ["Core Prompt", "Journal", "Notes", "Content", "Newsletters", "YouTube Scripts", "Other"];
+
+function sortTypeKeys(a: string, b: string): number {
+  const ai = TYPE_ORDER.indexOf(a);
+  const bi = TYPE_ORDER.indexOf(b);
+  const av = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
+  const bv = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
+  if (av !== bv) return av - bv;
+  return a.localeCompare(b);
+}
 
 /* ── JSON Viewer ──────────────────────────────── */
 
@@ -346,7 +364,8 @@ export function DocsView() {
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [extFilter, setExtFilter] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsedWorkspace, setCollapsedWorkspace] = useState<Record<string, boolean>>({});
+  const [collapsedType, setCollapsedType] = useState<Record<string, boolean>>({});
 
   // Save state
   const [saveStatus, setSaveStatus] = useState<
@@ -368,7 +387,7 @@ export function DocsView() {
       .then((r) => r.json())
       .then((data) => {
         setDocs(data.docs || []);
-        setAllTags(data.tags || []);
+        setAllTags([...(data.tags || [])].sort(sortTypeKeys));
         setAllExts(data.extensions || []);
         setLoading(false);
       })
@@ -590,21 +609,51 @@ export function DocsView() {
   );
 
   const workspaceGroups: WorkspaceGroup[] = useMemo(() => {
-    const map = new Map<string, Doc[]>();
+    const byWorkspace = new Map<string, Doc[]>();
     for (const doc of filtered) {
       const wsName = doc.workspace;
-      if (!map.has(wsName)) map.set(wsName, []);
-      map.get(wsName)!.push(doc);
+      if (!byWorkspace.has(wsName)) byWorkspace.set(wsName, []);
+      byWorkspace.get(wsName)!.push(doc);
     }
-    return Array.from(map.entries()).map(([name, wsDocs]) => ({
-      name,
-      label: workspaceLabel(name),
-      docs: wsDocs,
-    }));
+
+    return Array.from(byWorkspace.entries())
+      .map(([name, wsDocs]) => {
+        const byType = new Map<string, Doc[]>();
+        for (const doc of wsDocs) {
+          const typeKey = doc.tag || "Other";
+          if (!byType.has(typeKey)) byType.set(typeKey, []);
+          byType.get(typeKey)!.push(doc);
+        }
+        const typeGroups: DocTypeGroup[] = Array.from(byType.entries())
+          .sort(([a], [b]) => sortTypeKeys(a, b))
+          .map(([key, typeDocs]) => ({
+            key,
+            label: key,
+            docs: [...typeDocs].sort(
+              (a, b) => new Date(b.mtime).getTime() - new Date(a.mtime).getTime()
+            ),
+          }));
+
+        return {
+          name,
+          label: workspaceLabel(name),
+          typeGroups,
+        };
+      })
+      .sort((a, b) => {
+        if (a.name === "workspace") return -1;
+        if (b.name === "workspace") return 1;
+        return a.label.localeCompare(b.label);
+      });
   }, [filtered]);
 
-  const toggleCollapse = (ws: string) =>
-    setCollapsed((prev) => ({ ...prev, [ws]: !prev[ws] }));
+  const toggleWorkspaceCollapse = (ws: string) =>
+    setCollapsedWorkspace((prev) => ({ ...prev, [ws]: !prev[ws] }));
+
+  const toggleTypeCollapse = (ws: string, type: string) => {
+    const key = `${ws}::${type}`;
+    setCollapsedType((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   /* ── render ──────────────────────────────────── */
 
@@ -665,7 +714,7 @@ export function DocsView() {
           </div>
         </div>
 
-        {/* Document list grouped by workspace */}
+        {/* Document list grouped by workspace -> type */}
         <div className="flex-1 overflow-y-auto px-2 pb-3">
           {loading ? (
             <p className="px-3 py-4 text-sm text-muted-foreground/60">Loading...</p>
@@ -676,14 +725,15 @@ export function DocsView() {
           ) : (
             <div className="space-y-1">
               {workspaceGroups.map((ws) => {
-                const isCollapsed = collapsed[ws.name] || false;
+                const isCollapsed = collapsedWorkspace[ws.name] || false;
                 const icon = WORKSPACE_ICONS[ws.name] || "📁";
+                const wsCount = ws.typeGroups.reduce((sum, tg) => sum + tg.docs.length, 0);
                 return (
                   <div key={ws.name}>
                     {/* Workspace header */}
                     <button
                       type="button"
-                      onClick={() => toggleCollapse(ws.name)}
+                      onClick={() => toggleWorkspaceCollapse(ws.name)}
                       className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/60"
                     >
                       {isCollapsed ? (
@@ -696,127 +746,156 @@ export function DocsView() {
                         {ws.label}
                       </span>
                       <span className="text-[11px] text-muted-foreground/60">
-                        {ws.docs.length}
+                        {wsCount}
                       </span>
                     </button>
 
-                    {/* Docs in this workspace */}
+                    {/* Types + docs in this workspace */}
                     {!isCollapsed && (
                       <div className="space-y-0.5 pl-4">
-                        {ws.docs.map((doc) => {
-                          const isSelected = selected?.path === doc.path;
-                          const isRenaming = renaming?.path === doc.path;
-                          const isDeleting = confirmDelete?.path === doc.path;
-                          // Show relative path inside workspace
-                          const relPath = doc.path
-                            .replace(`${ws.name}/`, "")
-                            .replace(`/${doc.name}`, "");
-                          const showSubpath =
-                            relPath && relPath !== doc.name;
-
-                          if (isDeleting) {
-                            return (
-                              <div
-                                key={doc.path}
-                                className="flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-2.5"
-                              >
-                                <Trash2 className="h-3.5 w-3.5 shrink-0 text-red-400" />
-                                <span className="flex-1 truncate text-[12px] text-red-300">
-                                  Delete {doc.name}?
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteDoc(doc)}
-                                  className="rounded bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-500"
-                                >
-                                  Delete
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDelete(null)}
-                                  className="text-[10px] text-muted-foreground hover:text-foreground/70"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            );
-                          }
-
-                          if (isRenaming) {
-                            return (
-                              <div
-                                key={doc.path}
-                                className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-card px-3 py-2"
-                              >
-                                <Pencil className="h-3 w-3 shrink-0 text-violet-400" />
-                                <input
-                                  value={renameValue}
-                                  onChange={(e) =>
-                                    setRenameValue(e.target.value)
-                                  }
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter")
-                                      renameDoc(doc, renameValue);
-                                    if (e.key === "Escape")
-                                      setRenaming(null);
-                                  }}
-                                  onBlur={() =>
-                                    renameDoc(doc, renameValue)
-                                  }
-                                  className="flex-1 bg-transparent text-[13px] text-foreground/90 outline-none"
-                                  autoFocus
-                                />
-                              </div>
-                            );
-                          }
-
+                        {ws.typeGroups.map((typeGroup) => {
+                          const typeKey = `${ws.name}::${typeGroup.key}`;
+                          const isTypeCollapsed = collapsedType[typeKey] || false;
                           return (
-                            <button
-                              key={doc.path}
-                              type="button"
-                              onClick={() => loadDoc(doc)}
-                              onContextMenu={(e) =>
-                                handleContextMenu(e, doc)
-                              }
-                              className={cn(
-                                "flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left transition-colors",
-                                isSelected
-                                  ? "bg-muted ring-1 ring-white/[0.06]"
-                                  : "hover:bg-muted/60"
-                              )}
-                            >
-                              <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-                              <div className="min-w-0 flex-1">
+                            <div key={typeKey} className="space-y-0.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleTypeCollapse(ws.name, typeGroup.key)}
+                                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50"
+                              >
+                                {isTypeCollapsed ? (
+                                  <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3 text-muted-foreground/80" />
+                                )}
                                 <span
                                   className={cn(
-                                    "block truncate text-[13px] font-medium",
-                                    isSelected
-                                      ? "text-foreground"
-                                      : "text-foreground/70"
+                                    "rounded border px-1.5 py-0.5 text-[9px] font-medium",
+                                    TAG_COLORS[typeGroup.key] || TAG_COLORS.Other
                                   )}
                                 >
-                                  {doc.name}
+                                  {typeGroup.label}
                                 </span>
-                                {showSubpath && (
-                                  <span className="block truncate text-[10px] text-muted-foreground/60">
-                                    {relPath}
-                                  </span>
-                                )}
-                                <div className="mt-1 flex items-center gap-2">
-                                  <span
-                                    className={cn(
-                                      "rounded border px-1.5 py-0.5 text-[9px] font-medium",
-                                      TAG_COLORS[doc.tag] || TAG_COLORS.Other
-                                    )}
-                                  >
-                                    {doc.tag}
-                                  </span>
-                                  <span className="text-[10px] text-muted-foreground/60">
-                                    {formatAgo(doc.mtime)}
-                                  </span>
+                                <span className="text-[10px] text-muted-foreground/60">
+                                  {typeGroup.docs.length}
+                                </span>
+                              </button>
+
+                              {!isTypeCollapsed && (
+                                <div className="space-y-0.5 pl-4">
+                                  {typeGroup.docs.map((doc) => {
+                                    const isSelected = selected?.path === doc.path;
+                                    const isRenaming = renaming?.path === doc.path;
+                                    const isDeleting = confirmDelete?.path === doc.path;
+                                    // Show relative path inside workspace
+                                    const relPath = doc.path
+                                      .replace(`${ws.name}/`, "")
+                                      .replace(`/${doc.name}`, "");
+                                    const showSubpath = relPath && relPath !== doc.name;
+
+                                    if (isDeleting) {
+                                      return (
+                                        <div
+                                          key={doc.path}
+                                          className="flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-2.5"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                                          <span className="flex-1 truncate text-[12px] text-red-300">
+                                            Delete {doc.name}?
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => deleteDoc(doc)}
+                                            className="rounded bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-500"
+                                          >
+                                            Delete
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setConfirmDelete(null)}
+                                            className="text-[10px] text-muted-foreground hover:text-foreground/70"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      );
+                                    }
+
+                                    if (isRenaming) {
+                                      return (
+                                        <div
+                                          key={doc.path}
+                                          className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-card px-3 py-2"
+                                        >
+                                          <Pencil className="h-3 w-3 shrink-0 text-violet-400" />
+                                          <input
+                                            value={renameValue}
+                                            onChange={(e) =>
+                                              setRenameValue(e.target.value)
+                                            }
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter")
+                                                renameDoc(doc, renameValue);
+                                              if (e.key === "Escape")
+                                                setRenaming(null);
+                                            }}
+                                            onBlur={() =>
+                                              renameDoc(doc, renameValue)
+                                            }
+                                            className="flex-1 bg-transparent text-[13px] text-foreground/90 outline-none"
+                                            autoFocus
+                                          />
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <button
+                                        key={doc.path}
+                                        type="button"
+                                        onClick={() => loadDoc(doc)}
+                                        onContextMenu={(e) =>
+                                          handleContextMenu(e, doc)
+                                        }
+                                        className={cn(
+                                          "flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left transition-colors",
+                                          isSelected
+                                            ? "bg-muted ring-1 ring-white/[0.06]"
+                                            : "hover:bg-muted/60"
+                                        )}
+                                      >
+                                        <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                                        <div className="min-w-0 flex-1">
+                                          <span
+                                            className={cn(
+                                              "block truncate text-[13px] font-medium",
+                                              isSelected
+                                                ? "text-foreground"
+                                                : "text-foreground/70"
+                                            )}
+                                          >
+                                            {doc.name}
+                                          </span>
+                                          {showSubpath && (
+                                            <span className="block truncate text-[10px] text-muted-foreground/60">
+                                              {relPath}
+                                            </span>
+                                          )}
+                                          <div className="mt-1 flex items-center gap-2">
+                                            <span className="rounded border border-foreground/[0.08] px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground/80">
+                                              {doc.ext}
+                                            </span>
+                                            <span className="text-[10px] text-muted-foreground/60">
+                                              {formatAgo(doc.mtime)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
                                 </div>
-                              </div>
-                            </button>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
@@ -904,7 +983,7 @@ export function DocsView() {
             <FolderOpen className="h-8 w-8 text-muted-foreground/40" />
             <p className="text-sm">Select a document</p>
             <p className="text-[11px] text-muted-foreground/40">
-              Documents are grouped by workspace/agent
+              Documents are grouped by agent and type
             </p>
           </div>
         )}

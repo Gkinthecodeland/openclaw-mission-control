@@ -88,6 +88,20 @@ async function scanDir(
 }
 
 function detectTag(relPath: string, name: string): string {
+  const nameUpper = name.toUpperCase();
+  const corePromptFiles = new Set([
+    "AGENTS.MD",
+    "SOUL.MD",
+    "TOOLS.MD",
+    "IDENTITY.MD",
+    "USER.MD",
+    "HEARTBEAT.MD",
+    "BOOTSTRAP.MD",
+    "BOOT.MD",
+    "MEMORY.MD",
+  ]);
+
+  if (corePromptFiles.has(nameUpper)) return "Core Prompt";
   if (/^\d{4}-\d{2}-\d{2}/.test(name) && relPath.includes("memory")) return "Journal";
   if (name === "INDEX.md" && relPath.includes("memory")) return "Journal";
   if (name.startsWith("overnight-log")) return "Journal";

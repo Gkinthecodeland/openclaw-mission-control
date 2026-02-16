@@ -354,8 +354,9 @@ export async function POST(request: NextRequest) {
       }
 
       case "test": {
-        // Use explicit text if provided, otherwise ask the agent for a unique phrase
-        const text = (body.text as string) || await generateTestPhrase();
+        // Keep voice testing fast and deterministic; avoid agent round-trips here.
+        const textRaw = typeof body.text === "string" ? body.text : "";
+        const text = textRaw.trim() || "This is a voice sample for OpenClaw.";
         const params: Record<string, unknown> = { text };
         if (body.provider) params.provider = body.provider;
         if (body.voice) params.voice = body.voice;

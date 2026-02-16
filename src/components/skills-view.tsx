@@ -23,6 +23,18 @@ type Skill = {
   always?: boolean;
 };
 
+type ClawHubItem = {
+  slug: string;
+  displayName?: string;
+  summary?: string;
+  version?: string;
+  score?: number;
+  downloads?: number;
+  installsCurrent?: number;
+  stars?: number;
+  updatedAt?: number;
+};
+
 type SkillDetail = Skill & {
   filePath: string; baseDir: string; skillKey: string; always: boolean;
   requirements: Missing; install: InstallOption[];
@@ -32,11 +44,49 @@ type SkillDetail = Skill & {
 
 type Summary = { total: number; eligible: number; disabled: number; blocked: number; missingRequirements: number };
 type Toast = { msg: string; type: "success" | "error" };
+type AvailabilityState = "ready" | "needs-setup" | "blocked" | "unavailable";
 
 /* ── Helpers ────────────────────────────────────── */
 
 function hasMissing(m: Missing): boolean {
   return m.bins.length > 0 || m.anyBins.length > 0 || m.env.length > 0 || m.config.length > 0 || m.os.length > 0;
+}
+
+function missingCount(m: Missing): number {
+  return m.bins.length + m.anyBins.length + m.env.length + m.config.length + m.os.length;
+}
+
+function getAvailability(skill: Pick<Skill, "eligible" | "missing" | "blockedByAllowlist">): {
+  state: AvailabilityState;
+  label: string;
+  badgeClass: string;
+} {
+  if (skill.blockedByAllowlist) {
+    return {
+      state: "blocked",
+      label: "Blocked",
+      badgeClass: "border-red-500/30 bg-red-500/10 text-red-300",
+    };
+  }
+  if (skill.eligible) {
+    return {
+      state: "ready",
+      label: "Ready",
+      badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    };
+  }
+  if (hasMissing(skill.missing)) {
+    return {
+      state: "needs-setup",
+      label: "Needs setup",
+      badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    };
+  }
+  return {
+    state: "unavailable",
+    label: "Unavailable",
+    badgeClass: "border-zinc-500/30 bg-zinc-500/10 text-muted-foreground",
+  };
 }
 
 function sourceLabel(source: string): string {
@@ -49,6 +99,26 @@ function sourceColor(source: string): string {
   if (source === "openclaw-bundled") return "bg-sky-500/10 text-sky-400 border-sky-500/20";
   if (source === "openclaw-workspace") return "bg-violet-500/10 text-violet-400 border-violet-500/20";
   return "bg-zinc-500/10 text-muted-foreground border-zinc-500/20";
+}
+
+function sourceHint(source: string): string {
+  if (source === "openclaw-bundled") {
+    return "Bundled with OpenClaw. Enabling only allows usage; dependencies/config still decide runtime readiness.";
+  }
+  if (source === "openclaw-workspace") {
+    return "Installed in your workspace (usually via ClawHub).";
+  }
+  return "Custom source.";
+}
+
+function runtimeMessage(skill: Skill, availability: ReturnType<typeof getAvailability>, missingTotal: number): string {
+  if (skill.disabled) return "Disabled in config. Agent will not attempt to use this skill.";
+  if (availability.state === "ready") return "Enabled and ready to use now.";
+  if (availability.state === "blocked") return "Enabled, but blocked by allowlist policy.";
+  if (availability.state === "needs-setup") {
+    return `Enabled, waiting for ${missingTotal} requirement${missingTotal === 1 ? "" : "s"} to pass.`;
+  }
+  return "Enabled, but runtime checks are not passing yet.";
 }
 
 /* ── Toast ──────────────────────────────────────── */
@@ -319,14 +389,14 @@ function InstallTerminal({
 /* ── Skill Card (list view) ─────────────────────── */
 
 function skillStatus(skill: Skill): { label: string; color: string; toggleColor: "green" | "amber" | "default" } {
-  if (skill.disabled) return { label: "Disabled", color: "text-muted-foreground/50", toggleColor: "default" };
-  if (skill.eligible) return { label: "Active", color: "text-emerald-400", toggleColor: "green" };
-  if (hasMissing(skill.missing)) return { label: "Not ready", color: "text-amber-400/80", toggleColor: "amber" };
-  return { label: "Inactive", color: "text-muted-foreground/60", toggleColor: "default" };
+  if (skill.disabled) return { label: "Disabled", color: "text-muted-foreground/60", toggleColor: "default" };
+  return { label: "Enabled", color: "text-emerald-400", toggleColor: "green" };
 }
 
 function SkillCard({ skill, onClick, onToggle, toggling }: { skill: Skill; onClick: () => void; onToggle: (enabled: boolean) => void; toggling?: boolean }) {
   const missing = hasMissing(skill.missing);
+  const missingTotal = missingCount(skill.missing);
+  const availability = getAvailability(skill);
   const status = skillStatus(skill);
   return (
     <div
@@ -334,7 +404,7 @@ function SkillCard({ skill, onClick, onToggle, toggling }: { skill: Skill; onCli
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
-      className={cn("w-full cursor-pointer rounded-xl border p-3.5 text-left transition-all hover:scale-[1.01]", skill.disabled ? "border-foreground/[0.04] bg-foreground/[0.01] opacity-60 hover:opacity-90" : skill.eligible ? "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]" : "border-foreground/[0.04] bg-foreground/[0.01] opacity-70 hover:opacity-100 hover:border-foreground/[0.08]")}
+      className={cn("w-full cursor-pointer rounded-xl border p-3.5 text-left transition-all hover:scale-[1.01]", skill.disabled ? "border-foreground/[0.04] bg-foreground/[0.01] opacity-60 hover:opacity-90" : availability.state === "ready" ? "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]" : "border-foreground/[0.04] bg-foreground/[0.01] opacity-75 hover:opacity-100 hover:border-foreground/[0.08]")}
     >
       <div className="flex items-start gap-3">
         <span className="text-xl leading-none mt-0.5">{skill.emoji || "\u26A1"}</span>
@@ -343,8 +413,10 @@ function SkillCard({ skill, onClick, onToggle, toggling }: { skill: Skill; onCli
             <p className={cn("text-[13px] font-semibold", skill.disabled ? "text-foreground/50 line-through" : "text-foreground/90")}>{skill.name}</p>
             {skill.disabled ? (
               <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[8px] font-medium text-red-400/80">DISABLED</span>
-            ) : skill.eligible ? (
+            ) : availability.state === "ready" ? (
               <CheckCircle className="h-3 w-3 shrink-0 text-emerald-500" />
+            ) : availability.state === "blocked" ? (
+              <XCircle className="h-3 w-3 shrink-0 text-red-400/80" />
             ) : (
               <AlertTriangle className="h-3 w-3 shrink-0 text-amber-400/70" />
             )}
@@ -353,12 +425,8 @@ function SkillCard({ skill, onClick, onToggle, toggling }: { skill: Skill; onCli
           <p className="mt-0.5 line-clamp-2 text-[11px] leading-[1.5] text-muted-foreground">{skill.description}</p>
           <div className="mt-2 flex items-center gap-2">
             <span className={cn("rounded border px-1.5 py-0.5 text-[9px] font-medium", sourceColor(skill.source))}>{sourceLabel(skill.source)}</span>
-            {!skill.disabled && missing && (
-              <span className="flex items-center gap-0.5 text-[9px] text-amber-400">
-                <AlertTriangle className="h-2.5 w-2.5" />
-                {skill.missing.bins.length + skill.missing.env.length + skill.missing.config.length} missing
-              </span>
-            )}
+            <span className={cn("rounded border px-1.5 py-0.5 text-[9px] font-medium", availability.badgeClass)}>{availability.label}</span>
+            {!skill.disabled && missing && <span className="text-[9px] text-muted-foreground/80">{missingTotal} requirement{missingTotal === 1 ? "" : "s"} missing</span>}
           </div>
         </div>
         <div className="flex flex-col items-center gap-1 mt-0.5">
@@ -375,6 +443,7 @@ function SkillCard({ skill, onClick, onToggle, toggling }: { skill: Skill; onCli
           <span className={cn("text-[8px] font-medium", status.color)}>
             {status.label}
           </span>
+          <span className="text-[8px] text-muted-foreground/60">Policy</span>
         </div>
       </div>
     </div>
@@ -418,7 +487,10 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
   if (!detail) return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">Skill not found</div>;
 
   const missing = hasMissing(detail.missing);
+  const missingTotal = missingCount(detail.missing);
+  const availability = getAvailability(detail);
   const hasReqs = hasMissing(detail.requirements);
+  const runtime = runtimeMessage(detail, availability, missingTotal);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -430,7 +502,7 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <h1 className="text-[20px] font-semibold text-foreground">{detail.name}</h1>
-              {detail.eligible ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300"><CheckCircle className="h-3 w-3" />Ready</span> : <span className="flex items-center gap-1 rounded-full bg-muted/70 px-2.5 py-0.5 text-[10px] font-semibold text-muted-foreground"><XCircle className="h-3 w-3" />Not ready</span>}
+              {availability.state === "ready" ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300"><CheckCircle className="h-3 w-3" />Ready</span> : availability.state === "blocked" ? <span className="flex items-center gap-1 rounded-full bg-red-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-red-300"><XCircle className="h-3 w-3" />Blocked</span> : availability.state === "needs-setup" ? <span className="flex items-center gap-1 rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-amber-300"><AlertTriangle className="h-3 w-3" />Needs setup</span> : <span className="flex items-center gap-1 rounded-full bg-zinc-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-muted-foreground"><XCircle className="h-3 w-3" />Unavailable</span>}
               {detail.disabled && <span className="rounded-full bg-red-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-red-400">Disabled</span>}
               {detail.always && <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-amber-300">Always active</span>}
             </div>
@@ -439,6 +511,7 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
               <span className={cn("rounded border px-1.5 py-0.5 text-[10px] font-medium", sourceColor(detail.source))}>{sourceLabel(detail.source)}</span>
               {detail.homepage && <a href={detail.homepage} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-violet-400 hover:underline"><Globe className="h-3 w-3" />Homepage</a>}
             </div>
+            <p className="mt-2 text-[11px] text-muted-foreground/70">{sourceHint(detail.source)}</p>
           </div>
         </div>
       </div>
@@ -456,22 +529,25 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
                   checked={!detail.disabled}
                   onChange={(enabled) => doAction(enabled ? "enable-skill" : "disable-skill", { name: detail.name })}
                   disabled={busy !== null}
-                  color={detail.disabled ? "default" : detail.eligible ? "green" : "amber"}
+                  color={detail.disabled ? "default" : "green"}
                 />
               )}
               <div>
-                <p className={cn("text-[12px] font-medium", detail.disabled ? "text-muted-foreground" : detail.eligible ? "text-emerald-400" : "text-amber-400")}>
-                  {detail.disabled ? "Disabled" : detail.eligible ? "Active" : "Not ready"}
+                <p className={cn("text-[12px] font-medium", detail.disabled ? "text-muted-foreground" : "text-emerald-400")}>
+                  {detail.disabled ? "Policy: Disabled" : "Policy: Enabled"}
                 </p>
                 <p className="text-[10px] text-muted-foreground/60">
                   {detail.disabled
-                    ? "Skill won\u2019t be used by agents"
-                    : detail.eligible
-                      ? "All requirements met \u2014 skill is available to agents"
-                      : "Enabled but missing dependencies \u2014 install them below"}
+                    ? "skills.entries.<skill>.enabled = false"
+                    : "skills.entries.<skill>.enabled = true"}
                 </p>
               </div>
             </div>
+          </div>
+          <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Runtime</p>
+            <p className={cn("mt-0.5 text-[12px] font-medium", availability.state === "ready" ? "text-emerald-400" : availability.state === "blocked" ? "text-red-400" : availability.state === "needs-setup" ? "text-amber-400" : "text-muted-foreground")}>{availability.label}</p>
+            <p className="mt-1 text-[10px] text-muted-foreground/65">{runtime}</p>
           </div>
           {detail.skillMd && (
             <button onClick={() => setShowMd(!showMd)} className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-2 text-[12px] font-medium text-foreground/70 hover:bg-foreground/[0.1]">
@@ -629,14 +705,244 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
   );
 }
 
+function ClawHubPanel({
+  onAction,
+  onInstalled,
+}: {
+  onAction: (msg: string) => void;
+  onInstalled: (slug: string) => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<ClawHubItem[]>([]);
+  const [installed, setInstalled] = useState<Record<string, string>>({});
+  const [mode, setMode] = useState<"trending" | "search">("trending");
+  const [loading, setLoading] = useState(true);
+  const [busySlug, setBusySlug] = useState<string | null>(null);
+
+  const fetchInstalled = useCallback(async () => {
+    try {
+      const res = await fetch("/api/skills/clawhub?action=list");
+      const data = await res.json();
+      const map: Record<string, string> = {};
+      for (const row of data.items || []) {
+        const slug = String((row as { slug?: string }).slug || "");
+        const version = String((row as { version?: string }).version || "");
+        if (slug) map[slug] = version;
+      }
+      setInstalled(map);
+    } catch {
+      setInstalled({});
+    }
+  }, []);
+
+  const fetchExplore = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/skills/clawhub?action=explore&limit=28&sort=trending");
+      const data = await res.json();
+      const normalized: ClawHubItem[] = (data.items || []).map((item: {
+        slug?: string;
+        displayName?: string;
+        summary?: string;
+        latestVersion?: { version?: string };
+        stats?: { downloads?: number; installsCurrent?: number; stars?: number };
+        updatedAt?: number;
+      }) => ({
+        slug: String(item.slug || ""),
+        displayName: item.displayName || undefined,
+        summary: item.summary || "",
+        version: item.latestVersion?.version || "latest",
+        downloads: item.stats?.downloads || 0,
+        installsCurrent: item.stats?.installsCurrent || 0,
+        stars: item.stats?.stars || 0,
+        updatedAt: item.updatedAt,
+      })).filter((item: ClawHubItem) => item.slug);
+      setItems(normalized);
+    } catch {
+      setItems([]);
+    }
+    setLoading(false);
+  }, []);
+
+  const runSearch = useCallback(async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    setMode("search");
+    try {
+      const res = await fetch(`/api/skills/clawhub?action=search&q=${encodeURIComponent(query)}&limit=28`);
+      const data = await res.json();
+      const normalized: ClawHubItem[] = (data.items || []).map((item: {
+        slug?: string;
+        version?: string;
+        summary?: string;
+        score?: number;
+      }) => ({
+        slug: String(item.slug || ""),
+        version: item.version || "latest",
+        summary: item.summary || "",
+        score: typeof item.score === "number" ? item.score : undefined,
+      })).filter((item: ClawHubItem) => item.slug);
+      setItems(normalized);
+    } catch {
+      setItems([]);
+    }
+    setLoading(false);
+  }, [query]);
+
+  const installSkill = useCallback(async (slug: string, version?: string) => {
+    setBusySlug(slug);
+    try {
+      const res = await fetch("/api/skills/clawhub", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "install", slug, version }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        onAction(`Error: ${data.error || "install failed"}`);
+      } else {
+        onAction(`Installed ${slug}`);
+        await fetchInstalled();
+        await onInstalled(slug);
+      }
+    } catch (err) {
+      onAction(`Error: ${String(err)}`);
+    }
+    setBusySlug(null);
+  }, [fetchInstalled, onAction, onInstalled]);
+
+  const updateSkill = useCallback(async (slug: string) => {
+    setBusySlug(slug);
+    try {
+      const res = await fetch("/api/skills/clawhub", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", slug }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        onAction(`Error: ${data.error || "update failed"}`);
+      } else {
+        onAction(`Updated ${slug}`);
+        await fetchInstalled();
+        await onInstalled(slug);
+      }
+    } catch (err) {
+      onAction(`Error: ${String(err)}`);
+    }
+    setBusySlug(null);
+  }, [fetchInstalled, onAction, onInstalled]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void fetchInstalled();
+      void fetchExplore();
+    });
+  }, [fetchExplore, fetchInstalled]);
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden px-4 md:px-6 pb-6">
+      <div className="mb-4 rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-4 py-3">
+        <p className="text-[12px] text-muted-foreground/85">
+          Bundled skills ship with OpenClaw. ClawHub installs workspace skills into <code className="rounded bg-foreground/[0.06] px-1">workspace/skills</code>.
+        </p>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-muted/50 px-3 py-2">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+          <input
+            placeholder="Search ClawHub skills..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void runSearch(); }}
+            className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/60 text-foreground/70"
+          />
+        </div>
+        <button type="button" onClick={() => void runSearch()} className="rounded-lg border border-foreground/[0.08] px-3 py-2 text-[11px] text-muted-foreground hover:bg-muted/80">
+          Search
+        </button>
+        <button type="button" onClick={() => { setMode("trending"); void fetchExplore(); }} className="rounded-lg border border-foreground/[0.08] px-3 py-2 text-[11px] text-muted-foreground hover:bg-muted/80">
+          Trending
+        </button>
+      </div>
+
+      <div className="mb-3 flex items-center justify-between text-[11px] text-muted-foreground/70">
+        <p>{mode === "search" ? `Search results (${items.length})` : `Trending skills (${items.length})`}</p>
+        <p>{Object.keys(installed).length} installed via ClawHub</p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-violet-400" /></div>
+        ) : items.length === 0 ? (
+          <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-4 py-8 text-center text-[12px] text-muted-foreground/70">
+            No skills found.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {items.map((item) => {
+              const installedVersion = installed[item.slug];
+              const isInstalled = Boolean(installedVersion);
+              const isBusy = busySlug === item.slug;
+              return (
+                <div key={item.slug} className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-semibold text-foreground/90">{item.displayName || item.slug}</p>
+                      <p className="truncate text-[10px] text-muted-foreground/60">{item.slug}</p>
+                    </div>
+                    <span className={cn("rounded border px-1.5 py-0.5 text-[9px] font-medium", isInstalled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-foreground/[0.08] bg-muted/70 text-muted-foreground")}>
+                      {isInstalled ? `Installed ${installedVersion}` : `v${item.version || "latest"}`}
+                    </span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-[11px] leading-[1.45] text-muted-foreground">{item.summary || "No summary available."}</p>
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
+                      {typeof item.score === "number" && <span>score {item.score.toFixed(3)}</span>}
+                      {typeof item.downloads === "number" && <span>{item.downloads} downloads</span>}
+                      {typeof item.stars === "number" && <span>{item.stars} stars</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {isInstalled && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void updateSkill(item.slug)}
+                          className="rounded-md border border-foreground/[0.08] px-2.5 py-1 text-[10px] text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
+                        >
+                          {isBusy ? "Working..." : "Update"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void installSkill(item.slug, item.version)}
+                        className="rounded-md bg-violet-600 px-2.5 py-1 text-[10px] font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                      >
+                        {isBusy ? "Working..." : isInstalled ? "Reinstall" : "Install"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Main SkillsView ────────────────────────────── */
 
 export function SkillsView() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"skills" | "clawhub">("skills");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "eligible" | "missing" | "installed">("all");
+  const [filter, setFilter] = useState<"all" | "eligible" | "unavailable" | "installed">("all");
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [togglingSkill, setTogglingSkill] = useState<string | null>(null);
@@ -662,7 +968,7 @@ export function SkillsView() {
       if (!s.name.toLowerCase().includes(q) && !s.description.toLowerCase().includes(q)) return false;
     }
     if (filter === "eligible") return s.eligible;
-    if (filter === "missing") return !s.eligible;
+    if (filter === "unavailable") return !s.eligible || s.blockedByAllowlist;
     if (filter === "installed") return s.source === "openclaw-workspace";
     return true;
   }), [skills, search, filter]);
@@ -699,6 +1005,26 @@ export function SkillsView() {
     setTogglingSkill(null);
   }, [fetchAll]);
 
+  const handleClawHubInstalled = useCallback(async (slug: string) => {
+    try {
+      const listRes = await fetch("/api/skills").then((r) => r.json());
+      const latest = (listRes.skills || []) as Skill[];
+      setSkills(latest);
+      const match = latest.find((s) => s.name === slug);
+      if (match?.disabled) {
+        await fetch("/api/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "enable-skill", name: slug }),
+        });
+      }
+      await fetchAll();
+      requestRestart("Skill catalog was updated.");
+    } catch {
+      await fetchAll();
+    }
+  }, [fetchAll]);
+
   if (loading) return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>;
 
   // Detail view
@@ -721,12 +1047,31 @@ export function SkillsView() {
           <div>
             <h2 className="text-[18px] font-semibold text-foreground flex items-center gap-2"><Wrench className="h-5 w-5 text-violet-400" />Skills</h2>
             <p className="text-[12px] text-muted-foreground mt-0.5">Browse, install, and configure OpenClaw skills. Click any skill for details.</p>
+            <p className="mt-1 text-[10px] text-muted-foreground/70">Configured state and availability are separate: a skill can be enabled but still unavailable until its requirements are met.</p>
           </div>
-          <button type="button" onClick={fetchAll} className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/80"><RefreshCw className="h-3 w-3" />Refresh</button>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border border-foreground/[0.08] bg-muted/50 p-1">
+              <button
+                type="button"
+                onClick={() => setTab("skills")}
+                className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors", tab === "skills" ? "bg-violet-500/15 text-violet-300" : "text-muted-foreground hover:text-foreground/80")}
+              >
+                Local Skills
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("clawhub")}
+                className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors", tab === "clawhub" ? "bg-violet-500/15 text-violet-300" : "text-muted-foreground hover:text-foreground/80")}
+              >
+                ClawHub
+              </button>
+            </div>
+            <button type="button" onClick={fetchAll} className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/80"><RefreshCw className="h-3 w-3" />Refresh</button>
+          </div>
         </div>
 
         {/* Summary */}
-        {summary && (
+        {tab === "skills" && summary && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             <SumCard value={summary.total} label="Total" color="text-foreground/90" />
             <SumCard value={summary.eligible} label="Ready" color="text-emerald-400" border="border-emerald-500/20" bg="bg-emerald-500/5" />
@@ -737,22 +1082,21 @@ export function SkillsView() {
         )}
 
         {/* Search + filter */}
-        <div className="flex flex-wrap items-center gap-3">
+        {tab === "skills" && <div className="flex flex-wrap items-center gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-muted/50 px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground/60" />
             <input placeholder="Search skills..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/60 text-foreground/70" />
             {search && <button onClick={() => setSearch("")} className="text-muted-foreground/60 hover:text-muted-foreground"><X className="h-3.5 w-3.5" /></button>}
           </div>
-          <div className="flex gap-1">{(["all", "eligible", "missing", "installed"] as const).map((f) => (
+          <div className="flex gap-1">{(["all", "eligible", "unavailable", "installed"] as const).map((f) => (
             <button key={f} type="button" onClick={() => setFilter(f)} className={cn("rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors", filter === f ? "bg-violet-500/15 text-violet-300" : "text-muted-foreground hover:bg-muted/80 hover:text-muted-foreground")}>
-              {f === "all" ? "All" : f === "eligible" ? "Ready" : f === "missing" ? "Missing" : "Installed"}
+              {f === "all" ? "All" : f === "eligible" ? "Ready" : f === "unavailable" ? "Unavailable" : "Installed"}
             </button>
           ))}</div>
-        </div>
+        </div>}
       </div>
 
-      {/* Skills grid */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-6">
+      {tab === "skills" && <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-6">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((s) => (
             <SkillCard
@@ -771,7 +1115,14 @@ export function SkillsView() {
             <p className="text-[11px] text-muted-foreground/60 mt-1">Try different keywords or change the filter.</p>
           </div>
         )}
-      </div>
+      </div>}
+
+      {tab === "clawhub" && (
+        <ClawHubPanel
+          onAction={handleAction}
+          onInstalled={handleClawHubInstalled}
+        />
+      )}
       {toast && <ToastBar toast={toast} onDone={() => setToast(null)} />}
     </div>
   );

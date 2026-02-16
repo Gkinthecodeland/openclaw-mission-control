@@ -39,6 +39,8 @@ function TerminalPane({
   const termRef = useRef<unknown>(null);
   const fitRef = useRef<unknown>(null);
   const sseRef = useRef<AbortController | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const inputTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initRef = useRef(false);
 
   useEffect(() => {
@@ -58,6 +60,7 @@ function TerminalPane({
       const term = new Terminal({
         cursorBlink: true,
         cursorStyle: "bar",
+        disableStdin: false,
         fontSize: 13,
         fontFamily: "'SF Mono', 'Fira Code', 'JetBrains Mono', Menlo, Monaco, 'Courier New', monospace",
         lineHeight: 1.35,
@@ -103,10 +106,38 @@ function TerminalPane({
       });
 
       // Also focus on click anywhere in the container
-      containerRef.current.addEventListener("click", () => term.focus());
+      const clickHandler = () => term.focus();
+      containerRef.current.addEventListener("click", clickHandler);
 
       termRef.current = term;
       fitRef.current = fitAddon;
+
+      // ── Send keystrokes to backend ──
+      let inputBuffer = "";
+
+      const flushInput = () => {
+        if (!inputBuffer) return;
+        const raw = inputBuffer;
+        inputBuffer = "";
+        fetch("/api/terminal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "input", session: sessionId, data: raw }),
+        }).catch(() => {});
+      };
+
+      term.onData((data: string) => {
+        inputBuffer += data;
+        // Flush immediately for Enter, Ctrl+C, etc. or batch with tiny delay
+        if (data === "\r" || data === "\x03" || data === "\x04" || data.length > 1) {
+          if (inputTimerRef.current) clearTimeout(inputTimerRef.current);
+          inputTimerRef.current = null;
+          flushInput();
+        } else {
+          if (inputTimerRef.current) clearTimeout(inputTimerRef.current);
+          inputTimerRef.current = setTimeout(flushInput, 5);
+        }
+      });
 
       // ── Connect SSE for output ──
       const abortController = new AbortController();
@@ -117,6 +148,11 @@ function TerminalPane({
           `/api/terminal?action=stream&session=${sessionId}`,
           { signal: abortController.signal }
         );
+        if (!res.ok || !res.body) {
+          term.writeln("\r\n\x1b[31m[Failed to connect terminal stream]\x1b[0m");
+          onDied();
+          return;
+        }
         const reader = res.body?.getReader();
         if (!reader) return;
 
@@ -138,6 +174,9 @@ function TerminalPane({
                 const msg = JSON.parse(line.slice(6));
                 if (msg.type === "output") {
                   term.write(msg.text);
+                  if (typeof msg.text === "string" && msg.text.includes("[Session ended]")) {
+                    onDied();
+                  }
                 } else if (msg.type === "status" && !msg.alive) {
                   onDied();
                 }
@@ -155,60 +194,47 @@ function TerminalPane({
         // Aborted or failed
       }
 
-      // ── Send keystrokes to backend ──
-      let inputBuffer = "";
-      let inputTimer: ReturnType<typeof setTimeout> | null = null;
-
-      const flushInput = () => {
-        if (!inputBuffer) return;
-        const raw = inputBuffer;
-        inputBuffer = "";
-        // Shell reading from pipe expects \n to execute a line; xterm sends \r on Enter
-        const data = raw.replace(/\r/g, "\n");
-        fetch("/api/terminal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "input", session: sessionId, data }),
-        }).catch(() => {});
-      };
-
-      term.onData((data: string) => {
-        // Local echo: shell is in pipe mode so it won't echo; show typed chars locally
-        term.write(data);
-        inputBuffer += data;
-        // Flush immediately for Enter, Ctrl+C, etc. or batch with tiny delay
-        if (data === "\r" || data === "\x03" || data === "\x04" || data.length > 1) {
-          if (inputTimer) clearTimeout(inputTimer);
-          inputTimer = null;
-          flushInput();
-        } else {
-          if (inputTimer) clearTimeout(inputTimer);
-          inputTimer = setTimeout(flushInput, 5);
-        }
-      });
-
       // ── Resize observer ──
       const observer = new ResizeObserver(() => {
-        try { fitAddon.fit(); } catch { /* */ }
+        try {
+          fitAddon.fit();
+          fetch("/api/terminal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "resize",
+              session: sessionId,
+              cols: term.cols,
+              rows: term.rows,
+            }),
+          }).catch(() => {});
+        } catch {
+          // ignore
+        }
       });
       observer.observe(containerRef.current);
 
-      // Store cleanup
-      const cleanup = () => {
+      cleanupRef.current = () => {
         disposed = true;
         observer.disconnect();
         abortController.abort();
+        if (inputTimerRef.current) {
+          clearTimeout(inputTimerRef.current);
+          inputTimerRef.current = null;
+        }
+        containerRef.current?.removeEventListener("click", clickHandler);
         term.dispose();
       };
-      (containerRef.current as unknown as Record<string, unknown>).__cleanup = cleanup;
     })();
 
     return () => {
-      const el = containerRef.current as unknown as Record<string, unknown> | null;
-      if (el?.__cleanup && typeof el.__cleanup === "function") {
-        el.__cleanup();
-      }
+      cleanupRef.current?.();
+      cleanupRef.current = null;
       sseRef.current?.abort();
+      if (inputTimerRef.current) {
+        clearTimeout(inputTimerRef.current);
+        inputTimerRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
@@ -248,12 +274,8 @@ export function TerminalView() {
   const [activeTab, setActiveTab] = useState<string>("");
   const [creating, setCreating] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-
-  // Create first session on mount
-  useEffect(() => {
-    createTab();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const createdInitialRef = useRef(false);
+  const tabCounterRef = useRef(1);
 
   const createTab = useCallback(async () => {
     setCreating(true);
@@ -267,7 +289,7 @@ export function TerminalView() {
       if (data.ok && data.session) {
         const newTab: TabInfo = {
           id: data.session,
-          label: `Terminal ${tabs.length + 1}`,
+          label: `Terminal ${tabCounterRef.current++}`,
           alive: true,
         };
         setTabs((prev) => [...prev, newTab]);
@@ -277,7 +299,17 @@ export function TerminalView() {
       // ignore
     }
     setCreating(false);
-  }, [tabs.length]);
+  }, []);
+
+  // Create first session on mount (guarded for React strict mode)
+  useEffect(() => {
+    if (createdInitialRef.current) return;
+    createdInitialRef.current = true;
+    const timer = setTimeout(() => {
+      void createTab();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [createTab]);
 
   const closeTab = useCallback(
     async (id: string) => {
@@ -292,6 +324,8 @@ export function TerminalView() {
         const next = prev.filter((t) => t.id !== id);
         if (activeTab === id && next.length > 0) {
           setActiveTab(next[next.length - 1].id);
+        } else if (next.length === 0) {
+          setActiveTab("");
         }
         return next;
       });
@@ -305,12 +339,12 @@ export function TerminalView() {
     fetch("/api/terminal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "input",
-        session: activeTab,
-        data: "clear\r",
-      }),
-    }).catch(() => {});
+        body: JSON.stringify({
+          action: "input",
+          session: activeTab,
+          data: "clear\r",
+        }),
+      }).catch(() => {});
   }, [activeTab]);
 
   return (
