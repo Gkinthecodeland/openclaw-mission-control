@@ -14,6 +14,7 @@ import {
   Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionBody, SectionLayout } from "@/components/section-layout";
 
 /* ── Types ────────────────────────────────────────── */
 
@@ -261,8 +262,8 @@ export function ChannelsView() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-4xl space-y-8 px-4 py-6 md:px-6">
+    <SectionLayout>
+      <SectionBody width="narrow" padding="roomy" innerClassName="space-y-8">
         <section>
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
@@ -655,7 +656,6 @@ export function ChannelsView() {
             )}
           </div>
         </section>
-      </div>
 
       {toast && (
         <div
@@ -674,6 +674,7 @@ export function ChannelsView() {
           {toast.message}
         </div>
       )}
-    </div>
+      </SectionBody>
+    </SectionLayout>
   );
 }

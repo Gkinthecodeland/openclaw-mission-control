@@ -15,6 +15,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionLayout } from "@/components/section-layout";
 
 /* ── Types ── */
 
@@ -348,12 +349,9 @@ export function TerminalView() {
   }, [activeTab]);
 
   return (
-    <div
+    <SectionLayout
       className={cn(
-        "flex flex-col overflow-hidden",
-        fullscreen
-          ? "fixed inset-0 z-50 bg-background"
-          : "flex-1"
+        fullscreen && "fixed inset-0 z-50 bg-background"
       )}
     >
       {/* ── Header ── */}
@@ -464,6 +462,6 @@ export function TerminalView() {
           />
         ))}
       </div>
-    </div>
+    </SectionLayout>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, useCallback, useSyncExternalStore, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -70,8 +70,12 @@ const navItems: {
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const searchParams = useSearchParams();
-  const section = searchParams.get("section") || "dashboard";
-  const tab = (searchParams.get("tab") || "").toLowerCase();
+  const pathname = usePathname();
+  const sectionFromQuery = searchParams.get("section") || "dashboard";
+  const tabFromQuery = (searchParams.get("tab") || "").toLowerCase();
+  const isSkillDetailRoute = pathname.startsWith("/skills/");
+  const section = isSkillDetailRoute ? "skills" : sectionFromQuery;
+  const tab = isSkillDetailRoute ? "skills" : tabFromQuery;
   const [skillsExpanded, setSkillsExpanded] = useState(true);
   const isClawHubActive = section === "skills" && tab === "clawhub";
   const showSkillsChildren = isClawHubActive ? true : skillsExpanded;

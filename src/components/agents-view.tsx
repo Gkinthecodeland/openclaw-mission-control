@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { requestRestart } from "@/lib/restart-store";
+import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 
 /* ================================================================
    Types
@@ -2677,60 +2678,60 @@ export function AgentsView() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-4 md:px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
-            <Users className="h-5 w-5 text-violet-400" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground">Agents</h1>
-            <p className="text-xs text-muted-foreground/60">
-              {data.agents.length} agent{data.agents.length !== 1 && "s"} configured
-            </p>
-          </div>
-          </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-500/20"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Add Agent</span>
-          </button>
-          <div className="flex rounded-lg border border-foreground/[0.06] bg-card">
+    <SectionLayout>
+      <SectionHeader
+        title={
+          <span className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
+              <Users className="h-5 w-5 text-violet-400" />
+            </span>
+            Agents
+          </span>
+        }
+        description={`${data.agents.length} agent${data.agents.length !== 1 ? "s" : ""} configured`}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setView("flow")}
-              className={cn(
-                "rounded-l-lg px-3 py-1.5 text-[11px] font-medium transition",
-                view === "flow"
-                  ? "bg-violet-500/15 text-violet-400"
-                  : "text-muted-foreground hover:text-foreground/70"
-              )}
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-500/20"
             >
-              Org Chart
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Add Agent</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setView("grid")}
-              className={cn(
-                "rounded-r-lg px-3 py-1.5 text-[11px] font-medium transition",
-                view === "grid"
-                  ? "bg-violet-500/15 text-violet-400"
-                  : "text-muted-foreground hover:text-foreground/70"
-              )}
-            >
-              Grid
+            <div className="flex rounded-lg border border-foreground/[0.06] bg-card">
+              <button
+                type="button"
+                onClick={() => setView("flow")}
+                className={cn(
+                  "rounded-l-lg px-3 py-1.5 text-[11px] font-medium transition",
+                  view === "flow"
+                    ? "bg-violet-500/15 text-violet-400"
+                    : "text-muted-foreground hover:text-foreground/70"
+                )}
+              >
+                Org Chart
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("grid")}
+                className={cn(
+                  "rounded-r-lg px-3 py-1.5 text-[11px] font-medium transition",
+                  view === "grid"
+                    ? "bg-violet-500/15 text-violet-400"
+                    : "text-muted-foreground hover:text-foreground/70"
+                )}
+              >
+                Grid
+              </button>
+            </div>
+            <button type="button" onClick={fetchAgents} className="rounded-lg border border-foreground/[0.06] bg-card p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground/70">
+              <RefreshCw className="h-3.5 w-3.5" />
             </button>
           </div>
-          <button type="button" onClick={fetchAgents} className="rounded-lg border border-foreground/[0.06] bg-card p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground/70">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
+        }
+        className="py-3"
+      />
 
       {/* Flow view: full width, full remaining height */}
       {view === "flow" && (
@@ -2743,23 +2744,21 @@ export function AgentsView() {
 
       {/* Grid view + detail: scrollable with max-width */}
       {view === "grid" && (
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-6xl space-y-5 px-4 md:px-6 py-6">
-            <SummaryBar agents={data.agents} />
-            <GridView
-              agents={data.agents}
-              selectedId={selectedId}
-              onSelect={handleAgentClick}
+        <SectionBody width="content" padding="roomy" innerClassName="space-y-5">
+          <SummaryBar agents={data.agents} />
+          <GridView
+            agents={data.agents}
+            selectedId={selectedId}
+            onSelect={handleAgentClick}
+          />
+          {selectedAgent && (
+            <AgentDetail
+              agent={selectedAgent}
+              idx={selectedIdx}
+              allAgents={data.agents}
             />
-            {selectedAgent && (
-              <AgentDetail
-                agent={selectedAgent}
-                idx={selectedIdx}
-                allAgents={data.agents}
-              />
-            )}
-          </div>
-        </div>
+          )}
+        </SectionBody>
       )}
 
       {/* Add Agent Modal */}
@@ -2789,6 +2788,6 @@ export function AgentsView() {
           }}
         />
       )}
-    </div>
+    </SectionLayout>
   );
 }

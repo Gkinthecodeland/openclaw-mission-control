@@ -57,11 +57,30 @@ Clone this repo **anywhere** (it auto-discovers your OpenClaw installation):
 ```bash
 git clone https://github.com/robsannaa/openclaw-mission-control.git
 cd openclaw-mission-control
+./setup.sh
+```
+
+`setup.sh` installs dependencies, builds the app, and starts it as a background service.
+Use `PORT=3333 ./setup.sh` to change port, or `./setup.sh --dev --no-service` for local dev mode.
+
+`setup.sh` 会安装依赖、构建应用，并以后台服务启动。
+可用 `PORT=3333 ./setup.sh` 修改端口，或 `./setup.sh --dev --no-service` 使用本地开发模式。
+
+Remote access example / 远程访问示例：
+
+```bash
+ssh -N -L 3333:127.0.0.1:3333 user@your-server
+```
+
+Manual mode (no setup script) / 手动模式（不用 setup 脚本）：
+
+```bash
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` — done! / 打开 `http://localhost:3000` —— 完成！
+Open `http://localhost:3333` (setup script) or `http://localhost:3000` (manual dev) — done!  
+打开 `http://localhost:3333`（setup 脚本）或 `http://localhost:3000`（手动开发）—— 完成！
 
 > **Zero config needed.** The dashboard automatically finds your `~/.openclaw` directory and the `openclaw` binary.
 >

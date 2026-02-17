@@ -28,6 +28,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionBody, SectionLayout } from "@/components/section-layout";
 
 /* ── types ────────────────────────────────────────── */
 
@@ -1044,7 +1045,7 @@ export function DashboardView() {
   const isFreshSetup = live.agents.length <= 1 && live.cron.stats.total === 0;
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
+    <SectionLayout>
       {/* ── Gateway status bar ────────────────────── */}
       <div className="shrink-0 border-b border-foreground/[0.06] bg-card/80 px-4 py-2.5 md:px-6">
         <div className="flex items-center justify-between">
@@ -1073,7 +1074,7 @@ export function DashboardView() {
         </div>
       </div>
 
-      <div className="mx-auto w-full space-y-5 px-4 py-5 md:px-6 lg:max-w-6xl">
+      <SectionBody width="content" padding="regular" innerClassName="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex rounded-xl border border-foreground/[0.08] bg-card/70 p-1">
             <button
@@ -1527,8 +1528,8 @@ export function DashboardView() {
             onRefresh={() => void fetchGatewayDiagnostics()}
           />
         )}
-      </div>
-    </div>
+      </SectionBody>
+    </SectionLayout>
   );
 }
 

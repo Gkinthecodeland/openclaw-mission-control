@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InlineMarkdownEditor } from "./inline-markdown-editor";
+import { SectionLayout } from "@/components/section-layout";
 
 /* ── types ─────────────────────────────────────── */
 
@@ -658,7 +659,7 @@ export function DocsView() {
   /* ── render ──────────────────────────────────── */
 
   return (
-    <>
+    <SectionLayout>
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
       {/* Left panel */}
       <div className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-hidden border-b border-foreground/[0.06] bg-card/60 md:max-h-none md:w-[360px] md:border-b-0 md:border-r">
@@ -1074,6 +1075,6 @@ export function DocsView() {
           {actionMsg.msg}
         </div>
       )}
-    </>
+    </SectionLayout>
   );
 }

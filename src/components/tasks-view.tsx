@@ -19,6 +19,7 @@ import {
   GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionLayout } from "@/components/section-layout";
 
 /* ── types ─────────────────────────────────────── */
 
@@ -203,7 +204,7 @@ export function TasksView() {
 
   /* ── Normal board view ── */
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <SectionLayout>
       {/* Stats header */}
       <div className="shrink-0 space-y-3 px-4 md:px-6 pt-5 pb-4">
         <div className="flex items-center justify-between">
@@ -376,7 +377,7 @@ export function TasksView() {
           );
         })}
       </div>
-    </div>
+    </SectionLayout>
   );
 }
 

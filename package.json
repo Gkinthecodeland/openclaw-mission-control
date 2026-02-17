@@ -33,7 +33,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "dashboard": "node bin/cli.mjs"
+    "dashboard": "node bin/cli.mjs",
+    "setup": "./setup.sh",
+    "setup:dev": "./setup.sh --dev --no-service"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.88",

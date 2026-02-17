@@ -25,6 +25,7 @@ import {
   GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 
 /* ================================================================
    Types
@@ -1096,19 +1097,16 @@ export function ConfigEditor() {
   /* ── Render ─────────────────────── */
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 border-b border-foreground/[0.06] px-4 md:px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="flex items-center gap-2 text-[18px] font-semibold text-foreground">
-              <Settings2 className="h-5 w-5 text-violet-400" />
-              Configuration
-            </h1>
-            <p className="text-[12px] text-muted-foreground mt-0.5">
-              Edit your OpenClaw settings safely &bull; Changes are validated before saving
-            </p>
-          </div>
+    <SectionLayout>
+      <SectionHeader
+        title={
+          <span className="flex items-center gap-2 text-[18px]">
+            <Settings2 className="h-5 w-5 text-violet-400" />
+            Configuration
+          </span>
+        }
+        description="Edit your OpenClaw settings safely • Changes are validated before saving"
+        actions={
           <div className="flex items-center gap-2">
             {/* Search */}
             <div className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-muted/50 px-2.5 py-1.5">
@@ -1162,8 +1160,8 @@ export function ConfigEditor() {
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {fetchWarning && (
         <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/[0.06] px-4 py-2 md:px-6">
@@ -1217,7 +1215,7 @@ export function ConfigEditor() {
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-2">
+      <SectionBody width="wide" padding="compact" innerClassName="space-y-2">
         {showRawJson ? (
           /* Raw JSON view */
           <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4">
@@ -1329,9 +1327,9 @@ export function ConfigEditor() {
             </button>
           </div>
         )}
-      </div>
+      </SectionBody>
 
       {toast && <ToastBar toast={toast} onDone={() => setToast(null)} />}
-    </div>
+    </SectionLayout>
   );
 }

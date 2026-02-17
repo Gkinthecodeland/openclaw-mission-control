@@ -24,6 +24,7 @@ import {
   Ear,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 
 /* ── Types ────────────────────────────────────────── */
 
@@ -1226,30 +1227,26 @@ export function AudioView() {
   } = data;
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-4 md:px-6 py-4">
-        <div>
-          <h1 className="text-[18px] font-semibold text-foreground flex items-center gap-2">
+    <SectionLayout>
+      <SectionHeader
+        title={
+          <span className="flex items-center gap-2">
             <Volume2 className="h-5 w-5 text-violet-400" />
             Audio & Voice
-          </h1>
-          <p className="text-[12px] text-muted-foreground mt-0.5">
-            Text-to-speech, Talk Mode, and audio understanding configuration
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+          </span>
+        }
+        description="Text-to-speech, Talk Mode, and audio understanding configuration"
+        actions={
           <button
             onClick={fetchData}
             className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground/70"
           >
             <RefreshCw className="h-4 w-4" />
           </button>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5 space-y-6">
+      <SectionBody width="content" padding="regular" innerClassName="space-y-6">
         {/* Auto-TTS explanation + mode selector */}
         <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-5 space-y-4">
           <div>
@@ -1432,10 +1429,10 @@ export function AudioView() {
             ))}
           </div>
         </div>
-      </div>
+      </SectionBody>
 
       {toast && <ToastBar toast={toast} onDone={() => setToast(null)} />}
-    </div>
+    </SectionLayout>
   );
 }
 

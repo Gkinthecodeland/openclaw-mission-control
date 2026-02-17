@@ -182,6 +182,36 @@
   }
 }
 
+@layer components {
+  .mc-panel {
+    @apply rounded-2xl border border-border/70 bg-card/60 p-4 md:p-5;
+  }
+
+  .mc-subpanel {
+    @apply rounded-lg border border-border/70 bg-muted/25 p-2.5;
+  }
+
+  .mc-control {
+    @apply rounded-lg border border-border bg-background/80;
+  }
+
+  .mc-action-btn {
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-40;
+  }
+
+  .mc-note-warning {
+    @apply text-amber-700 dark:text-amber-300;
+  }
+
+  .mc-note-info {
+    @apply text-cyan-700 dark:text-cyan-300;
+  }
+
+  .mc-kicker {
+    @apply text-xs uppercase tracking-wide text-muted-foreground;
+  }
+}
+
 /* Space background — dark mode only */
 body {
   position: relative;

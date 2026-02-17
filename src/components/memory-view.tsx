@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Brain,
@@ -22,10 +22,12 @@ import {
 import { cn } from "@/lib/utils";
 import { InlineMarkdownEditor } from "./inline-markdown-editor";
 import { MemoryGraphView } from "./memory-graph-view";
+import { SectionLayout } from "@/components/section-layout";
 
 type CtxMenuState = { x: number; y: number; entry: DailyEntry } | null;
 
 type VectorState = "indexed" | "stale" | "not_indexed" | "unknown";
+
 type DailyEntry = {
   name: string;
   date: string;
@@ -34,9 +36,53 @@ type DailyEntry = {
   mtime?: string;
   vectorState?: VectorState;
 };
-type MemoryMd = { content: string; words: number; size: number; mtime?: string } | null;
 
-function vectorBadge(entry: DailyEntry): {
+type MemoryMd = {
+  content: string;
+  words: number;
+  size: number;
+  mtime?: string;
+  fileName?: string;
+  path?: string;
+  vectorState?: VectorState;
+  hasAltCaseFile?: boolean;
+} | null;
+
+type AgentMemoryFile = {
+  agentId: string;
+  agentName: string;
+  isDefault: boolean;
+  workspace: string;
+  exists: boolean;
+  fileName: string;
+  path: string;
+  hasAltCaseFile?: boolean;
+  words: number;
+  size: number;
+  mtime?: string;
+  vectorState?: VectorState;
+  dirty?: boolean;
+  indexedFiles?: number;
+  indexedChunks?: number;
+  scanIssues?: string[];
+  provider?: string;
+  model?: string;
+};
+
+type DetailMeta = {
+  title: string;
+  words?: number;
+  size?: number;
+  fileKey: string;
+  fileName?: string;
+  mtime?: string;
+  kind: "core" | "journal" | "agent-memory";
+  vectorState?: VectorState;
+  workspace?: string;
+  agentId?: string;
+};
+
+function vectorBadge(entry: { vectorState?: VectorState }): {
   label: string;
   className: string;
   Icon: React.ComponentType<{ className?: string }>;
@@ -70,6 +116,7 @@ function vectorBadge(entry: DailyEntry): {
 }
 
 function formatBytes(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
   if (n < 1024) return `${n} B`;
   return `${(n / 1024).toFixed(1)} KB`;
 }
@@ -86,6 +133,13 @@ function formatAgo(d?: string) {
   if (hours < 24) return `about ${hours}h ago`;
   if (days === 1) return "1 day ago";
   return `${days} days ago`;
+}
+
+function shortWorkspace(path: string): string {
+  const clean = String(path || "").trim();
+  if (!clean) return "workspace";
+  const bits = clean.split("/").filter(Boolean);
+  return bits[bits.length - 1] || clean;
 }
 
 const PERIOD_ORDER = ["Today", "Yesterday", "This Week", "This Month"] as const;
@@ -134,6 +188,27 @@ function normalizeMemoryPath(rawPath: string): string {
   return trimmed;
 }
 
+const JOURNAL_PREFIX = "journal:";
+const AGENT_MEMORY_PREFIX = "agent-memory:";
+
+function journalKey(file: string): string {
+  return `${JOURNAL_PREFIX}${file}`;
+}
+
+function agentMemoryKey(agentId: string): string {
+  return `${AGENT_MEMORY_PREFIX}${agentId}`;
+}
+
+function selectedJournalFile(selected: string | null): string | null {
+  if (!selected || !selected.startsWith(JOURNAL_PREFIX)) return null;
+  return selected.slice(JOURNAL_PREFIX.length);
+}
+
+function selectedAgentId(selected: string | null): string | null {
+  if (!selected || !selected.startsWith(AGENT_MEMORY_PREFIX)) return null;
+  return selected.slice(AGENT_MEMORY_PREFIX.length);
+}
+
 export function MemoryView() {
   const router = useRouter();
   const pathname = usePathname();
@@ -141,15 +216,10 @@ export function MemoryView() {
   const [activeTab, setActiveTab] = useState<"journal" | "graph">("journal");
   const [daily, setDaily] = useState<DailyEntry[]>([]);
   const [memoryMd, setMemoryMd] = useState<MemoryMd>(null);
-  const [selected, setSelected] = useState<"memory" | string | null>("memory");
+  const [agentMemoryFiles, setAgentMemoryFiles] = useState<AgentMemoryFile[]>([]);
+  const [selected, setSelected] = useState<string | null>("memory");
   const [detailContent, setDetailContent] = useState<string | null>(null);
-  const [detailMeta, setDetailMeta] = useState<{
-    title: string;
-    words?: number;
-    size?: number;
-    fileKey: "memory" | string;
-    mtime?: string;
-  } | null>(null);
+  const [detailMeta, setDetailMeta] = useState<DetailMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | null>(null);
@@ -172,15 +242,21 @@ export function MemoryView() {
       if (!detailMeta) return;
       setSaveStatus("saving");
       try {
-        const body =
-          detailMeta.fileKey === "memory"
-            ? { content }
-            : { file: detailMeta.fileKey, content };
+        let body: Record<string, unknown> = { content };
+        if (detailMeta.kind === "journal") {
+          if (!detailMeta.fileName) throw new Error("missing journal file name");
+          body = { file: detailMeta.fileName, content };
+        } else if (detailMeta.kind === "agent-memory") {
+          if (!detailMeta.agentId) throw new Error("missing agent id");
+          body = { agentMemory: detailMeta.agentId, content };
+        }
+
         const res = await fetch("/api/memory", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
+
         if (res.ok) {
           const data = await res.json();
           setDetailContent(content);
@@ -210,17 +286,16 @@ export function MemoryView() {
       setSaveStatus("unsaved");
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(() => {
-        saveContent(newMarkdown);
-      }, 300); // short since editor already debounces
+        void saveContent(newMarkdown);
+      }, 300);
     },
     [saveContent]
   );
 
-  // Cmd+S: flush pending debounce and save immediately
   const handleSave = useCallback(
     (markdown: string) => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveContent(markdown);
+      void saveContent(markdown);
     },
     [saveContent]
   );
@@ -253,27 +328,128 @@ export function MemoryView() {
     []
   );
 
+  const selectLongTermMemory = useCallback(() => {
+    if (!memoryMd) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    setSelected("memory");
+    setSaveStatus(null);
+    setDetailContent(memoryMd.content);
+    setDetailMeta({
+      title: "Core Workspace MEMORY.md",
+      words: memoryMd.words,
+      size: memoryMd.size,
+      fileKey: "memory-core",
+      mtime: memoryMd.mtime,
+      kind: "core",
+      vectorState: memoryMd.vectorState,
+      workspace: "default",
+    });
+  }, [memoryMd]);
+
+  const loadJournalFile = useCallback((file: string, title: string) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    setSelected(journalKey(file));
+    setSaveStatus(null);
+    fetch(`/api/memory?file=${encodeURIComponent(file)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setDetailContent(data.content || "");
+        setDetailMeta({
+          title,
+          words: data.words,
+          size: data.size,
+          fileKey: journalKey(file),
+          fileName: file,
+          kind: "journal",
+          mtime: data.mtime,
+          vectorState: daily.find((d) => d.name === file)?.vectorState,
+          workspace: "default/memory",
+        });
+      })
+      .catch(() => {
+        setDetailContent("Failed to load.");
+        setDetailMeta({
+          title,
+          fileKey: journalKey(file),
+          fileName: file,
+          kind: "journal",
+        });
+      });
+  }, [daily]);
+
+  const selectAgentMemory = useCallback((entry: AgentMemoryFile) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    setSelected(agentMemoryKey(entry.agentId));
+    setSaveStatus(null);
+    fetch(`/api/memory?agentMemory=${encodeURIComponent(entry.agentId)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) throw new Error(String(data.error));
+        setDetailContent(String(data.content || ""));
+        setDetailMeta({
+          title: `${entry.agentName} · ${entry.fileName}`,
+          words: Number(data.words || 0),
+          size: Number(data.size || 0),
+          fileKey: agentMemoryKey(entry.agentId),
+          kind: "agent-memory",
+          mtime: data.mtime,
+          vectorState: (data.vectorState as VectorState) || entry.vectorState,
+          workspace: entry.workspace,
+          agentId: entry.agentId,
+        });
+      })
+      .catch(() => {
+        setDetailContent(entry.exists ? "Failed to load." : "");
+        setDetailMeta({
+          title: `${entry.agentName} · ${entry.fileName}`,
+          words: entry.words,
+          size: entry.size,
+          fileKey: agentMemoryKey(entry.agentId),
+          kind: "agent-memory",
+          mtime: entry.mtime,
+          vectorState: entry.vectorState,
+          workspace: entry.workspace,
+          agentId: entry.agentId,
+        });
+      });
+  }, []);
+
   const fetchMemoryData = useCallback(async (initializeDetail = false) => {
     setLoading(true);
     try {
       const r = await fetch("/api/memory");
       const data = await r.json();
-      setDaily(data.daily || []);
-      setMemoryMd(data.memoryMd || null);
-      if (initializeDetail && data.memoryMd) {
-        setDetailContent(data.memoryMd.content);
+      const nextDaily = Array.isArray(data.daily) ? (data.daily as DailyEntry[]) : [];
+      const nextAgents = Array.isArray(data.agentMemoryFiles)
+        ? (data.agentMemoryFiles as AgentMemoryFile[])
+        : [];
+      const nextCore = (data.memoryMd || null) as MemoryMd;
+
+      setDaily(nextDaily);
+      setMemoryMd(nextCore);
+      setAgentMemoryFiles(nextAgents);
+
+      if (!initializeDetail) return;
+      if (nextCore) {
+        setDetailContent(nextCore.content);
         setDetailMeta({
-          title: "Long-Term Memory",
-          words: data.memoryMd.words,
-          size: data.memoryMd.size,
-          fileKey: "memory",
-          mtime: data.memoryMd.mtime,
+          title: "Core Workspace MEMORY.md",
+          words: nextCore.words,
+          size: nextCore.size,
+          fileKey: "memory-core",
+          mtime: nextCore.mtime,
+          kind: "core",
+          vectorState: nextCore.vectorState,
+          workspace: "default",
         });
+        setSelected("memory");
+      } else if (nextAgents.length > 0) {
+        selectAgentMemory(nextAgents[0]);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectAgentMemory]);
 
   const deleteEntry = useCallback(
     async (entry: DailyEntry) => {
@@ -285,17 +461,13 @@ export function MemoryView() {
         const data = await res.json();
         if (data.ok) {
           setDaily((prev) => prev.filter((d) => d.name !== entry.name));
-          if (selected === entry.name) {
-            setSelected("memory");
-            setDetailContent(memoryMd?.content ?? null);
+          if (selected === journalKey(entry.name)) {
             if (memoryMd) {
-              setDetailMeta({
-                title: "Long-Term Memory",
-                words: memoryMd.words,
-                size: memoryMd.size,
-                fileKey: "memory",
-                mtime: memoryMd.mtime,
-              });
+              selectLongTermMemory();
+            } else {
+              setSelected(null);
+              setDetailContent(null);
+              setDetailMeta(null);
             }
           }
           setActionMsg({ ok: true, msg: `Deleted ${entry.name}` });
@@ -308,7 +480,7 @@ export function MemoryView() {
       setConfirmDelete(null);
       setTimeout(() => setActionMsg(null), 3000);
     },
-    [selected, memoryMd]
+    [memoryMd, selectLongTermMemory, selected]
   );
 
   const renameEntry = useCallback(
@@ -330,9 +502,13 @@ export function MemoryView() {
               d.name === entry.name ? { ...d, name: data.file } : d
             )
           );
-          if (selected === entry.name) {
-            setSelected(data.file);
-            setDetailMeta((m) => (m ? { ...m, fileKey: data.file, title: data.file } : null));
+          if (selected === journalKey(entry.name)) {
+            setSelected(journalKey(data.file));
+            setDetailMeta((m) =>
+              m
+                ? { ...m, fileKey: journalKey(data.file), fileName: data.file, title: data.file }
+                : null
+            );
           }
           setActionMsg({ ok: true, msg: `Renamed to ${data.file}` });
         } else {
@@ -374,10 +550,11 @@ export function MemoryView() {
     });
   }, []);
 
-  const indexEntry = useCallback(
+  const indexJournalEntry = useCallback(
     async (entry: DailyEntry) => {
+      const key = journalKey(entry.name);
       if (indexingFile) return;
-      setIndexingFile(entry.name);
+      setIndexingFile(key);
       try {
         const res = await fetch("/api/memory", {
           method: "POST",
@@ -401,24 +578,41 @@ export function MemoryView() {
     [fetchMemoryData, indexingFile]
   );
 
+  const indexAgentMemory = useCallback(
+    async (entry: AgentMemoryFile) => {
+      const key = agentMemoryKey(entry.agentId);
+      if (indexingFile) return;
+      setIndexingFile(key);
+      try {
+        const res = await fetch("/api/memory", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "index-memory",
+            agentId: entry.agentId,
+            file: entry.fileName,
+          }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          await fetchMemoryData();
+          setActionMsg({ ok: true, msg: `Indexed ${entry.agentName} memory` });
+        } else {
+          setActionMsg({ ok: false, msg: data.error || "Indexing failed" });
+        }
+      } catch {
+        setActionMsg({ ok: false, msg: "Indexing failed" });
+      } finally {
+        setIndexingFile(null);
+        setTimeout(() => setActionMsg(null), 3000);
+      }
+    },
+    [fetchMemoryData, indexingFile]
+  );
+
   useEffect(() => {
     void fetchMemoryData(true);
   }, [fetchMemoryData]);
-
-  const selectLongTermMemory = useCallback(() => {
-    if (!memoryMd) return;
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    setSelected("memory");
-    setSaveStatus(null);
-    setDetailContent(memoryMd.content);
-    setDetailMeta({
-      title: "Long-Term Memory",
-      words: memoryMd.words,
-      size: memoryMd.size,
-      fileKey: "memory",
-      mtime: memoryMd.mtime,
-    });
-  }, [memoryMd]);
 
   const clearSearchJumpParams = useCallback(() => {
     const next = new URLSearchParams(searchParams.toString());
@@ -434,13 +628,29 @@ export function MemoryView() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
 
-  const filteredDaily = search
-    ? daily.filter(
-        (e) =>
-          e.date.toLowerCase().includes(search.toLowerCase()) ||
-          e.name.toLowerCase().includes(search.toLowerCase())
-      )
-    : daily;
+  const filteredDaily = useMemo(() => {
+    if (!search.trim()) return daily;
+    const q = search.toLowerCase();
+    return daily.filter(
+      (e) =>
+        e.date.toLowerCase().includes(q) ||
+        e.name.toLowerCase().includes(q)
+    );
+  }, [daily, search]);
+
+  const filteredAgentMemories = useMemo(() => {
+    if (!search.trim()) return agentMemoryFiles;
+    const q = search.toLowerCase();
+    return agentMemoryFiles.filter((entry) => {
+      return (
+        entry.agentName.toLowerCase().includes(q) ||
+        entry.agentId.toLowerCase().includes(q) ||
+        entry.fileName.toLowerCase().includes(q) ||
+        entry.workspace.toLowerCase().includes(q)
+      );
+    });
+  }, [agentMemoryFiles, search]);
+
   const periodGroups = groupByPeriod(filteredDaily);
 
   const periodGroupKeys = periodGroups.map((g) => g.key).join(",");
@@ -457,28 +667,6 @@ export function MemoryView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, periodGroupKeys]);
 
-  const loadFile = useCallback((file: string, title: string) => {
-    // Flush any pending save
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    setSelected(file);
-    setSaveStatus(null);
-    fetch(`/api/memory?file=${encodeURIComponent(file)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setDetailContent(data.content);
-        setDetailMeta({
-          title,
-          words: data.words,
-          size: data.size,
-          fileKey: file,
-        });
-      })
-      .catch(() => {
-        setDetailContent("Failed to load.");
-        setDetailMeta({ title, fileKey: file });
-      });
-  }, []);
-
   useEffect(() => {
     if (loading || !jumpTarget) return;
     const normalized = normalizeMemoryPath(jumpTarget);
@@ -488,25 +676,44 @@ export function MemoryView() {
     }
 
     setActiveTab("journal");
-    const isLongTerm =
-      normalized.toLowerCase() === "memory.md" || normalized.toLowerCase() === "memory";
+    const normalizedLower = normalized.toLowerCase();
+    const isLongTerm = normalizedLower === "memory.md" || normalizedLower === "memory";
 
     if (isLongTerm && memoryMd) {
       selectLongTermMemory();
-    } else {
-      const entry = daily.find((d) => d.name === normalized);
-      if (entry) loadFile(entry.name, entry.date);
-      else loadFile(normalized, normalized);
+      clearSearchJumpParams();
+      return;
     }
 
+    const byJournal = daily.find((d) => d.name.toLowerCase() === normalizedLower);
+    if (byJournal) {
+      loadJournalFile(byJournal.name, byJournal.date);
+      clearSearchJumpParams();
+      return;
+    }
+
+    const byAgentPath = agentMemoryFiles.find((entry) => {
+      const p = entry.path.toLowerCase();
+      return p === normalizedLower || normalizedLower.endsWith(`/${entry.fileName.toLowerCase()}`) && normalizedLower.includes(shortWorkspace(entry.workspace).toLowerCase());
+    });
+
+    if (byAgentPath) {
+      selectAgentMemory(byAgentPath);
+      clearSearchJumpParams();
+      return;
+    }
+
+    loadJournalFile(normalized, normalized);
     clearSearchJumpParams();
   }, [
+    agentMemoryFiles,
     clearSearchJumpParams,
     daily,
     jumpTarget,
-    loadFile,
+    loadJournalFile,
     loading,
     memoryMd,
+    selectAgentMemory,
     selectLongTermMemory,
   ]);
 
@@ -518,15 +725,28 @@ export function MemoryView() {
       return next;
     });
   };
+
   const isExpanded = (key: string) => !collapsedPeriods.has(key);
-  const selectedDailyEntry =
-    selected && selected !== "memory"
-      ? daily.find((d) => d.name === selected) || null
-      : null;
-  const canIndexSelected =
+  const currentJournalFile = selectedJournalFile(selected);
+  const currentAgentId = selectedAgentId(selected);
+
+  const selectedDailyEntry = currentJournalFile
+    ? daily.find((d) => d.name === currentJournalFile) || null
+    : null;
+  const selectedAgentMemory = currentAgentId
+    ? agentMemoryFiles.find((a) => a.agentId === currentAgentId) || null
+    : null;
+
+  const canIndexSelectedJournal =
     !!selectedDailyEntry &&
     (selectedDailyEntry.vectorState === "stale" ||
       selectedDailyEntry.vectorState === "not_indexed");
+
+  const canIndexSelectedAgent =
+    !!selectedAgentMemory &&
+    (selectedAgentMemory.vectorState === "stale" ||
+      selectedAgentMemory.vectorState === "not_indexed" ||
+      Boolean(selectedAgentMemory.dirty));
 
   const tabBar = (
     <div className="shrink-0 border-b border-foreground/[0.06] bg-card/50 px-3 py-2">
@@ -542,7 +762,7 @@ export function MemoryView() {
           )}
         >
           <Brain className="h-3.5 w-3.5" />
-          Journal Memory
+          Memory Files
         </button>
         <button
           type="button"
@@ -563,377 +783,554 @@ export function MemoryView() {
 
   if (activeTab === "graph") {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <SectionLayout>
         {tabBar}
         <MemoryGraphView />
-      </div>
+      </SectionLayout>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <SectionLayout>
       {tabBar}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-      {/* Left panel: search + memory list */}
-      <div className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-hidden border-b border-foreground/[0.06] bg-card/60 md:max-h-none md:w-[340px] md:border-b-0 md:border-r">
-        <div className="shrink-0 p-3">
-          <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-sm text-muted-foreground">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <input
-              placeholder="Search memory..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-3 pb-3">
-          {/* Long-Term Memory card */}
-          {memoryMd && (
-            <button
-              type="button"
-              onClick={selectLongTermMemory}
-              className={cn(
-                "mb-4 flex w-full flex-col gap-1.5 rounded-xl border p-4 text-left transition-colors",
-                selected === "memory"
-                  ? "border-violet-500/30 bg-violet-500/10 ring-1 ring-violet-400/20"
-                  : "border-violet-500/20 bg-violet-500/5 hover:bg-violet-500/10"
-              )}
-            >
-              <div className="flex items-center gap-2 text-violet-300">
-                <Brain className="h-4 w-4" />
-                <span className="text-sm font-medium">Long-Term Memory</span>
-              </div>
-              <span className="text-[11px] text-muted-foreground">
-                {memoryMd.words} words &bull; {formatAgo(memoryMd.mtime) || "Updated recently"}
-              </span>
-            </button>
-          )}
-
-          {/* Daily Journal section */}
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
-              Daily Journal
-            </span>
-            <span className="rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              {filteredDaily.length}
-            </span>
-          </div>
-
-          {loading ? (
-            <p className="mt-4 px-1 text-sm text-muted-foreground/60">Loading...</p>
-          ) : (
-            <div className="mt-2 space-y-0">
-              {periodGroups.map(({ key, entries: entriesInGroup }) => {
-                const expanded = isExpanded(key);
-                return (
-                  <div key={key} className="border-b border-foreground/[0.04] last:border-0">
-                    <button
-                      type="button"
-                      onClick={() => togglePeriod(key)}
-                      className="flex w-full items-center gap-1.5 py-2 text-left text-[11px] font-medium text-muted-foreground hover:text-muted-foreground"
-                    >
-                      {expanded ? (
-                        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                      )}
-                      <span>
-                        {key} ({entriesInGroup.length})
-                      </span>
-                    </button>
-                    {expanded && (
-                      <div className="space-y-0.5 pb-2 pl-5">
-                        {entriesInGroup.map((e) => {
-                          const isRenaming = renaming?.name === e.name;
-                          const isDeleting = confirmDelete?.name === e.name;
-
-                          if (isDeleting) {
-                            return (
-                              <div
-                                key={e.name}
-                                className="flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-1.5"
-                              >
-                                <Trash2 className="h-3 w-3 shrink-0 text-red-400" />
-                                <span className="flex-1 truncate text-[12px] text-red-300">
-                                  Delete {e.name}?
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteEntry(e)}
-                                  className="rounded bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-500"
-                                >
-                                  Delete
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDelete(null)}
-                                  className="text-[10px] text-muted-foreground hover:text-foreground/70"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            );
-                          }
-
-                          if (isRenaming) {
-                            return (
-                              <div
-                                key={e.name}
-                                className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-card px-3 py-1.5"
-                              >
-                                <Pencil className="h-3 w-3 shrink-0 text-violet-400" />
-                                <input
-                                  value={renameValue}
-                                  onChange={(ev) =>
-                                    setRenameValue(ev.target.value)
-                                  }
-                                  onKeyDown={(ev) => {
-                                    if (ev.key === "Enter")
-                                      renameEntry(e, renameValue);
-                                    if (ev.key === "Escape")
-                                      setRenaming(null);
-                                  }}
-                                  onBlur={() => renameEntry(e, renameValue)}
-                                  className="flex-1 bg-transparent text-[13px] text-foreground/90 outline-none"
-                                  autoFocus
-                                />
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <button
-                              key={e.name}
-                              type="button"
-                              onClick={() => loadFile(e.name, e.date)}
-                              onContextMenu={(ev) =>
-                                handleContextMenu(ev, e)
-                              }
-                              className={cn(
-                                "flex w-full justify-between rounded-lg px-3 py-1.5 text-left text-sm transition-colors",
-                                selected === e.name
-                                  ? "bg-muted text-violet-300"
-                                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground/70"
-                              )}
-                            >
-                              <span className="text-[13px]">
-                                {(() => {
-                                  const d = new Date(e.date);
-                                  return isNaN(d.getTime())
-                                    ? e.date
-                                    : d.toLocaleDateString("en-US", {
-                                        weekday: "short",
-                                        month: "short",
-                                        day: "numeric",
-                                      });
-                                })()}
-                              </span>
-                              <span className="flex items-center gap-2">
-                                <span className="text-[11px] text-muted-foreground/60">
-                                  {e.words ?? 0}w
-                                </span>
-                                {(() => {
-                                  const badge = vectorBadge(e);
-                                  const Icon = badge.Icon;
-                                  return (
-                                    <span
-                                      className={cn(
-                                        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium",
-                                        badge.className
-                                      )}
-                                      title={`Vector status: ${badge.label}`}
-                                    >
-                                      <Icon className="h-2.5 w-2.5" />
-                                      {badge.label}
-                                    </span>
-                                  );
-                                })()}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+        {/* Left panel */}
+        <div className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-hidden border-b border-foreground/[0.06] bg-card/60 md:max-h-none md:w-[360px] md:border-b-0 md:border-r">
+          <div className="shrink-0 p-3">
+            <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-sm text-muted-foreground">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                placeholder="Search memory files, agents, workspaces..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+              />
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Right panel: memory content */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/40">
-        {detailMeta ? (
-          <>
-            <div className="shrink-0 border-b border-foreground/[0.06] px-6 py-4">
-              <div className="flex items-center gap-3">
-                <Brain className="h-4 w-4 text-violet-400" />
-                <h2 className="text-base font-semibold text-foreground">
-                  {detailMeta.title}
-                </h2>
-                {saveStatus === "saving" && (
-                  <span className="text-[11px] text-muted-foreground">Saving...</span>
-                )}
-                {saveStatus === "saved" && (
-                  <span className="text-[11px] text-emerald-500">Saved</span>
-                )}
-                {saveStatus === "unsaved" && (
-                  <span className="text-[11px] text-amber-500">Unsaved</span>
-                )}
-                {canIndexSelected && selectedDailyEntry && (
-                  <button
-                    type="button"
-                    onClick={() => indexEntry(selectedDailyEntry)}
-                    disabled={indexingFile === selectedDailyEntry.name}
-                    className="inline-flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-300 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Re-index this memory entry"
-                  >
-                    <RefreshCw
-                      className={cn(
-                        "h-3 w-3",
-                        indexingFile === selectedDailyEntry.name && "animate-spin"
-                      )}
-                    />
-                    {indexingFile === selectedDailyEntry.name ? "Indexing..." : "Index now"}
-                  </button>
-                )}
-              </div>
-              <p className="mt-1 text-[12px] text-muted-foreground/60">
-                {detailMeta.words != null && `${detailMeta.words} words`}
-                {detailMeta.size != null && ` \u2022 ${formatBytes(detailMeta.size)}`}
-                {" \u2022 Click to edit \u2022 "}
-                <kbd className="rounded bg-muted px-1 py-0.5 text-[9px] font-mono text-muted-foreground">
-                  &#8984;S
-                </kbd>{" "}
-                to save
+          <div className="flex-1 overflow-y-auto px-3 pb-3">
+            <div className="mb-4 rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-3">
+              <p className="text-[11px] font-semibold text-foreground/85">OpenClaw Memory Model</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/75">
+                `MEMORY.md` (or `memory.md`) is curated long-term memory. `memory/*.md` is rolling journal memory. `openclaw memory index` vectorizes these files per agent workspace.
               </p>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 min-w-0">
-              {detailContent != null ? (
-                <InlineMarkdownEditor
-                  key={detailMeta?.fileKey || "memory"}
-                  content={detailContent}
-                  onContentChange={handleContentChange}
-                  onSave={handleSave}
-                  placeholder="Click to start writing..."
-                />
-              ) : null}
-            </div>
-          </>
-        ) : !loading ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">
-            Select a memory entry
-          </div>
-        ) : null}
-      </div>
 
-      {/* ── Context menu ──────────────────────────── */}
-      {ctxMenu && (
-        <div
-          ref={ctxRef}
-          className="fixed z-50 min-w-[180px] overflow-hidden rounded-lg border border-foreground/[0.08] bg-card/95 py-1 shadow-xl backdrop-blur-sm"
-          style={{
-            left: Math.min(ctxMenu.x, window.innerWidth - 200),
-            top: Math.min(ctxMenu.y, window.innerHeight - 220),
-          }}
-        >
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-            onClick={() => {
-              loadFile(ctxMenu.entry.name, ctxMenu.entry.date);
-              setCtxMenu(null);
+            {/* Core workspace memory */}
+            {memoryMd && (
+              <button
+                type="button"
+                onClick={selectLongTermMemory}
+                className={cn(
+                  "mb-4 flex w-full flex-col gap-1.5 rounded-xl border p-4 text-left transition-colors",
+                  selected === "memory"
+                    ? "border-violet-500/30 bg-violet-500/10 ring-1 ring-violet-400/20"
+                    : "border-violet-500/20 bg-violet-500/5 hover:bg-violet-500/10"
+                )}
+              >
+                <div className="flex items-center gap-2 text-violet-300">
+                  <Brain className="h-4 w-4" />
+                  <span className="text-sm font-medium">Core Workspace MEMORY.md</span>
+                </div>
+                <div className="mt-0.5 flex items-center gap-2">
+                  {(() => {
+                    const badge = vectorBadge(memoryMd);
+                    const Icon = badge.Icon;
+                    return (
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium",
+                          badge.className
+                        )}
+                      >
+                        <Icon className="h-2.5 w-2.5" />
+                        {badge.label}
+                      </span>
+                    );
+                  })()}
+                  <span className="text-[11px] text-muted-foreground">
+                    {memoryMd.words} words • {formatAgo(memoryMd.mtime) || "Updated recently"}
+                  </span>
+                </div>
+              </button>
+            )}
+
+            {/* Agent memory files */}
+            <div className="mb-2 flex items-center gap-2 px-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                Agent MEMORY Files
+              </span>
+              <span className="rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {filteredAgentMemories.length}
+              </span>
+            </div>
+
+            <div className="mb-4 space-y-1.5">
+              {filteredAgentMemories.map((entry) => {
+                const key = agentMemoryKey(entry.agentId);
+                const selectedHere = selected === key;
+                const needsIndex =
+                  entry.vectorState === "stale" ||
+                  entry.vectorState === "not_indexed" ||
+                  Boolean(entry.dirty);
+                const badge = vectorBadge(entry);
+                const BadgeIcon = badge.Icon;
+
+                return (
+                  <button
+                    key={entry.agentId}
+                    type="button"
+                    onClick={() => selectAgentMemory(entry)}
+                    className={cn(
+                      "w-full rounded-lg border px-3 py-2 text-left transition-colors",
+                      selectedHere
+                        ? "border-cyan-500/35 bg-cyan-500/10 ring-1 ring-cyan-400/20"
+                        : "border-foreground/[0.08] bg-foreground/[0.015] hover:bg-foreground/[0.04]"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] font-semibold text-foreground/90">
+                          {entry.agentName}
+                        </p>
+                        <p className="truncate text-[10px] text-muted-foreground/65">
+                          {entry.agentId} • {shortWorkspace(entry.workspace)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {entry.isDefault && (
+                          <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-medium text-violet-300">
+                            default
+                          </span>
+                        )}
+                        {!entry.exists && (
+                          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-medium text-amber-300">
+                            missing
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium",
+                          badge.className
+                        )}
+                      >
+                        <BadgeIcon className="h-2.5 w-2.5" />
+                        {badge.label}
+                      </span>
+                      {entry.dirty && (
+                        <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium text-amber-300">
+                          index dirty
+                        </span>
+                      )}
+                      <span className="text-[10px] text-muted-foreground/70">
+                        {entry.exists ? `${entry.words}w` : "No file"} • {entry.indexedFiles ?? 0} files
+                      </span>
+                      {needsIndex && (
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            void indexAgentMemory(entry);
+                          }}
+                          disabled={indexingFile === key}
+                          className="ml-auto inline-flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-medium text-sky-300 hover:bg-sky-500/20 disabled:opacity-60"
+                        >
+                          <RefreshCw className={cn("h-2.5 w-2.5", indexingFile === key && "animate-spin")} />
+                          {indexingFile === key ? "Indexing" : "Index"}
+                        </button>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+
+              {!loading && filteredAgentMemories.length === 0 && (
+                <p className="px-1 text-[12px] text-muted-foreground/65">No matching agent memory files.</p>
+              )}
+            </div>
+
+            {/* Daily journal section */}
+            <div className="flex items-center gap-2 px-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                Daily Journal
+              </span>
+              <span className="rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {filteredDaily.length}
+              </span>
+            </div>
+
+            {loading ? (
+              <p className="mt-4 px-1 text-sm text-muted-foreground/60">Loading...</p>
+            ) : (
+              <div className="mt-2 space-y-0">
+                {periodGroups.map(({ key, entries: entriesInGroup }) => {
+                  const expanded = isExpanded(key);
+                  return (
+                    <div key={key} className="border-b border-foreground/[0.04] last:border-0">
+                      <button
+                        type="button"
+                        onClick={() => togglePeriod(key)}
+                        className="flex w-full items-center gap-1.5 py-2 text-left text-[11px] font-medium text-muted-foreground hover:text-muted-foreground"
+                      >
+                        {expanded ? (
+                          <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span>
+                          {key} ({entriesInGroup.length})
+                        </span>
+                      </button>
+                      {expanded && (
+                        <div className="space-y-0.5 pb-2 pl-5">
+                          {entriesInGroup.map((e) => {
+                            const isRenaming = renaming?.name === e.name;
+                            const isDeleting = confirmDelete?.name === e.name;
+                            const key = journalKey(e.name);
+
+                            if (isDeleting) {
+                              return (
+                                <div
+                                  key={e.name}
+                                  className="flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-1.5"
+                                >
+                                  <Trash2 className="h-3 w-3 shrink-0 text-red-400" />
+                                  <span className="flex-1 truncate text-[12px] text-red-300">
+                                    Delete {e.name}?
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteEntry(e)}
+                                    className="rounded bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-500"
+                                  >
+                                    Delete
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDelete(null)}
+                                    className="text-[10px] text-muted-foreground hover:text-foreground/70"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              );
+                            }
+
+                            if (isRenaming) {
+                              return (
+                                <div
+                                  key={e.name}
+                                  className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-card px-3 py-1.5"
+                                >
+                                  <Pencil className="h-3 w-3 shrink-0 text-violet-400" />
+                                  <input
+                                    value={renameValue}
+                                    onChange={(ev) =>
+                                      setRenameValue(ev.target.value)
+                                    }
+                                    onKeyDown={(ev) => {
+                                      if (ev.key === "Enter")
+                                        void renameEntry(e, renameValue);
+                                      if (ev.key === "Escape")
+                                        setRenaming(null);
+                                    }}
+                                    onBlur={() => void renameEntry(e, renameValue)}
+                                    className="flex-1 bg-transparent text-[13px] text-foreground/90 outline-none"
+                                    autoFocus
+                                  />
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <button
+                                key={e.name}
+                                type="button"
+                                onClick={() => loadJournalFile(e.name, e.date)}
+                                onContextMenu={(ev) =>
+                                  handleContextMenu(ev, e)
+                                }
+                                className={cn(
+                                  "flex w-full justify-between rounded-lg px-3 py-1.5 text-left text-sm transition-colors",
+                                  selected === key
+                                    ? "bg-muted text-violet-300"
+                                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground/70"
+                                )}
+                              >
+                                <span className="text-[13px]">
+                                  {(() => {
+                                    const d = new Date(e.date);
+                                    return isNaN(d.getTime())
+                                      ? e.date
+                                      : d.toLocaleDateString("en-US", {
+                                          weekday: "short",
+                                          month: "short",
+                                          day: "numeric",
+                                        });
+                                  })()}
+                                </span>
+                                <span className="flex items-center gap-2">
+                                  <span className="text-[11px] text-muted-foreground/60">
+                                    {e.words ?? 0}w
+                                  </span>
+                                  {(() => {
+                                    const badge = vectorBadge(e);
+                                    const Icon = badge.Icon;
+                                    return (
+                                      <span
+                                        className={cn(
+                                          "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium",
+                                          badge.className
+                                        )}
+                                        title={`Vector status: ${badge.label}`}
+                                      >
+                                        <Icon className="h-2.5 w-2.5" />
+                                        {badge.label}
+                                      </span>
+                                    );
+                                  })()}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right panel */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/40">
+          {detailMeta ? (
+            <>
+              <div className="shrink-0 border-b border-foreground/[0.06] px-6 py-4">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <Brain className="h-4 w-4 text-violet-400" />
+                  <h2 className="text-base font-semibold text-foreground">
+                    {detailMeta.title}
+                  </h2>
+
+                  {detailMeta.vectorState && (() => {
+                    const badge = vectorBadge({ vectorState: detailMeta.vectorState });
+                    const Icon = badge.Icon;
+                    return (
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium",
+                          badge.className
+                        )}
+                      >
+                        <Icon className="h-2.5 w-2.5" />
+                        {badge.label}
+                      </span>
+                    );
+                  })()}
+
+                  {saveStatus === "saving" && (
+                    <span className="text-[11px] text-muted-foreground">Saving...</span>
+                  )}
+                  {saveStatus === "saved" && (
+                    <span className="text-[11px] text-emerald-500">Saved</span>
+                  )}
+                  {saveStatus === "unsaved" && (
+                    <span className="text-[11px] text-amber-500">Unsaved</span>
+                  )}
+
+                  {canIndexSelectedJournal && selectedDailyEntry && (
+                    <button
+                      type="button"
+                      onClick={() => void indexJournalEntry(selectedDailyEntry)}
+                      disabled={indexingFile === journalKey(selectedDailyEntry.name)}
+                      className="ml-auto inline-flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-300 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Re-index this memory entry"
+                    >
+                      <RefreshCw
+                        className={cn(
+                          "h-3 w-3",
+                          indexingFile === journalKey(selectedDailyEntry.name) && "animate-spin"
+                        )}
+                      />
+                      {indexingFile === journalKey(selectedDailyEntry.name) ? "Indexing..." : "Index now"}
+                    </button>
+                  )}
+
+                  {canIndexSelectedAgent && selectedAgentMemory && (
+                    <button
+                      type="button"
+                      onClick={() => void indexAgentMemory(selectedAgentMemory)}
+                      disabled={indexingFile === agentMemoryKey(selectedAgentMemory.agentId)}
+                      className="ml-auto inline-flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-300 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Re-index this agent memory file"
+                    >
+                      <RefreshCw
+                        className={cn(
+                          "h-3 w-3",
+                          indexingFile === agentMemoryKey(selectedAgentMemory.agentId) && "animate-spin"
+                        )}
+                      />
+                      {indexingFile === agentMemoryKey(selectedAgentMemory.agentId) ? "Indexing..." : "Index now"}
+                    </button>
+                  )}
+                </div>
+
+                <p className="mt-1 text-[12px] text-muted-foreground/60">
+                  {detailMeta.words != null && `${detailMeta.words} words`}
+                  {detailMeta.size != null && ` • ${formatBytes(detailMeta.size)}`}
+                  {detailMeta.workspace && ` • ${detailMeta.workspace}`}
+                  {detailMeta.mtime && ` • ${formatAgo(detailMeta.mtime)}`}
+                  {" • Click to edit • "}
+                  <kbd className="rounded bg-muted px-1 py-0.5 text-[9px] font-mono text-muted-foreground">
+                    &#8984;S
+                  </kbd>{" "}
+                  to save
+                </p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 min-w-0">
+                {detailMeta.kind === "agent-memory" && selectedAgentMemory && !selectedAgentMemory.exists && (
+                  <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
+                    This agent has no `{selectedAgentMemory.fileName}` yet. Start typing and save to create it.
+                  </div>
+                )}
+
+                {detailMeta.kind === "agent-memory" && selectedAgentMemory?.hasAltCaseFile && (
+                  <div className="mb-3 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[12px] text-sky-200">
+                    Both `MEMORY.md` and `memory.md` exist in this workspace. Mission Control edits the canonical file shown in the title.
+                  </div>
+                )}
+
+                {detailContent != null ? (
+                  <InlineMarkdownEditor
+                    key={detailMeta.fileKey}
+                    content={detailContent}
+                    onContentChange={handleContentChange}
+                    onSave={handleSave}
+                    placeholder="Click to start writing..."
+                  />
+                ) : null}
+              </div>
+            </>
+          ) : !loading ? (
+            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">
+              Select a memory entry
+            </div>
+          ) : null}
+        </div>
+
+        {/* Context menu */}
+        {ctxMenu && (
+          <div
+            ref={ctxRef}
+            className="fixed z-50 min-w-[180px] overflow-hidden rounded-lg border border-foreground/[0.08] bg-card/95 py-1 shadow-xl backdrop-blur-sm"
+            style={{
+              left: Math.min(ctxMenu.x, window.innerWidth - 200),
+              top: Math.min(ctxMenu.y, window.innerHeight - 220),
             }}
           >
-            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-            Open
-          </button>
-          {(ctxMenu.entry.vectorState === "stale" ||
-            ctxMenu.entry.vectorState === "not_indexed") && (
             <button
               type="button"
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-sky-300 transition-colors hover:bg-sky-500/10"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
               onClick={() => {
-                void indexEntry(ctxMenu.entry);
+                loadJournalFile(ctxMenu.entry.name, ctxMenu.entry.date);
                 setCtxMenu(null);
               }}
-              disabled={indexingFile === ctxMenu.entry.name}
             >
-              <RefreshCw
-                className={cn(
-                  "h-3.5 w-3.5",
-                  indexingFile === ctxMenu.entry.name && "animate-spin"
-                )}
-              />
-              {indexingFile === ctxMenu.entry.name ? "Indexing..." : "Index now"}
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              Open
             </button>
-          )}
-          <div className="mx-2 my-1 h-px bg-foreground/[0.06]" />
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-            onClick={() => {
-              setRenaming(ctxMenu.entry);
-              setRenameValue(ctxMenu.entry.name);
-              setCtxMenu(null);
-            }}
-          >
-            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-            Rename
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-            onClick={() => {
-              duplicateEntry(ctxMenu.entry);
-              setCtxMenu(null);
-            }}
-          >
-            <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-            Duplicate
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-            onClick={() => {
-              copyEntryName(ctxMenu.entry);
-              setCtxMenu(null);
-            }}
-          >
-            <ClipboardCopy className="h-3.5 w-3.5 text-muted-foreground" />
-            Copy Filename
-          </button>
-          <div className="mx-2 my-1 h-px bg-foreground/[0.06]" />
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
-            onClick={() => {
-              setConfirmDelete(ctxMenu.entry);
-              setCtxMenu(null);
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Delete
-          </button>
-        </div>
-      )}
+            {(ctxMenu.entry.vectorState === "stale" ||
+              ctxMenu.entry.vectorState === "not_indexed") && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-sky-300 transition-colors hover:bg-sky-500/10"
+                onClick={() => {
+                  void indexJournalEntry(ctxMenu.entry);
+                  setCtxMenu(null);
+                }}
+                disabled={indexingFile === journalKey(ctxMenu.entry.name)}
+              >
+                <RefreshCw
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    indexingFile === journalKey(ctxMenu.entry.name) && "animate-spin"
+                  )}
+                />
+                {indexingFile === journalKey(ctxMenu.entry.name) ? "Indexing..." : "Index now"}
+              </button>
+            )}
+            <div className="mx-2 my-1 h-px bg-foreground/[0.06]" />
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => {
+                setRenaming(ctxMenu.entry);
+                setRenameValue(ctxMenu.entry.name);
+                setCtxMenu(null);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+              Rename
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => {
+                void duplicateEntry(ctxMenu.entry);
+                setCtxMenu(null);
+              }}
+            >
+              <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+              Duplicate
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => {
+                copyEntryName(ctxMenu.entry);
+                setCtxMenu(null);
+              }}
+            >
+              <ClipboardCopy className="h-3.5 w-3.5 text-muted-foreground" />
+              Copy Filename
+            </button>
+            <div className="mx-2 my-1 h-px bg-foreground/[0.06]" />
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+              onClick={() => {
+                setConfirmDelete(ctxMenu.entry);
+                setCtxMenu(null);
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
+          </div>
+        )}
 
-      {/* ── Toast notification ────────────────────── */}
-      {actionMsg && (
-        <div
-          className={cn(
-            "fixed bottom-4 right-4 z-50 rounded-lg border px-4 py-2.5 text-[13px] shadow-lg backdrop-blur-sm transition-all",
-            actionMsg.ok
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-red-500/30 bg-red-500/10 text-red-300"
-          )}
-        >
-          {actionMsg.msg}
-        </div>
-      )}
+        {/* Toast */}
+        {actionMsg && (
+          <div
+            className={cn(
+              "fixed bottom-4 right-4 z-50 rounded-lg border px-4 py-2.5 text-[13px] shadow-lg backdrop-blur-sm transition-all",
+              actionMsg.ok
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : "border-red-500/30 bg-red-500/10 text-red-300"
+            )}
+          >
+            {actionMsg.msg}
+          </div>
+        )}
       </div>
-    </div>
+    </SectionLayout>
   );
 }

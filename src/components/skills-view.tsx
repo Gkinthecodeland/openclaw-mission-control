@@ -8,9 +8,10 @@ import {
   AlertTriangle, X, Loader2, Check, Download,
   Settings2, Package, Cpu,
   FileText, Terminal, Globe, Wrench, ArrowLeft,
-  Info, CircleStop,
+  Info, CircleStop, Trash2, Play, Copy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 
 /* ── Types ──────────────────────────────────────── */
 
@@ -48,6 +49,16 @@ type Toast = { msg: string; type: "success" | "error" };
 type AvailabilityState = "ready" | "needs-setup" | "blocked" | "unavailable";
 type SkillOrigin = "bundled" | "workspace" | "shared" | "other";
 type SkillsFilter = "all" | "eligible" | "unavailable" | "bundled" | "workspace";
+type AgentOption = { id: string; name: string };
+type SkillTestResult = {
+  ok: boolean;
+  skillName: string;
+  agentId: string;
+  message: string;
+  cliCommand: string;
+  output: string;
+  durationMs: number;
+};
 
 const SKILL_ORIGIN_META: Record<SkillOrigin, { title: string; description: string }> = {
   bundled: {
@@ -426,6 +437,196 @@ function InstallTerminal({
   );
 }
 
+/* ── Skill Playground ───────────────────────────── */
+
+function SkillPlayground({ skillName }: { skillName: string }) {
+  const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [agentId, setAgentId] = useState("main");
+  const [input, setInput] = useState("");
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<SkillTestResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const commandMessage = useMemo(() => {
+    const prompt = input.trim();
+    return prompt ? `/skill ${skillName} ${prompt}` : `/skill ${skillName}`;
+  }, [input, skillName]);
+
+  const commandPreview = useMemo(() => {
+    return `openclaw agent --agent ${agentId} --message ${JSON.stringify(commandMessage)}`;
+  }, [agentId, commandMessage]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/agents", { cache: "no-store" });
+        const data = await res.json();
+        if (!mounted) return;
+        const rows = Array.isArray(data?.agents) ? data.agents : [];
+        const options: AgentOption[] = rows
+          .map((row: { id?: string; name?: string }) => ({
+            id: String(row?.id || "").trim(),
+            name: String(row?.name || row?.id || "").trim(),
+          }))
+          .filter((row: AgentOption) => row.id.length > 0);
+        if (options.length === 0) {
+          setAgents([{ id: "main", name: "main" }]);
+          setAgentId("main");
+          return;
+        }
+        setAgents(options);
+        if (!options.some((opt) => opt.id === "main")) {
+          setAgentId(options[0].id);
+        }
+      } catch {
+        if (!mounted) return;
+        setAgents([{ id: "main", name: "main" }]);
+        setAgentId("main");
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const runTest = useCallback(async () => {
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/skills/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          skillName,
+          agentId,
+          input: input.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        const message = String(data?.error || "Skill test failed");
+        setError(message);
+        return;
+      }
+      setResult(data as SkillTestResult);
+    } catch (err) {
+      const message = String(err);
+      setError(message);
+    } finally {
+      setRunning(false);
+    }
+  }, [agentId, input, skillName]);
+
+  const copyCommand = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(commandPreview);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }, [commandPreview]);
+
+  return (
+    <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90">
+          <Terminal className="h-4 w-4 text-cyan-400" />
+          Skill Playground
+        </h3>
+        <span className="rounded border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
+          Browser test runner
+        </span>
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Runs this skill through OpenClaw with the slash command path. Use this to validate behavior without leaving Mission Control.
+      </p>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[180px,1fr]">
+        <label className="space-y-1">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/75">Agent</span>
+          <select
+            value={agentId}
+            onChange={(e) => setAgentId(e.target.value)}
+            disabled={running}
+            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-2.5 py-2 text-[12px] text-foreground/90 outline-none transition-colors focus:border-cyan-500/40 disabled:opacity-50"
+          >
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name} ({agent.id})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-1">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/75">Input (optional)</span>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="example: list my currently playing songs"
+            disabled={running}
+            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3 py-2 text-[12px] text-foreground/90 outline-none transition-colors focus:border-cyan-500/40 disabled:opacity-50"
+          />
+        </label>
+      </div>
+
+      <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.015] p-2.5">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">Command preview</p>
+        <div className="mt-1 flex items-start gap-2">
+          <code className="min-w-0 flex-1 break-all rounded bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/80">
+            {commandPreview}
+          </code>
+          <button
+            type="button"
+            onClick={() => void copyCommand()}
+            className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-foreground/[0.03] px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.06]"
+          >
+            <Copy className="h-3 w-3" />
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void runTest()}
+          disabled={running}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-[12px] font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-60"
+        >
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+          {running ? "Running..." : "Run Skill Test"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-[11px] text-red-300">
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground/80">
+            <span className="rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300">
+              completed
+            </span>
+            <span>agent: {result.agentId}</span>
+            <span>duration: {(result.durationMs / 1000).toFixed(1)}s</span>
+          </div>
+          <pre className="max-h-[320px] overflow-auto rounded-lg border border-foreground/[0.08] bg-[#0b0f14] p-3 text-[11px] leading-relaxed text-cyan-100 whitespace-pre-wrap break-words">
+            {result.output || "(no output)"}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Skill Card (list view) ─────────────────────── */
 
 function skillStatus(skill: Skill): { label: string; color: string; toggleColor: "green" | "amber" | "default" } {
@@ -596,6 +797,8 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
           )}
         </div>
 
+        <SkillPlayground skillName={detail.name} />
+
         {/* Requirements section */}
         {hasReqs && (
           <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
@@ -758,6 +961,7 @@ function ClawHubPanel({
   const [mode, setMode] = useState<"trending" | "search">("trending");
   const [loading, setLoading] = useState(true);
   const [busySlug, setBusySlug] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"install" | "update" | "uninstall" | null>(null);
 
   const fetchInstalled = useCallback(async () => {
     try {
@@ -831,6 +1035,7 @@ function ClawHubPanel({
 
   const installSkill = useCallback(async (slug: string, version?: string) => {
     setBusySlug(slug);
+    setBusyAction("install");
     try {
       const res = await fetch("/api/skills/clawhub", {
         method: "POST",
@@ -849,10 +1054,12 @@ function ClawHubPanel({
       onAction(`Error: ${String(err)}`);
     }
     setBusySlug(null);
+    setBusyAction(null);
   }, [fetchInstalled, onAction, onInstalled]);
 
   const updateSkill = useCallback(async (slug: string) => {
     setBusySlug(slug);
+    setBusyAction("update");
     try {
       const res = await fetch("/api/skills/clawhub", {
         method: "POST",
@@ -871,6 +1078,34 @@ function ClawHubPanel({
       onAction(`Error: ${String(err)}`);
     }
     setBusySlug(null);
+    setBusyAction(null);
+  }, [fetchInstalled, onAction, onInstalled]);
+
+  const uninstallSkill = useCallback(async (slug: string) => {
+    if (!window.confirm(`Delete "${slug}" from workspace skills?`)) {
+      return;
+    }
+    setBusySlug(slug);
+    setBusyAction("uninstall");
+    try {
+      const res = await fetch("/api/skills/clawhub", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "uninstall", slug }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        onAction(`Error: ${data.error || "delete failed"}`);
+      } else {
+        onAction(`Deleted ${slug}`);
+        await fetchInstalled();
+        await onInstalled(slug);
+      }
+    } catch (err) {
+      onAction(`Error: ${String(err)}`);
+    }
+    setBusySlug(null);
+    setBusyAction(null);
   }, [fetchInstalled, onAction, onInstalled]);
 
   useEffect(() => {
@@ -925,6 +1160,16 @@ function ClawHubPanel({
               const installedVersion = installed[item.slug];
               const isInstalled = Boolean(installedVersion);
               const isBusy = busySlug === item.slug;
+              const installLabel =
+                isBusy && busyAction === "install"
+                  ? "Installing..."
+                  : isBusy && busyAction === "update"
+                    ? "Updating..."
+                    : isBusy && busyAction === "uninstall"
+                      ? "Deleting..."
+                      : isInstalled
+                        ? "Reinstall"
+                        : "Install";
               return (
                 <div key={item.slug} className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -948,10 +1193,21 @@ function ClawHubPanel({
                         <button
                           type="button"
                           disabled={isBusy}
+                          onClick={() => void uninstallSkill(item.slug)}
+                          className="inline-flex items-center gap-1 rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-[10px] text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Delete
+                        </button>
+                      )}
+                      {isInstalled && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
                           onClick={() => void updateSkill(item.slug)}
                           className="rounded-md border border-foreground/[0.08] px-2.5 py-1 text-[10px] text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
                         >
-                          {isBusy ? "Working..." : "Update"}
+                          {isBusy && busyAction === "update" ? "Updating..." : "Update"}
                         </button>
                       )}
                       <button
@@ -960,7 +1216,7 @@ function ClawHubPanel({
                         onClick={() => void installSkill(item.slug, item.version)}
                         className="rounded-md bg-violet-600 px-2.5 py-1 text-[10px] font-medium text-white hover:bg-violet-500 disabled:opacity-50"
                       >
-                        {isBusy ? "Working..." : isInstalled ? "Reinstall" : "Install"}
+                        {installLabel}
                       </button>
                     </div>
                   </div>
@@ -976,7 +1232,7 @@ function ClawHubPanel({
 
 /* ── Main SkillsView ────────────────────────────── */
 
-export function SkillsView() {
+export function SkillsView({ initialSkillName = null }: { initialSkillName?: string | null } = {}) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -985,7 +1241,7 @@ export function SkillsView() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<SkillsFilter>("all");
-  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<string | null>(initialSkillName);
   const [toast, setToast] = useState<Toast | null>(null);
   const [togglingSkill, setTogglingSkill] = useState<string | null>(null);
   const tab: "skills" | "clawhub" =
@@ -1004,7 +1260,19 @@ export function SkillsView() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { queueMicrotask(() => fetchAll()); }, [fetchAll]);
+  useEffect(() => {
+    setSelectedSkill(initialSkillName);
+  }, [initialSkillName]);
+
+  useEffect(() => {
+    if (selectedSkill) {
+      setLoading(false);
+      return;
+    }
+    queueMicrotask(() => {
+      void fetchAll();
+    });
+  }, [fetchAll, selectedSkill]);
 
   const filtered = useMemo(() => skills.filter((s) => {
     if (search) {
@@ -1102,31 +1370,43 @@ export function SkillsView() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, router, searchParams]);
 
-  if (loading) return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>;
-
   // Detail view
   if (selectedSkill) {
     return (
       <>
-        <SkillDetailPanel name={selectedSkill} onBack={() => setSelectedSkill(null)} onAction={handleAction} />
+        <SkillDetailPanel
+          name={selectedSkill}
+          onBack={() => {
+            if (initialSkillName) {
+              router.push("/?section=skills");
+              return;
+            }
+            setSelectedSkill(null);
+          }}
+          onAction={handleAction}
+        />
         {toast && <ToastBar toast={toast} onDone={() => setToast(null)} />}
       </>
     );
   }
 
+  if (loading) return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>;
+
   const bundledCount = skills.filter((s) => getSkillOrigin(s) === "bundled").length;
   const workspaceCount = skills.filter((s) => getSkillOrigin(s) === "workspace").length;
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 px-4 md:px-6 pt-5 pb-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-[18px] font-semibold text-foreground flex items-center gap-2"><Wrench className="h-5 w-5 text-violet-400" />Skills</h2>
-            <p className="text-[12px] text-muted-foreground mt-0.5">Browse, install, and configure OpenClaw skills. Click any skill for details.</p>
-            <p className="mt-1 text-[10px] text-muted-foreground/70">Skills are grouped by origin (Bundled vs Workspace vs Shared Local). Configured state and runtime availability are shown separately.</p>
-          </div>
+    <SectionLayout>
+      <SectionHeader
+        title={
+          <span className="flex items-center gap-2 text-[18px]">
+            <Wrench className="h-5 w-5 text-violet-400" />
+            Skills
+          </span>
+        }
+        description="Browse, install, and configure OpenClaw skills. Click any skill for details."
+        meta="Skills are grouped by origin (Bundled vs Workspace vs Shared Local). Configured state and runtime availability are shown separately."
+        actions={
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-lg border border-foreground/[0.08] bg-muted/50 p-1">
               <button
@@ -1146,8 +1426,10 @@ export function SkillsView() {
             </div>
             <button type="button" onClick={fetchAll} className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/80"><RefreshCw className="h-3 w-3" />Refresh</button>
           </div>
-        </div>
+        }
+      />
 
+      <SectionBody width="wide" padding="compact" innerClassName="space-y-3">
         {/* Summary */}
         {tab === "skills" && summary && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -1173,10 +1455,9 @@ export function SkillsView() {
             </button>
           ))}</div>
         </div>}
-      </div>
+      </SectionBody>
 
-      {tab === "skills" && <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-6">
-        <div className="space-y-5">
+      {tab === "skills" && <SectionBody width="wide" padding="compact" className="pt-0" innerClassName="space-y-5">
           {grouped.map((section) => (
             <section key={section.origin} className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.015] p-3.5">
               <div className="flex flex-wrap items-end justify-between gap-3 border-b border-foreground/[0.05] pb-3">
@@ -1195,7 +1476,7 @@ export function SkillsView() {
                   <SkillCard
                     key={s.name}
                     skill={s}
-                    onClick={() => setSelectedSkill(s.name)}
+                    onClick={() => router.push(`/skills/${encodeURIComponent(s.name)}`)}
                     onToggle={(enabled) => handleToggleSkill(s.name, enabled)}
                     toggling={togglingSkill === s.name}
                   />
@@ -1203,7 +1484,6 @@ export function SkillsView() {
               </div>
             </section>
           ))}
-        </div>
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12">
             <Search className="h-8 w-8 text-muted-foreground/40 mb-3" />
@@ -1211,7 +1491,7 @@ export function SkillsView() {
             <p className="text-[11px] text-muted-foreground/60 mt-1">Try different keywords or change the filter.</p>
           </div>
         )}
-      </div>}
+      </SectionBody>}
 
       {tab === "clawhub" && (
         <ClawHubPanel
@@ -1220,7 +1500,7 @@ export function SkillsView() {
         />
       )}
       {toast && <ToastBar toast={toast} onDone={() => setToast(null)} />}
-    </div>
+    </SectionLayout>
   );
 }
 

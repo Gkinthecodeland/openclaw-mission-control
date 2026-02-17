@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { requestRestart } from "@/lib/restart-store";
+import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 
 /* ── types ────────────────────────────────────────── */
 
@@ -1519,45 +1520,43 @@ export function CronView() {
   const errorJobs = jobs.filter((j) => j.state.lastStatus === "error");
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between px-4 md:px-6 pb-4 pt-5">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">
-            Cron Jobs ({jobs.length})
-          </h2>
-          <p className="text-[11px] text-muted-foreground/60">
-            Schedule, delivery, run history &bull; Edit schedule, content,
-            delivery targets
+    <SectionLayout>
+      <SectionHeader
+        title={`Cron Jobs (${jobs.length})`}
+        description={
+          <>
+            Schedule, delivery, run history &bull; Edit schedule, content, delivery targets
             {errorJobs.length > 0 && (
               <span className="ml-2 rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
                 {errorJobs.length} failing
               </span>
             )}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-violet-500"
-          >
-            <Plus className="h-3 w-3" /> New Cron Job
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setLoading(true);
-              fetchJobs();
-            }}
-            className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/80"
-          >
-            <RefreshCw className="h-3 w-3" /> Refresh
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-violet-500"
+            >
+              <Plus className="h-3 w-3" /> New Cron Job
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                fetchJobs();
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/80"
+            >
+              <RefreshCw className="h-3 w-3" /> Refresh
+            </button>
+          </>
+        }
+      />
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 md:px-6 pb-6">
+      <SectionBody width="content" padding="compact" innerClassName="space-y-3">
         {/* Create form */}
         {showCreate && (
           <CreateCronForm
@@ -2026,7 +2025,7 @@ export function CronView() {
             </div>
           );
         })}
-      </div>
+      </SectionBody>
 
       {/* Toast */}
       {toast && (
@@ -2046,6 +2045,6 @@ export function CronView() {
           {toast.message}
         </div>
       )}
-    </div>
+    </SectionLayout>
   );
 }

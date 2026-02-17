@@ -38,6 +38,14 @@ type NormalizedChannel = {
   statuses: ChannelStatusRuntime[];
 };
 
+type PluginListItem = {
+  id: string;
+  enabled: boolean;
+  status?: string;
+  error?: string | null;
+  channelIds?: string[];
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -56,6 +64,112 @@ function deriveAccountStatus(row: Record<string, unknown>): string {
   if (row.enabled === false) return "disabled";
   if (row.configured === false) return "not-configured";
   return "idle";
+}
+
+async function listPlugins(): Promise<PluginListItem[]> {
+  try {
+    const raw = await runCliJson<Record<string, unknown>>(
+      ["plugins", "list"],
+      15000
+    );
+    const pluginsRaw = Array.isArray(raw.plugins) ? raw.plugins : [];
+    return pluginsRaw
+      .filter(isRecord)
+      .map((plugin) => ({
+        id: String(plugin.id || ""),
+        enabled: Boolean(plugin.enabled),
+        status: typeof plugin.status === "string" ? plugin.status : undefined,
+        error:
+          typeof plugin.error === "string"
+            ? plugin.error
+            : plugin.error == null
+              ? null
+              : String(plugin.error),
+        channelIds: Array.isArray(plugin.channelIds)
+          ? plugin.channelIds.map((id) => String(id))
+          : [],
+      }))
+      .filter((plugin) => plugin.id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function findPluginForChannel(
+  plugins: PluginListItem[],
+  channel: string
+): PluginListItem | null {
+  const target = String(channel || "").trim().toLowerCase();
+  if (!target) return null;
+  const exact = plugins.find((plugin) => plugin.id.toLowerCase() === target);
+  if (exact) return exact;
+  return (
+    plugins.find((plugin) =>
+      (plugin.channelIds || []).some((id) => id.toLowerCase() === target)
+    ) || null
+  );
+}
+
+async function ensureChannelPluginReady(channel: string): Promise<{
+  autoEnabled: boolean;
+  note?: string;
+}> {
+  const plugins = await listPlugins();
+  if (plugins.length === 0) {
+    return { autoEnabled: false };
+  }
+
+  const plugin = findPluginForChannel(plugins, channel);
+  if (!plugin) {
+    return { autoEnabled: false };
+  }
+
+  if (plugin.enabled && plugin.status === "error") {
+    throw new Error(
+      `Channel plugin "${plugin.id}" is enabled but failed to load: ${plugin.error || "unknown error"}`
+    );
+  }
+
+  if (plugin.enabled) {
+    return { autoEnabled: false };
+  }
+
+  await runCli(["plugins", "enable", plugin.id], 20000);
+  return {
+    autoEnabled: true,
+    note: `Enabled plugin "${plugin.id}" automatically. Restart the gateway to activate the channel runtime.`,
+  };
+}
+
+function isUnknownChannelError(error: unknown, channel: string): boolean {
+  const msg = String(error || "").toLowerCase();
+  const target = String(channel || "").toLowerCase();
+  if (!target) return false;
+  return msg.includes(`unknown channel: ${target}`) || msg.includes(`unknown channel "${target}"`);
+}
+
+async function explainUnknownChannelError(
+  channel: string,
+  originalError: unknown
+): Promise<never> {
+  const plugins = await listPlugins();
+  const plugin = findPluginForChannel(plugins, channel);
+  if (!plugin) {
+    throw new Error(
+      `Unknown channel "${channel}" in this OpenClaw installation. Check available plugins with "openclaw plugins list" and install/enable the channel plugin, or update OpenClaw.`
+    );
+  }
+  if (!plugin.enabled) {
+    throw new Error(
+      `Channel plugin "${plugin.id}" is installed but disabled. Enable it with "openclaw plugins enable ${plugin.id}", then retry setup.`
+    );
+  }
+  if (plugin.status === "error") {
+    throw new Error(
+      `Channel plugin "${plugin.id}" failed to load: ${plugin.error || "unknown error"}`
+    );
+  }
+  throw new Error(String(originalError));
 }
 
 function normalizeChannels(
@@ -237,7 +351,7 @@ export async function GET(request: NextRequest) {
           icon: "🎮",
           setupType: "token" as const,
           setupCommand: "openclaw channels add --channel discord --token <BOT_TOKEN>",
-          setupHint: "Create a Discord bot at https://discord.com/developers/applications, then paste the token.",
+          setupHint: "Create a Discord bot at https://discord.com/developers/applications then paste the token.",
           configHint: "Supports servers, channels, and DMs.",
           tokenLabel: "Bot Token",
           tokenPlaceholder: "MTIzNDU2Nzg5MDEyMzQ1...",
@@ -400,17 +514,36 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case "add": {
+        const pluginSetup = await ensureChannelPluginReady(channel);
         const args = ["channels", "add", "--channel", channel];
         // Token-based channels
         if (body.token) args.push("--token", body.token as string);
         if (body.appToken) args.push("--app-token", body.appToken as string);
         if (body.account) args.push("--account", body.account as string);
 
-        const output = await runCli(args, 30000);
-        return NextResponse.json({ ok: true, output: output.trim() });
+        let output = "";
+        try {
+          output = await runCli(args, 30000);
+        } catch (error) {
+          if (isUnknownChannelError(error, channel)) {
+            await explainUnknownChannelError(channel, error);
+          }
+          throw error;
+        }
+        const trimmed = output.trim();
+        const merged = pluginSetup.note
+          ? [pluginSetup.note, trimmed].filter(Boolean).join("\n\n")
+          : trimmed;
+        return NextResponse.json({
+          ok: true,
+          output: merged,
+          pluginAutoEnabled: pluginSetup.autoEnabled,
+          restartRecommended: pluginSetup.autoEnabled,
+        });
       }
 
       case "login": {
+        const pluginSetup = await ensureChannelPluginReady(channel);
         // Login is interactive (QR code for WhatsApp, etc.)
         // We'll stream this. For now, return instructions.
         const args = ["channels", "login", "--channel", channel];
@@ -419,16 +552,40 @@ export async function POST(request: NextRequest) {
         // For WhatsApp: this spawns an interactive QR code session
         // We need to handle this differently — tell the user to use the Terminal
         if (channel === "whatsapp" || channel === "signal") {
+          const command = `openclaw channels login --channel ${channel}${body.account ? ` --account ${body.account}` : ""}`;
+          const messageBase = `This channel requires interactive login. Run this in the Terminal:\n\n${command}`;
+          const message = pluginSetup.note
+            ? `${pluginSetup.note}\n\n${messageBase}`
+            : messageBase;
           return NextResponse.json({
             ok: true,
             interactive: true,
-            message: `This channel requires interactive login. Run this in the Terminal:\n\nopenclaw channels login --channel ${channel}${body.account ? ` --account ${body.account}` : ""}`,
-            command: `openclaw channels login --channel ${channel}${body.account ? ` --account ${body.account}` : ""}`,
+            message,
+            command,
+            pluginAutoEnabled: pluginSetup.autoEnabled,
+            restartRecommended: pluginSetup.autoEnabled,
           });
         }
 
-        const output = await runCli(args, 30000);
-        return NextResponse.json({ ok: true, output: output.trim() });
+        let output = "";
+        try {
+          output = await runCli(args, 30000);
+        } catch (error) {
+          if (isUnknownChannelError(error, channel)) {
+            await explainUnknownChannelError(channel, error);
+          }
+          throw error;
+        }
+        const trimmed = output.trim();
+        const merged = pluginSetup.note
+          ? [pluginSetup.note, trimmed].filter(Boolean).join("\n\n")
+          : trimmed;
+        return NextResponse.json({
+          ok: true,
+          output: merged,
+          pluginAutoEnabled: pluginSetup.autoEnabled,
+          restartRecommended: pluginSetup.autoEnabled,
+        });
       }
 
       case "logout": {
@@ -439,6 +596,7 @@ export async function POST(request: NextRequest) {
       }
 
       case "enable": {
+        const pluginSetup = await ensureChannelPluginReady(channel);
         // Enable via config.patch
         const configData = await gatewayCall<Record<string, unknown>>("config.get", undefined, 10000);
         const hash = configData.hash as string;
@@ -446,7 +604,12 @@ export async function POST(request: NextRequest) {
           channels: { [channel]: { enabled: true } },
         });
         await gatewayCall("config.patch", { raw: patchRaw, baseHash: hash, restartDelayMs: 2000 }, 15000);
-        return NextResponse.json({ ok: true });
+        return NextResponse.json({
+          ok: true,
+          pluginAutoEnabled: pluginSetup.autoEnabled,
+          restartRecommended: pluginSetup.autoEnabled,
+          note: pluginSetup.note,
+        });
       }
 
       case "disable": {

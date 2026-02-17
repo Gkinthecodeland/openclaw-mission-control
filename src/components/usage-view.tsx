@@ -19,6 +19,7 @@ import {
   ZAxis,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 
 /* ── types ─────────────────────────────────────── */
 
@@ -455,15 +456,13 @@ export function UsageView() {
   const io = ratio(activeBucket?.input || 0, activeBucket?.output || 0);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[radial-gradient(circle_at_14%_-20%,rgba(59,130,246,0.14),transparent_40%),radial-gradient(circle_at_88%_-15%,rgba(20,184,166,0.10),transparent_36%)]">
-      <div className="flex items-center justify-between border-b border-foreground/[0.08] px-4 py-4 md:px-6">
-        <div>
-          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">Usage Intelligence</h1>
-          <p className="mt-1 text-[12px] text-muted-foreground/70">
-            Token economics, model pressure, and agent throughput
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <SectionLayout className="bg-[radial-gradient(circle_at_14%_-20%,rgba(59,130,246,0.14),transparent_40%),radial-gradient(circle_at_88%_-15%,rgba(20,184,166,0.10),transparent_36%)]">
+      <SectionHeader
+        title={<span className="text-[20px] tracking-tight">Usage Intelligence</span>}
+        description="Token economics, model pressure, and agent throughput"
+        descriptionClassName="mt-1 text-[12px] text-muted-foreground/70"
+        actions={
+          <div className="flex items-center gap-2">
           <div className="inline-flex rounded-xl border border-foreground/[0.1] bg-card/70 p-1 backdrop-blur-sm">
             {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
               <button
@@ -491,11 +490,11 @@ export function UsageView() {
           >
             Refresh
           </button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6">
-        <div className="w-full space-y-5">
+      <SectionBody width="full" padding="regular" innerClassName="space-y-5">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <MetricTile
               label={`Tokens · ${PERIOD_TITLES[period]}`}
@@ -866,8 +865,7 @@ export function UsageView() {
               })}
             </div>
           </Panel>
-        </div>
-      </div>
-    </div>
+      </SectionBody>
+    </SectionLayout>
   );
 }

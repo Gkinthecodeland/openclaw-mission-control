@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readdir, readFile, writeFile, stat, unlink, rename, copyFile } from "fs/promises";
+import {
+  readdir,
+  readFile,
+  writeFile,
+  stat,
+  unlink,
+  rename,
+  copyFile,
+} from "fs/promises";
 import { join, extname, basename } from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -12,40 +20,167 @@ const exec = promisify(execFile);
 type VectorState = "indexed" | "stale" | "not_indexed" | "unknown";
 
 type MemoryStatusRow = {
+  agentId?: string;
   status?: {
     workspaceDir?: string;
     dbPath?: string;
+    files?: number;
+    chunks?: number;
+    dirty?: boolean;
+    provider?: string;
+    model?: string;
+  };
+  scan?: {
+    issues?: string[];
+    totalFiles?: number;
   };
 };
 
-async function getIndexedMemoryFiles(): Promise<Map<string, { mtime: number; size: number }> | null> {
+type CliAgentRow = {
+  id?: string;
+  name?: string;
+  identityName?: string;
+  workspace?: string;
+  isDefault?: boolean;
+};
+
+type WorkspaceMemoryFile = {
+  exists: boolean;
+  fileName: "MEMORY.md" | "memory.md";
+  path: string;
+  content: string;
+  words: number;
+  size: number;
+  mtime?: string;
+  hasAltCaseFile: boolean;
+};
+
+function stripTemplateHints(raw: string): string {
+  return raw.replace(/\s*_\(.*?\)_?\s*/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function safeAgentName(agent: CliAgentRow): string {
+  const identity = stripTemplateHints(String(agent.identityName || "")).trim();
+  if (identity) return identity;
+  const name = stripTemplateHints(String(agent.name || "")).trim();
+  if (name) return name;
+  return String(agent.id || "agent");
+}
+
+async function getCliAgents(): Promise<CliAgentRow[]> {
   try {
-    const statuses = await runCliJson<MemoryStatusRow[]>(["memory", "status"], 12000);
-    const match = statuses.find((s) => s.status?.workspaceDir === WORKSPACE);
-    const dbPath = match?.status?.dbPath;
-    if (!dbPath) return null;
-
-    const { stdout } = await exec("sqlite3", [
-      dbPath,
-      "select path, mtime, size from files where source='memory';",
-    ]);
-
-    const map = new Map<string, { mtime: number; size: number }>();
-    for (const line of stdout.split("\n")) {
-      const row = line.trim();
-      if (!row) continue;
-      const [path, mtimeRaw, sizeRaw] = row.split("|");
-      if (!path || !mtimeRaw || !sizeRaw) continue;
-      const name = basename(path);
-      const mtime = Number(mtimeRaw);
-      const size = Number(sizeRaw);
-      if (!Number.isFinite(mtime) || !Number.isFinite(size)) continue;
-      map.set(name, { mtime, size });
-    }
-    return map;
+    const rows = await runCliJson<CliAgentRow[]>(["agents", "list"], 12000);
+    return Array.isArray(rows) ? rows : [];
   } catch {
-    return null;
+    return [];
   }
+}
+
+async function getMemoryStatuses(): Promise<MemoryStatusRow[]> {
+  try {
+    const rows = await runCliJson<MemoryStatusRow[]>(["memory", "status"], 12000);
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+async function readWorkspaceMemoryFile(
+  workspaceDir: string,
+  includeContent = true
+): Promise<WorkspaceMemoryFile> {
+  const upperPath = join(workspaceDir, "MEMORY.md");
+  const lowerPath = join(workspaceDir, "memory.md");
+
+  const upper = await stat(upperPath)
+    .then((s) => (s.isFile() ? s : null))
+    .catch(() => null);
+  const lower = await stat(lowerPath)
+    .then((s) => (s.isFile() ? s : null))
+    .catch(() => null);
+
+  const hasAltCaseFile = Boolean(upper && lower);
+
+  if (!upper && !lower) {
+    return {
+      exists: false,
+      fileName: "MEMORY.md",
+      path: upperPath,
+      content: "",
+      words: 0,
+      size: 0,
+      hasAltCaseFile,
+    };
+  }
+
+  const useUpper = Boolean(upper);
+  const chosenPath = useUpper ? upperPath : lowerPath;
+  const chosenStat = useUpper ? upper : lower;
+  const content = includeContent ? await readFile(chosenPath, "utf-8") : "";
+
+  return {
+    exists: true,
+    fileName: useUpper ? "MEMORY.md" : "memory.md",
+    path: chosenPath,
+    content,
+    words: includeContent ? content.split(/\s+/).filter(Boolean).length : 0,
+    size: chosenStat?.size || (includeContent ? Buffer.byteLength(content, "utf-8") : 0),
+    mtime: chosenStat?.mtime.toISOString(),
+    hasAltCaseFile,
+  };
+}
+
+async function getIndexedMemoryFilesByWorkspace(
+  statuses: MemoryStatusRow[]
+): Promise<Map<string, Map<string, { mtime: number; size: number }>>> {
+  const out = new Map<string, Map<string, { mtime: number; size: number }>>();
+
+  await Promise.all(
+    statuses.map(async (row) => {
+      const workspaceDir = String(row.status?.workspaceDir || "").trim();
+      const dbPath = String(row.status?.dbPath || "").trim();
+      if (!workspaceDir || !dbPath) return;
+
+      try {
+        const { stdout } = await exec(
+          "sqlite3",
+          [dbPath, "select path, mtime, size from files where source='memory';"],
+          { timeout: 12000 }
+        );
+
+        const map = new Map<string, { mtime: number; size: number }>();
+        for (const line of stdout.split("\n")) {
+          const rowText = line.trim();
+          if (!rowText) continue;
+          const [path, mtimeRaw, sizeRaw] = rowText.split("|");
+          if (!path || !mtimeRaw || !sizeRaw) continue;
+          const name = basename(path);
+          const mtime = Number(mtimeRaw);
+          const size = Number(sizeRaw);
+          if (!Number.isFinite(mtime) || !Number.isFinite(size)) continue;
+          map.set(name, { mtime, size });
+        }
+        out.set(workspaceDir, map);
+      } catch {
+        // ignore per-workspace db failures
+      }
+    })
+  );
+
+  return out;
+}
+
+function findIndexedHit(
+  indexed: Map<string, { mtime: number; size: number }>,
+  fileName: string
+): { mtime: number; size: number } | null {
+  const direct = indexed.get(fileName);
+  if (direct) return direct;
+  const needle = fileName.toLowerCase();
+  for (const [name, value] of indexed.entries()) {
+    if (name.toLowerCase() === needle) return value;
+  }
+  return null;
 }
 
 function resolveVectorState(
@@ -53,7 +188,7 @@ function resolveVectorState(
   entry: { name: string; mtime?: string; size?: number }
 ): VectorState {
   if (!indexed) return "unknown";
-  const hit = indexed.get(entry.name);
+  const hit = findIndexedHit(indexed, entry.name);
   if (!hit) return "not_indexed";
   if (!entry.mtime || typeof entry.size !== "number") return "indexed";
   const fileMtime = new Date(entry.mtime).getTime();
@@ -64,13 +199,45 @@ function resolveVectorState(
   return mtimeClose && sizeSame ? "indexed" : "stale";
 }
 
+function resolveAgentWorkspace(agentId: string, agents: CliAgentRow[]): string {
+  const hit = agents.find((a) => String(a.id || "") === agentId);
+  return String(hit?.workspace || WORKSPACE);
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const { file, content } = body;
+    const agentMemory = String(body.agentMemory || "").trim();
+
     if (typeof content !== "string") {
       return NextResponse.json({ error: "content required" }, { status: 400 });
     }
+
+    if (agentMemory) {
+      const agents = await getCliAgents();
+      const agent = agents.find((a) => String(a.id || "") === agentMemory);
+      if (!agent) {
+        return NextResponse.json({ error: `unknown agent: ${agentMemory}` }, { status: 400 });
+      }
+
+      const workspaceDir = String(agent.workspace || WORKSPACE);
+      const memoryFile = await readWorkspaceMemoryFile(workspaceDir, false);
+      await writeFile(memoryFile.path, content, "utf-8");
+
+      const words = content.split(/\s+/).filter(Boolean).length;
+      const size = Buffer.byteLength(content, "utf-8");
+      return NextResponse.json({
+        ok: true,
+        agentId: agentMemory,
+        file: memoryFile.fileName,
+        path: memoryFile.path,
+        workspace: workspaceDir,
+        words,
+        size,
+      });
+    }
+
     if (file) {
       const safePath = String(file).replace(/\.\./g, "").replace(/^\/+/, "");
       if (!safePath.endsWith(".md")) {
@@ -82,11 +249,18 @@ export async function PUT(request: NextRequest) {
       const size = Buffer.byteLength(content, "utf-8");
       return NextResponse.json({ ok: true, file: safePath, words, size });
     }
-    const fullPath = join(WORKSPACE, "MEMORY.md");
-    await writeFile(fullPath, content, "utf-8");
+
+    const memoryFile = await readWorkspaceMemoryFile(WORKSPACE, false);
+    await writeFile(memoryFile.path, content, "utf-8");
     const words = content.split(/\s+/).filter(Boolean).length;
     const size = Buffer.byteLength(content, "utf-8");
-    return NextResponse.json({ ok: true, file: "MEMORY.md", words, size });
+    return NextResponse.json({
+      ok: true,
+      file: memoryFile.fileName,
+      path: memoryFile.path,
+      words,
+      size,
+    });
   } catch (err) {
     console.error("Memory PUT error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -152,7 +326,11 @@ export async function PATCH(request: NextRequest) {
       let suffix = 1;
       let dupPath: string;
       do {
-        dupPath = join(WORKSPACE, "memory", `${base} (copy${suffix > 1 ? ` ${suffix}` : ""})${ext}`);
+        dupPath = join(
+          WORKSPACE,
+          "memory",
+          `${base} (copy${suffix > 1 ? ` ${suffix}` : ""})${ext}`
+        );
         suffix++;
       } while (
         await stat(dupPath)
@@ -182,6 +360,7 @@ export async function POST(request: NextRequest) {
 
     const file = typeof body.file === "string" ? body.file : null;
     const force = !!body.force;
+    const agentId = String(body.agentId || "").trim();
 
     if (file) {
       const safePath = file.replace(/\.\./g, "").replace(/^\/+/, "");
@@ -191,6 +370,7 @@ export async function POST(request: NextRequest) {
     }
 
     const args = ["memory", "index"];
+    if (agentId) args.push("--agent", agentId);
     if (force) args.push("--force");
     await runCli(args, force ? 60000 : 30000);
 
@@ -198,11 +378,24 @@ export async function POST(request: NextRequest) {
     if (file) {
       const safePath = file.replace(/\.\./g, "").replace(/^\/+/, "");
       try {
-        const fullPath = join(WORKSPACE, "memory", safePath);
+        const agents = agentId ? await getCliAgents() : [];
+        const workspaceDir = agentId ? resolveAgentWorkspace(agentId, agents) : WORKSPACE;
+        const isTopLevelMemory = /^memory\.md$/i.test(safePath);
+
+        let fullPath: string;
+        if (isTopLevelMemory) {
+          const memoryFile = await readWorkspaceMemoryFile(workspaceDir, false);
+          fullPath = memoryFile.path;
+        } else {
+          fullPath = join(workspaceDir, "memory", safePath);
+        }
+
         const s = await stat(fullPath);
-        const indexed = await getIndexedMemoryFiles();
+        const statuses = await getMemoryStatuses();
+        const indexedByWorkspace = await getIndexedMemoryFilesByWorkspace(statuses);
+        const indexed = indexedByWorkspace.get(workspaceDir) || null;
         vectorState = resolveVectorState(indexed, {
-          name: safePath,
+          name: basename(fullPath),
           mtime: s.mtime.toISOString(),
           size: s.size,
         });
@@ -215,6 +408,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       action,
       file,
+      agentId: agentId || null,
       vectorState,
       force,
     });
@@ -227,6 +421,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const file = searchParams.get("file");
+  const agentMemory = searchParams.get("agentMemory");
 
   try {
     if (file) {
@@ -236,6 +431,49 @@ export async function GET(request: NextRequest) {
       const words = content.split(/\s+/).filter(Boolean).length;
       const size = Buffer.byteLength(content, "utf-8");
       return NextResponse.json({ content, words, size, file: safePath });
+    }
+
+    if (agentMemory) {
+      const agents = await getCliAgents();
+      const agent = agents.find((a) => String(a.id || "") === agentMemory);
+      if (!agent) {
+        return NextResponse.json({ error: `unknown agent: ${agentMemory}` }, { status: 400 });
+      }
+
+      const workspaceDir = String(agent.workspace || WORKSPACE);
+      const memoryFile = await readWorkspaceMemoryFile(workspaceDir, true);
+      const statuses = await getMemoryStatuses();
+      const indexedByWorkspace = await getIndexedMemoryFilesByWorkspace(statuses);
+      const indexed = indexedByWorkspace.get(workspaceDir) || null;
+      const vectorState = memoryFile.exists
+        ? resolveVectorState(indexed, {
+            name: memoryFile.fileName,
+            mtime: memoryFile.mtime,
+            size: memoryFile.size,
+          })
+        : "not_indexed";
+
+      const status = statuses.find((s) => String(s.agentId || "") === agentMemory);
+
+      return NextResponse.json({
+        agentId: String(agent.id || agentMemory),
+        agentName: safeAgentName(agent),
+        isDefault: Boolean(agent.isDefault),
+        workspace: workspaceDir,
+        exists: memoryFile.exists,
+        fileName: memoryFile.fileName,
+        path: memoryFile.path,
+        hasAltCaseFile: memoryFile.hasAltCaseFile,
+        content: memoryFile.content,
+        words: memoryFile.words,
+        size: memoryFile.size,
+        mtime: memoryFile.mtime,
+        vectorState,
+        dirty: Boolean(status?.status?.dirty),
+        indexedFiles: Number(status?.status?.files || 0),
+        indexedChunks: Number(status?.status?.chunks || 0),
+        scanIssues: Array.isArray(status?.scan?.issues) ? status?.scan?.issues : [],
+      });
     }
 
     const memoryDir = join(WORKSPACE, "memory");
@@ -273,32 +511,90 @@ export async function GET(request: NextRequest) {
       // memory/ may not exist
     }
 
-    let memoryMd: string | null = null;
-    let memoryMtime: string | undefined;
-    try {
-      memoryMd = await readFile(join(WORKSPACE, "MEMORY.md"), "utf-8");
-      const s = await stat(join(WORKSPACE, "MEMORY.md"));
-      memoryMtime = s.mtime.toISOString();
-    } catch {
-      // MEMORY.md optional
-    }
+    const statuses = await getMemoryStatuses();
+    const indexedByWorkspace = await getIndexedMemoryFilesByWorkspace(statuses);
 
-    const indexedFiles = await getIndexedMemoryFiles();
     const dailyWithVector = list.map((entry) => ({
       ...entry,
-      vectorState: resolveVectorState(indexedFiles, entry),
+      vectorState: resolveVectorState(indexedByWorkspace.get(WORKSPACE) || null, entry),
     }));
+
+    const coreMemory = await readWorkspaceMemoryFile(WORKSPACE, true);
+    const coreVectorState = coreMemory.exists
+      ? resolveVectorState(indexedByWorkspace.get(WORKSPACE) || null, {
+          name: coreMemory.fileName,
+          mtime: coreMemory.mtime,
+          size: coreMemory.size,
+        })
+      : "not_indexed";
+
+    const agents = await getCliAgents();
+    const agentMemoryFiles = await Promise.all(
+      agents
+        .filter((a) => String(a.id || "").trim().length > 0)
+        .map(async (agent) => {
+          const agentId = String(agent.id || "");
+          const workspaceDir = String(agent.workspace || WORKSPACE);
+          const memoryFile = await readWorkspaceMemoryFile(workspaceDir, false);
+          const status = statuses.find((s) => String(s.agentId || "") === agentId);
+          const vectorState = memoryFile.exists
+            ? resolveVectorState(indexedByWorkspace.get(workspaceDir) || null, {
+                name: memoryFile.fileName,
+                mtime: memoryFile.mtime,
+                size: memoryFile.size,
+              })
+            : "not_indexed";
+
+          return {
+            agentId,
+            agentName: safeAgentName(agent),
+            isDefault: Boolean(agent.isDefault),
+            workspace: workspaceDir,
+            exists: memoryFile.exists,
+            fileName: memoryFile.fileName,
+            path: memoryFile.path,
+            hasAltCaseFile: memoryFile.hasAltCaseFile,
+            words: memoryFile.words,
+            size: memoryFile.size,
+            mtime: memoryFile.mtime,
+            vectorState,
+            dirty: Boolean(status?.status?.dirty),
+            indexedFiles: Number(status?.status?.files || 0),
+            indexedChunks: Number(status?.status?.chunks || 0),
+            provider: String(status?.status?.provider || ""),
+            model: String(status?.status?.model || ""),
+            scanIssues: Array.isArray(status?.scan?.issues) ? status?.scan?.issues : [],
+          };
+        })
+    );
+
+    agentMemoryFiles.sort((a, b) => {
+      if (a.isDefault && !b.isDefault) return -1;
+      if (!a.isDefault && b.isDefault) return 1;
+      return a.agentName.localeCompare(b.agentName);
+    });
 
     return NextResponse.json({
       daily: dailyWithVector,
-      memoryMd: memoryMd
+      memoryMd: coreMemory.exists
         ? {
-            content: memoryMd,
-            words: memoryMd.split(/\s+/).filter(Boolean).length,
-            size: Buffer.byteLength(memoryMd, "utf-8"),
-            mtime: memoryMtime,
+            content: coreMemory.content,
+            words: coreMemory.words,
+            size: coreMemory.size,
+            mtime: coreMemory.mtime,
+            fileName: coreMemory.fileName,
+            path: coreMemory.path,
+            hasAltCaseFile: coreMemory.hasAltCaseFile,
+            vectorState: coreVectorState,
           }
         : null,
+      agentMemoryFiles,
+      docsContext: {
+        memoryFile: "MEMORY.md or memory.md",
+        journalDir: "memory/*.md",
+        note:
+          "MEMORY.md is user-managed long-term memory; memory/*.md are rolling journal files indexed for retrieval.",
+      },
     });
   } catch (err) {
     console.error("Memory API error:", err);

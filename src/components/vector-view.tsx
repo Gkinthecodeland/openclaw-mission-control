@@ -9,6 +9,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 
 type SourceCount = { source: string; files: number; chunks: number };
 
@@ -648,15 +649,28 @@ export function VectorView() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-4 md:px-6 py-4">
-        <div>
-          <h1 className="text-[18px] font-semibold text-foreground flex items-center gap-2"><Database className="h-5 w-5 text-violet-400" />Vector Memory</h1>
-          <p className="text-[12px] text-muted-foreground mt-0.5">Browse, search, and manage your embedding index</p>
-        </div>
-        <button onClick={() => { setLoading(true); fetchStatus(); }} className="rounded-lg p-2 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground/70"><RefreshCw className="h-4 w-4" /></button>
-      </div>
-      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5 space-y-6">
+    <SectionLayout>
+      <SectionHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Database className="h-5 w-5 text-violet-400" />
+            Vector Memory
+          </span>
+        }
+        description="Browse, search, and manage your embedding index"
+        actions={
+          <button
+            onClick={() => {
+              setLoading(true);
+              fetchStatus();
+            }}
+            className="rounded-lg p-2 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground/70"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        }
+      />
+      <SectionBody width="content" padding="regular" innerClassName="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <OverviewStat icon={Layers} value={String(totalChunks)} label="Total Chunks" color="text-violet-400" />
           <OverviewStat icon={FileText} value={String(totalFiles)} label="Indexed Files" color="text-sky-400" />
@@ -711,8 +725,8 @@ export function VectorView() {
             <p><span className="text-violet-400">openclaw memory search &quot;query&quot;</span> <span className="text-muted-foreground/60"># Semantic search</span></p>
           </div>
         </div>
-      </div>
+      </SectionBody>
       {toast && <ToastBar toast={toast} onDone={() => setToast(null)} />}
-    </div>
+    </SectionLayout>
   );
 }

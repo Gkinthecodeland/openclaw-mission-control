@@ -22,6 +22,8 @@ import {
   UserX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type PermissionSnapshot = {
   ts: number;
@@ -303,23 +305,24 @@ export function PermissionsView() {
   );
 
   const elevatedEnabled = Boolean(snapshot?.sandbox?.elevated?.enabled);
+  const initialLoading = loading && !snapshot;
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
-      <div className="border-b border-foreground/[0.08] bg-card/60 px-4 py-3 md:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-[16px] font-semibold text-foreground/95">
-              <Shield className="h-4 w-4 text-cyan-300" />
-              Permission Control
-            </h1>
-            <p className="text-[12px] text-muted-foreground/70">
-              Inspect, grant, and revoke what OpenClaw can execute on this machine.
-            </p>
-            <p className="text-[10px] text-muted-foreground/60">
-              Source: <code>openclaw approvals get --json</code> + <code>openclaw sandbox explain --json</code>
-            </p>
-          </div>
+    <SectionLayout>
+      <SectionHeader
+        title={
+          <span className="flex items-center gap-2 text-[16px]">
+            <Shield className="h-4 w-4 text-cyan-300" />
+            Permission Control
+          </span>
+        }
+        description="Inspect, grant, and revoke what OpenClaw can execute on this machine."
+        meta={
+          <>
+            Source: <code>openclaw approvals get --json</code> + <code>openclaw sandbox explain --json</code>
+          </>
+        }
+        actions={
           <button
             type="button"
             onClick={() => void load()}
@@ -329,10 +332,74 @@ export function PermissionsView() {
             <RefreshCw className={cn("h-3.5 w-3.5", (loading || mutating) && "animate-spin")} />
             Refresh
           </button>
-        </div>
-      </div>
+        }
+        className="bg-card/60"
+      />
 
-      <div className="mx-auto w-full max-w-[1360px] space-y-4 px-4 py-4 md:px-6">
+      <SectionBody width="wide" padding="compact" innerClassName="space-y-4">
+        {initialLoading && (
+          <>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div key={`stat-skeleton-${idx}`} className="rounded-xl border border-foreground/[0.08] bg-card/70 p-3">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="mt-2 h-6 w-20" />
+                  <Skeleton className="mt-2 h-3 w-32" />
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+              <section className="rounded-2xl border border-foreground/[0.08] bg-card/60 p-3">
+                <Skeleton className="mb-3 h-4 w-36" />
+                <div className="space-y-2">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <div key={`cap-skeleton-${idx}`} className="rounded-xl border border-foreground/[0.08] p-3">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="mt-2 h-3 w-56" />
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="rounded-2xl border border-foreground/[0.08] bg-card/60 p-3">
+                <Skeleton className="mb-3 h-4 w-40" />
+                <div className="space-y-2">
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <Skeleton key={`action-skeleton-${idx}`} className="h-16 w-full rounded-xl" />
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <section className="rounded-2xl border border-foreground/[0.08] bg-card/60 p-3">
+              <Skeleton className="mb-3 h-4 w-44" />
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <Skeleton key={`quick-skeleton-${idx}`} className="h-20 w-full rounded-xl" />
+                ))}
+              </div>
+            </section>
+
+            <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+              <section className="rounded-2xl border border-foreground/[0.08] bg-card/60 p-3">
+                <Skeleton className="mb-3 h-4 w-32" />
+                <div className="space-y-2">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <Skeleton key={`allowlist-skeleton-${idx}`} className="h-14 w-full rounded-xl" />
+                  ))}
+                </div>
+              </section>
+              <section className="rounded-2xl border border-foreground/[0.08] bg-card/60 p-3">
+                <Skeleton className="mb-3 h-4 w-28" />
+                <Skeleton className="h-20 w-full rounded-xl" />
+                <Skeleton className="mt-2 h-20 w-full rounded-xl" />
+              </section>
+            </div>
+          </>
+        )}
+
+        {!initialLoading && (
+          <>
         {error && (
           <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-700 dark:text-red-200">
             {error}
@@ -689,7 +756,10 @@ export function PermissionsView() {
                 Pending Requests ({pendingDevices.length})
               </h3>
               {devicesLoading ? (
-                <p className="text-[11px] text-muted-foreground/70">Loading device requests...</p>
+                <div className="space-y-2">
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                </div>
               ) : pendingDevices.length === 0 ? (
                 <p className="text-[11px] text-muted-foreground/70">No pending pairing requests.</p>
               ) : (
@@ -741,7 +811,11 @@ export function PermissionsView() {
                 Paired Devices ({pairedDevices.length})
               </h3>
               {devicesLoading ? (
-                <p className="text-[11px] text-muted-foreground/70">Loading paired devices...</p>
+                <div className="space-y-2">
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                </div>
               ) : pairedDevices.length === 0 ? (
                 <p className="text-[11px] text-muted-foreground/70">No paired devices.</p>
               ) : (
@@ -781,7 +855,9 @@ export function PermissionsView() {
             </div>
           </div>
         </section>
-      </div>
-    </div>
+        </>
+        )}
+      </SectionBody>
+    </SectionLayout>
   );
 }

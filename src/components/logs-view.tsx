@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SectionLayout } from "@/components/section-layout";
 
 type LogEntry = {
   line: number;
@@ -30,24 +31,53 @@ type LogStats = { info: number; warn: number; error: number };
 
 const LEVEL_STYLES: Record<
   string,
-  { icon: React.ComponentType<{ className?: string }>; text: string; bg: string }
+  {
+    icon: React.ComponentType<{ className?: string }>;
+    iconClass: string;
+    rowClass: string;
+    messageClass: string;
+  }
 > = {
   error: {
     icon: AlertCircle,
-    text: "text-red-400",
-    bg: "bg-red-500/5 border-l-2 border-red-500/40",
+    iconClass: "text-red-600 dark:text-red-400",
+    rowClass: "border-l-2 border-red-500/45 bg-red-500/10 dark:bg-red-500/5",
+    messageClass: "text-red-700 dark:text-red-300/85",
   },
   warn: {
     icon: AlertTriangle,
-    text: "text-amber-400",
-    bg: "bg-amber-500/5 border-l-2 border-amber-500/40",
+    iconClass: "text-amber-700 dark:text-amber-400",
+    rowClass: "border-l-2 border-amber-500/45 bg-amber-500/10 dark:bg-amber-500/5",
+    messageClass: "text-amber-800 dark:text-amber-300/75",
   },
   info: {
     icon: Info,
-    text: "text-muted-foreground",
-    bg: "border-l-2 border-transparent",
+    iconClass: "text-slate-600 dark:text-muted-foreground",
+    rowClass: "border-l-2 border-transparent",
+    messageClass: "text-foreground/85 dark:text-muted-foreground",
   },
 };
+
+function sourceClass(source: string): string {
+  switch (source) {
+    case "ws":
+      return "text-blue-700 dark:text-blue-300/70";
+    case "cron":
+      return "text-amber-700 dark:text-amber-300/70";
+    case "telegram":
+      return "text-cyan-700 dark:text-cyan-300/70";
+    case "tools":
+      return "text-violet-700 dark:text-violet-300/70";
+    case "skills-remote":
+      return "text-orange-700 dark:text-orange-300/75";
+    case "agent":
+      return "text-emerald-700 dark:text-emerald-300/70";
+    case "system":
+      return "text-rose-700 dark:text-rose-300/75";
+    default:
+      return "text-foreground/65 dark:text-muted-foreground";
+  }
+}
 
 function formatLogTime(time: string): string {
   if (!time) return "";
@@ -150,7 +180,7 @@ export function LogsView() {
   );
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <SectionLayout>
       {/* ── Toolbar ──────────────────────────────── */}
       <div className="shrink-0 border-b border-foreground/[0.06] bg-card/60">
         <div className="flex items-center gap-3 px-4 py-2.5">
@@ -362,36 +392,22 @@ export function LogsView() {
                       <div className="h-px flex-1 bg-foreground/[0.04]" />
                     </div>
                   )}
-                  <div
-                    className={cn(
-                      "group flex items-start gap-2 rounded px-2 py-[2px] transition-colors hover:bg-muted/50",
-                      style.bg
-                    )}
-                  >
-                    <span className="w-[65px] shrink-0 text-muted-foreground/60">
+                    <div
+                      className={cn(
+                        "group flex items-start gap-2 rounded px-2 py-[2px] transition-colors hover:bg-muted/50",
+                        style.rowClass
+                      )}
+                    >
+                    <span className="w-[65px] shrink-0 text-foreground/45 dark:text-muted-foreground/60">
                       {formatLogTime(entry.time)}
                     </span>
                     <LevelIcon
-                      className={cn("mt-[2px] h-3 w-3 shrink-0", style.text)}
+                      className={cn("mt-[2px] h-3 w-3 shrink-0", style.iconClass)}
                     />
                     <span
                       className={cn(
                         "w-[100px] shrink-0 truncate font-semibold",
-                        entry.source === "ws"
-                          ? "text-blue-400/60"
-                          : entry.source === "cron"
-                            ? "text-amber-400/60"
-                            : entry.source === "telegram"
-                              ? "text-cyan-400/60"
-                              : entry.source === "tools"
-                                ? "text-violet-400/60"
-                                : entry.source === "skills-remote"
-                                  ? "text-orange-400/60"
-                                  : entry.source === "agent"
-                                    ? "text-emerald-400/60"
-                                    : entry.source === "system"
-                                      ? "text-rose-400/60"
-                                      : "text-muted-foreground"
+                        sourceClass(entry.source)
                       )}
                     >
                       [{entry.source}]
@@ -399,11 +415,7 @@ export function LogsView() {
                     <span
                       className={cn(
                         "flex-1 break-all whitespace-pre-wrap",
-                        entry.level === "error"
-                          ? "text-red-300/80"
-                          : entry.level === "warn"
-                            ? "text-amber-300/70"
-                            : "text-muted-foreground"
+                        style.messageClass
                       )}
                     >
                       {highlightMessage(entry.message, search)}
@@ -447,7 +459,7 @@ export function LogsView() {
           )}
         </div>
       </div>
-    </div>
+    </SectionLayout>
   );
 }
 
@@ -459,7 +471,7 @@ function highlightMessage(message: string, search: string): React.ReactNode {
   return (
     <>
       {message.slice(0, idx)}
-      <mark className="rounded bg-violet-500/30 px-0.5 text-violet-200">
+      <mark className="rounded bg-violet-500/20 px-0.5 text-violet-900 dark:bg-violet-500/30 dark:text-violet-200">
         {message.slice(idx, idx + search.length)}
       </mark>
       {message.slice(idx + search.length)}

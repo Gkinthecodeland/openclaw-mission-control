@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { constants as fsConstants } from "fs";
+import { access, readFile, rm, writeFile } from "fs/promises";
+import { join } from "path";
 import { getDefaultWorkspaceSync } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +39,11 @@ type SearchItem = {
 type InstalledItem = {
   slug: string;
   version: string;
+};
+
+type LockFile = {
+  version?: number;
+  skills?: Record<string, { version?: string; installedAt?: number }>;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -110,6 +118,60 @@ function parseInstalled(stdout: string): InstalledItem[] {
       };
     })
     .filter((v): v is InstalledItem => Boolean(v));
+}
+
+function isValidSlug(slug: string): boolean {
+  return /^[a-z0-9][a-z0-9_-]*$/i.test(slug);
+}
+
+async function readLockFile(path: string): Promise<LockFile> {
+  try {
+    const raw = await readFile(path, "utf-8");
+    const parsed = JSON.parse(raw) as LockFile;
+    if (!parsed || typeof parsed !== "object") {
+      return { version: 1, skills: {} };
+    }
+    if (!parsed.skills || typeof parsed.skills !== "object") {
+      parsed.skills = {};
+    }
+    if (!parsed.version) {
+      parsed.version = 1;
+    }
+    return parsed;
+  } catch {
+    return { version: 1, skills: {} };
+  }
+}
+
+async function uninstallWorkspaceSkill(slug: string): Promise<{
+  removedDir: boolean;
+  removedLock: boolean;
+}> {
+  const workspace = getDefaultWorkspaceSync();
+  const skillDir = join(workspace, "skills", slug);
+  const lockPath = join(workspace, ".clawhub", "lock.json");
+
+  let removedDir = false;
+  let removedLock = false;
+
+  try {
+    await access(skillDir, fsConstants.F_OK);
+    await rm(skillDir, { recursive: true, force: true });
+    removedDir = true;
+  } catch {
+    // best effort
+  }
+
+  const lock = await readLockFile(lockPath);
+  const skills = lock.skills || {};
+  if (skills[slug]) {
+    delete skills[slug];
+    lock.skills = skills;
+    await writeFile(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf-8");
+    removedLock = true;
+  }
+
+  return { removedDir, removedLock };
 }
 
 async function runClawHub(args: string[], timeout = 30000): Promise<{ stdout: string; stderr: string }> {
@@ -187,6 +249,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, action, slug: slug || null, output: `${stdout}${stderr}`.trim() });
     }
 
+    if (action === "uninstall") {
+      if (!slug) return NextResponse.json({ error: "slug required" }, { status: 400 });
+      if (!isValidSlug(slug)) {
+        return NextResponse.json({ error: "invalid slug" }, { status: 400 });
+      }
+      const result = await uninstallWorkspaceSkill(slug);
+      if (!result.removedDir && !result.removedLock) {
+        return NextResponse.json(
+          { error: `Skill "${slug}" not found in workspace` },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        action,
+        slug,
+        output: `Removed ${slug} from workspace skills.`,
+      });
+    }
+
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   } catch (err) {
     const e = err as { message?: string; stdout?: string; stderr?: string };
@@ -194,4 +276,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: details || String(err) }, { status: 500 });
   }
 }
-
