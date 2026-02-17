@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Trash2, RefreshCw, MessageSquare, Clock, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 type Session = {
   key: string;
@@ -96,11 +97,7 @@ export function SessionsView() {
   );
 
   if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">
-        Loading sessions...
-      </div>
-    );
+    return <LoadingState label="Loading sessions..." />;
   }
 
   return (

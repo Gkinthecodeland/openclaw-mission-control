@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Bot, Check, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 import { requestRestart } from "@/lib/restart-store";
 import { cn } from "@/lib/utils";
+import { LoadingState } from "@/components/ui/loading-state";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 
 type ModelInfo = {
@@ -536,12 +537,7 @@ export function ModelsView() {
   );
 
   if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground/70" />
-        <span className="ml-2 text-sm text-muted-foreground">Loading models...</span>
-      </div>
-    );
+    return <LoadingState label="Loading models..." />;
   }
 
   if (!status) {

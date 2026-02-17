@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 /* ================================================================
    Types
@@ -1063,11 +1064,7 @@ export function ConfigEditor() {
   /* ── Loading state ─────────────── */
 
   if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
-      </div>
-    );
+    return <LoadingState label="Loading configuration..." size="lg" />;
   }
 
   if (!rawConfig) {

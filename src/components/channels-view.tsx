@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 /* ── Types ────────────────────────────────────────── */
 
@@ -300,11 +301,7 @@ export function ChannelsView() {
   };
 
   if (channelsLoading) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">
-        Loading channels...
-      </div>
-    );
+    return <LoadingState label="Loading channels..." />;
   }
 
   return (

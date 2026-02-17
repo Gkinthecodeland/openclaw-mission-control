@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 /* ── Types ──────────────────────────────────────── */
 
@@ -724,7 +725,7 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
     } catch { /* ignore */ }
   }, [name, onAction]);
 
-  if (loading) return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-violet-400" /></div>;
+  if (loading) return <LoadingState label="Loading skill..." />;
   if (!detail) return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">Skill not found</div>;
 
   const missing = hasMissing(detail.missing);
@@ -1416,7 +1417,7 @@ export function SkillsView({ initialSkillName = null }: { initialSkillName?: str
     );
   }
 
-  if (loading) return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>;
+  if (loading) return <LoadingState label="Loading skills..." size="lg" />;
 
   const bundledCount = skills.filter((s) => getSkillOrigin(s) === "bundled").length;
   const workspaceCount = skills.filter((s) => getSkillOrigin(s) === "workspace").length;

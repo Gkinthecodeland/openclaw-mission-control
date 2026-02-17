@@ -19,6 +19,7 @@ import {
   GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LoadingState } from "@/components/ui/loading-state";
 import { SectionLayout } from "@/components/section-layout";
 
 /* ── types ─────────────────────────────────────── */
@@ -148,11 +149,7 @@ export function TasksView() {
   /* ── rendering ─────────────────────────────────── */
 
   if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">
-        Loading tasks...
-      </div>
-    );
+    return <LoadingState label="Loading tasks..." />;
   }
   if (!data) {
     return (

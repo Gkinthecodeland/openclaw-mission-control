@@ -20,6 +20,7 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 /* ── types ─────────────────────────────────────── */
 
@@ -461,11 +462,7 @@ export function UsageView() {
   }, [data]);
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-foreground/20 border-t-foreground/70" />
-      </div>
-    );
+    return <LoadingState label="Loading usage intelligence..." size="lg" className="h-full" />;
   }
 
   if (error || !data) {

@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { InlineMarkdownEditor } from "./inline-markdown-editor";
 import { SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 /* ── types ─────────────────────────────────────── */
 
@@ -718,7 +719,7 @@ export function DocsView() {
         {/* Document list grouped by workspace -> type */}
         <div className="flex-1 overflow-y-auto px-2 pb-3">
           {loading ? (
-            <p className="px-3 py-4 text-sm text-muted-foreground/60">Loading...</p>
+            <LoadingState label="Loading documents..." className="px-3 py-4 justify-start text-sm" />
           ) : workspaceGroups.length === 0 ? (
             <p className="px-3 py-4 text-sm text-muted-foreground/60">
               No documents found
@@ -973,9 +974,7 @@ export function DocsView() {
                   />
                 )
               ) : (
-                <div className="flex items-center justify-center py-12 text-sm text-muted-foreground/60">
-                  Loading...
-                </div>
+                <LoadingState label="Loading document..." className="py-12" />
               )}
             </div>
           </>

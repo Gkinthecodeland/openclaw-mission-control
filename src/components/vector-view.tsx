@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 type SourceCount = { source: string; files: number; chunks: number };
 
@@ -655,7 +656,7 @@ export function VectorView() {
     (!memorySearch && !curProv) ||
     (totalChunks === 0 && totalFiles === 0 && !curProv);
 
-  if (loading) return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>;
+  if (loading) return <LoadingState label="Loading vector memory..." size="lg" />;
 
   if (needsSetup) {
     return (

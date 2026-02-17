@@ -29,8 +29,11 @@ import {
   Search,
   Trash2,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { InlineSpinner, LoadingState } from "@/components/ui/loading-state";
 
 type GraphNodeData = {
   label: string;
@@ -190,6 +193,7 @@ export function MemoryGraphView() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
 
   const onNodesChange = useCallback(
     (changes: Parameters<typeof onNodesChangeBase>[0]) => {
@@ -462,12 +466,7 @@ export function MemoryGraphView() {
   }, [loadGraph]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground/70">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Building memory graph...
-      </div>
-    );
+    return <LoadingState label="Building memory graph..." className="min-h-0" />;
   }
 
   return (
@@ -593,23 +592,51 @@ export function MemoryGraphView() {
         </ReactFlow>
       </main>
 
-      <aside className="flex w-[320px] shrink-0 flex-col border-l border-foreground/[0.08] bg-card/60">
-        <div className="border-b border-foreground/[0.06] p-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[12px] font-semibold text-foreground/85">Inspector</p>
-            {(selectedNode || selectedEdge) && (
+      <aside
+        className={cn(
+          "flex shrink-0 flex-col border-l border-foreground/[0.08] bg-card/60 transition-all duration-200",
+          rightCollapsed ? "w-11" : "w-[320px]"
+        )}
+      >
+        <div className="border-b border-foreground/[0.06] p-2">
+          <div className={cn("flex items-center", rightCollapsed ? "justify-center" : "justify-between")}>
+            {!rightCollapsed && (
+              <p className="text-[12px] font-semibold text-foreground/85">Inspector</p>
+            )}
+            <div className="flex items-center gap-1">
+              {!rightCollapsed && (selectedNode || selectedEdge) && (
+                <button
+                  type="button"
+                  onClick={deleteSelected}
+                  className="inline-flex items-center gap-1 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-300 hover:bg-red-500/20"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Delete
+                </button>
+              )}
               <button
                 type="button"
-                onClick={deleteSelected}
-                className="inline-flex items-center gap-1 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-300 hover:bg-red-500/20"
+                onClick={() => setRightCollapsed((v) => !v)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-foreground/[0.08] bg-card text-muted-foreground transition-colors hover:text-foreground/80"
+                title={rightCollapsed ? "Expand inspector" : "Collapse inspector"}
               >
-                <Trash2 className="h-3 w-3" />
-                Delete
+                {rightCollapsed ? (
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
               </button>
-            )}
+            </div>
           </div>
         </div>
 
+        {rightCollapsed ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center p-1">
+            <span className="select-none text-[10px] tracking-wide text-muted-foreground/70 [writing-mode:vertical-rl]">
+              Inspector
+            </span>
+          </div>
+        ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {selectedNode ? (
             <div className="space-y-3">
@@ -732,6 +759,7 @@ export function MemoryGraphView() {
             </div>
           )}
         </div>
+        )}
       </aside>
 
       {notice && (
@@ -756,7 +784,7 @@ export function MemoryGraphView() {
 
       {(saving || publishing) && (
         <div className="pointer-events-none absolute right-4 top-4 z-30 inline-flex items-center gap-1.5 rounded-md border border-foreground/[0.12] bg-card/90 px-2 py-1 text-[11px] text-foreground/80">
-          <Loader2 className="h-3 w-3 animate-spin" />
+          <InlineSpinner size="sm" />
           {saving ? "Saving graph..." : "Publishing snapshot..."}
         </div>
       )}

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 type LogEntry = {
   line: number;
@@ -350,10 +351,7 @@ export function LogsView() {
         className="flex-1 overflow-y-auto bg-background font-mono text-[12px] leading-[1.65]"
       >
         {loading && entries.length === 0 ? (
-          <div className="flex items-center justify-center py-12 text-muted-foreground/60">
-            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-            Loading logs...
-          </div>
+          <LoadingState label="Loading logs..." className="py-12" />
         ) : displayEntries.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground/60">
             <Terminal className="h-6 w-6" />

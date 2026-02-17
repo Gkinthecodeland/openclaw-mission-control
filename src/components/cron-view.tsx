@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { requestRestart } from "@/lib/restart-store";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
+import { InlineSpinner, LoadingState } from "@/components/ui/loading-state";
 
 /* ── types ────────────────────────────────────────── */
 
@@ -592,7 +593,7 @@ function EditCronForm({
                 />
               ) : targetsLoading ? (
                 <div className="flex h-[38px] items-center rounded-lg border border-foreground/[0.08] bg-muted/80 px-3">
-                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
+                  <InlineSpinner size="sm" />
                   <span className="ml-2 text-[11px] text-muted-foreground/40">
                     Loading targets...
                   </span>
@@ -1290,7 +1291,7 @@ function CreateCronForm({
                   <input disabled value="" placeholder="—" className="w-full rounded-lg border border-foreground/[0.08] bg-muted/80 px-3 py-2 font-mono text-[12px] text-foreground/70 outline-none disabled:opacity-40" />
                 ) : targetsLoading ? (
                   <div className="flex h-[38px] items-center rounded-lg border border-foreground/[0.08] bg-muted/80 px-3">
-                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
+                    <InlineSpinner size="sm" />
                     <span className="ml-2 text-[11px] text-muted-foreground/40">Loading targets...</span>
                   </div>
                 ) : !customTo && filteredTargets.length > 0 ? (
@@ -1589,12 +1590,7 @@ export function CronView() {
   );
 
   if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Loading cron jobs...
-      </div>
-    );
+    return <LoadingState label="Loading cron jobs..." />;
   }
 
   const errorJobs = jobs.filter((j) => j.state.lastStatus === "error");

@@ -53,6 +53,7 @@ import {
 import { cn } from "@/lib/utils";
 import { requestRestart } from "@/lib/restart-store";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
+import { InlineSpinner, LoadingState } from "@/components/ui/loading-state";
 
 /* ================================================================
    Types
@@ -1235,7 +1236,7 @@ function ModelPicker({
   if (loading) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-[12px] text-muted-foreground/50">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <InlineSpinner size="sm" />
         Loading available models...
       </div>
     );
@@ -1638,7 +1639,7 @@ function ChannelBindingPicker({
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-2 text-[11px] text-muted-foreground/50">
-        <Loader2 className="h-3 w-3 animate-spin" />
+        <InlineSpinner size="sm" />
         Checking available channels...
       </div>
     );
@@ -2756,11 +2757,7 @@ export function AgentsView() {
   );
 
   if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground/60" />
-      </div>
-    );
+    return <LoadingState label="Loading agents..." />;
   }
 
   if (error || !data) {

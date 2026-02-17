@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { InlineMarkdownEditor } from "./inline-markdown-editor";
 import { MemoryGraphView } from "./memory-graph-view";
 import { SectionLayout } from "@/components/section-layout";
+import { LoadingState } from "@/components/ui/loading-state";
 
 type CtxMenuState = { x: number; y: number; entry: DailyEntry } | null;
 
@@ -965,7 +966,7 @@ export function MemoryView() {
             </div>
 
             {loading ? (
-              <p className="mt-4 px-1 text-sm text-muted-foreground/60">Loading...</p>
+              <LoadingState label="Loading memory files..." className="mt-4 px-1 justify-start text-sm" />
             ) : (
               <div className="mt-2 space-y-0">
                 {periodGroups.map(({ key, entries: entriesInGroup }) => {
