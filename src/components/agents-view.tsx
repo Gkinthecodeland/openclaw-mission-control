@@ -358,6 +358,13 @@ function buildGraph(
   const AGENT_X = 320;
   const CHANNEL_X = -350;
   const WORKSPACE_X = 650;
+  const gatewayEdgeStyle = { stroke: "var(--border)", strokeWidth: 1.5 };
+  const gatewayEdgeMarker = {
+    type: MarkerType.ArrowClosed,
+    color: "var(--border)",
+    width: 18,
+    height: 14,
+  } as const;
 
   // ── 1. Gateway node (center hub) ──
   nodes.push({
@@ -396,17 +403,8 @@ function buildGraph(
       source: "gateway",
       target: `agent-${agent.id}`,
       type: "default",
-      animated: agent.status === "active",
-      style: {
-        stroke: agent.isDefault ? "#8b5cf6" : "var(--border)",
-        strokeWidth: agent.isDefault ? 2.5 : 1.5,
-      },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: agent.isDefault ? "#8b5cf6" : "var(--border)",
-        width: 18,
-        height: 14,
-      },
+      style: gatewayEdgeStyle,
+      markerEnd: gatewayEdgeMarker,
     });
   }
 
@@ -464,13 +462,8 @@ function buildGraph(
       id: `gw-${sub.id}`,
       source: "gateway",
       target: `agent-${sub.id}`,
-      style: { stroke: "var(--border)", strokeWidth: 1.5 },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: "var(--border)",
-        width: 12,
-        height: 8,
-      },
+      style: gatewayEdgeStyle,
+      markerEnd: gatewayEdgeMarker,
     });
   }
 
@@ -2540,15 +2533,18 @@ function EditAgentModal({
             )}
           </div>
 
-          {/* 3. Sub-Agents (multi-select checkboxes) */}
+          {/* 3. Delegation targets (multi-select) */}
           {otherAgents.length > 0 && (
             <div>
               <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
-                <Network className="h-3 w-3 text-cyan-400" /> Sub-Agents
+                <Network className="h-3 w-3 text-cyan-400" /> Delegation Targets
                 <span className="text-[10px] font-normal text-muted-foreground/40">
-                  — can delegate tasks to
+                  — select agents this one can hand work to
                 </span>
               </label>
+              <p className="mb-1.5 text-[10px] text-muted-foreground/50">
+                Checked = this agent is allowed to delegate tasks to that agent.
+              </p>
               <div className="space-y-0.5 rounded-lg border border-foreground/[0.06] p-1.5">
                 {otherAgents.map((a) => {
                   const checked = subagents.includes(a.id);
