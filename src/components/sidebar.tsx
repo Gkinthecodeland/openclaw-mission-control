@@ -29,6 +29,9 @@ import {
   Shield,
   Package,
   ChevronRight,
+  Waypoints,
+  Globe,
+  KeyRound,
 } from "lucide-react";
 import { getChatUnreadCount, subscribeChatStore } from "@/lib/chat-store";
 import {
@@ -50,7 +53,8 @@ const navItems: {
   { section: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { section: "chat", label: "Chat", icon: MessageCircle },
   { section: "channels", label: "Channels", icon: Radio },
-  { section: "agents", label: "Agents", icon: Users, dividerAfter: true },
+  { section: "agents", label: "Agents", icon: Users },
+  { section: "agents", label: "Subagents", icon: ChevronRight, href: "/?section=agents&tab=subagents", tab: "subagents", isSubItem: true, dividerAfter: true },
   { section: "tasks", label: "Tasks", icon: ListChecks },
   { section: "sessions", label: "Sessions", icon: MessageSquare },
   { section: "cron", label: "Cron Jobs", icon: Clock },
@@ -60,7 +64,10 @@ const navItems: {
   { section: "skills", label: "Skills", icon: Wrench },
   { section: "skills", label: "ClawHub", icon: Package, href: "/?section=skills&tab=clawhub", tab: "clawhub", isSubItem: true },
   { section: "models", label: "Models", icon: Cpu },
+  { section: "accounts", label: "Accounts & Keys", icon: KeyRound },
   { section: "audio", label: "Audio & Voice", icon: Volume2 },
+  { section: "browser", label: "Browser Relay", icon: Globe },
+  { section: "tailscale", label: "Tailscale", icon: Waypoints },
   { section: "permissions", label: "Permissions", icon: Shield, dividerAfter: true },
   { section: "usage", label: "Usage", icon: BarChart3 },
   { section: "terminal", label: "Terminal", icon: SquareTerminal },
@@ -77,8 +84,11 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const section = isSkillDetailRoute ? "skills" : sectionFromQuery;
   const tab = isSkillDetailRoute ? "skills" : tabFromQuery;
   const [skillsExpanded, setSkillsExpanded] = useState(true);
+  const [agentsExpanded, setAgentsExpanded] = useState(true);
   const isClawHubActive = section === "skills" && tab === "clawhub";
   const showSkillsChildren = isClawHubActive ? true : skillsExpanded;
+  const isSubagentsActive = section === "agents" && tab === "subagents";
+  const showAgentsChildren = isSubagentsActive ? true : agentsExpanded;
 
   // Subscribe to chat unread count reactively
   const chatUnread = useSyncExternalStore(
@@ -91,7 +101,9 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-4 overflow-y-auto">
       {navItems.map((item) => {
         const isSkillsParent = item.section === "skills" && item.label === "Skills";
+        const isAgentsParent = item.section === "agents" && item.label === "Agents";
         if (item.isSubItem && item.section === "skills" && !showSkillsChildren) return null;
+        if (item.isSubItem && item.section === "agents" && !showAgentsChildren) return null;
 
         const Icon = item.icon;
         const isActive =
@@ -120,7 +132,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 </span>
               </span>
             ) : (
-              isSkillsParent ? (
+              (isSkillsParent || isAgentsParent) ? (
                 <div className={linkClass}>
                   <Link
                     href={item.href || `/?section=${item.section}`}
@@ -135,15 +147,23 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      setSkillsExpanded((prev) => !prev);
+                      if (isSkillsParent) {
+                        setSkillsExpanded((prev) => !prev);
+                      } else {
+                        setAgentsExpanded((prev) => !prev);
+                      }
                     }}
                     className="rounded p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground/90"
-                    aria-label={showSkillsChildren ? "Collapse skills submenu" : "Expand skills submenu"}
+                    aria-label={
+                      isSkillsParent
+                        ? (showSkillsChildren ? "Collapse skills submenu" : "Expand skills submenu")
+                        : (showAgentsChildren ? "Collapse agents submenu" : "Expand agents submenu")
+                    }
                   >
                     <ChevronRight
                       className={cn(
                         "h-3.5 w-3.5 transition-transform",
-                        showSkillsChildren && "rotate-90"
+                        (isSkillsParent ? showSkillsChildren : showAgentsChildren) && "rotate-90"
                       )}
                     />
                   </button>

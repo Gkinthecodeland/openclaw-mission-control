@@ -96,23 +96,39 @@ Mission Control 是 **OpenClaw 的图形界面 (GUI)** —— 一个功能完整
 
 | Feature / 功能 | Description / 说明 |
 |---|---|
-| **Dashboard / 仪表盘** | See everything at a glance: gateway status, active agents, cron jobs, and live system stats / 一目了然：网关状态、活跃智能体、定时任务和实时系统指标 |
-| **Agents / 智能体** | Visualize your agent hierarchy, models, channels, and workspaces / 可视化智能体层级、模型、通道和工作空间 |
+| **Dashboard / 仪表盘** | See everything at a glance: gateway status, active agents, cron jobs, live system stats, and deep links from recent cron results to job editor / 一目了然：网关状态、活跃智能体、定时任务、实时系统指标，以及从最近任务结果直达任务编辑器 |
+| **Agents Org Chart / 智能体组织图** | Visualize hierarchy, live runtime subagents, channels, and workspaces with click-through modals (workspace files + open in Docs) / 可视化层级、运行中子智能体、通道和工作空间，支持点击弹窗（工作空间文件 + 跳转 Docs） |
+| **Subagents Mission Control / 子智能体控制台** | Spawn/list/kill subagents, run `/subagents` commands, and use direct `agent-send` task dispatch / 创建/查看/终止子智能体，运行 `/subagents` 命令，并支持 `agent-send` 直接派发任务 |
 | **Chat / 对话** | Talk to your OpenClaw agents directly from the browser / 直接在浏览器中与 OpenClaw 智能体对话 |
 | **Tasks / 任务** | Built-in Kanban board that syncs with your workspace / 内置看板，与工作空间同步 |
 | **Memory / 记忆** | Edit your agent's long-term memory and daily journal / 编辑智能体的长期记忆和每日日志 |
 | **Cron Jobs / 定时任务** | View, create, edit, enable/disable, and trigger scheduled tasks / 查看、创建、编辑、启停和触发定时任务 |
+| **Models / 模型管理与认证** | Unified model runtime/config controls, provider auth, env-backed model keys, and auth profile stores / 统一模型运行态与配置控制，并包含提供商认证、模型环境密钥和认证配置存储 |
+| **Accounts & Keys / 账户与密钥** | Channel/integration credentials, env key editing, and auto-discovered external credentials (non-model secrets) / 通道与集成凭据、环境变量密钥编辑、自动发现外部凭据（不含模型凭据） |
+| **Browser Relay / 浏览器中继** | Inspect extension relay state, connection status, profiles, and debug quickly / 查看扩展中继状态、连接状态、配置并快速排障 |
+| **Tailscale Control / Tailscale 控制** | Manage serve/exposure status, tunnel state, and on/off actions from GUI / 在 GUI 中管理暴露模式、隧道状态和开关操作 |
+| **Gateway Source-of-Truth Sync / 后端真源同步** | UI state is driven by gateway/session truth with loading skeletons to avoid false default flicker / UI 状态由网关/会话真值驱动，并使用骨架屏避免错误默认值闪动 |
 | **Usage / 用量统计** | Deep analytics on model usage, tokens, sessions, and costs / 深入分析模型使用、Token 消耗、会话和费用 |
-| **Models / 模型管理** | Manage primary/fallback models with drag-and-drop reordering / 通过拖拽管理主模型和备用模型 |
 | **Vector Memory / 向量记忆** | Browse and search your semantic memory (like Pinecone, but local) / 浏览和搜索语义记忆（类似 Pinecone，但完全本地） |
 | **Terminal / 终端** | Built-in terminal to run any command directly in the dashboard / 内置终端，直接在仪表盘中运行任何命令 |
-| **System / 系统** | Real-time CPU, memory, disk, skills, devices, and config management / 实时 CPU、内存、磁盘、技能、设备和配置管理 |
+| **Gateway Diagnostics / 网关诊断** | Live doctor/status checks with actionable alerts and remediation hints / 实时 doctor/status 检查，提供可执行告警与修复建议 |
 | **Documents / 文档** | Browse workspace docs across all agents / 浏览所有智能体的工作空间文档 |
 | **Search / 搜索** | `Cmd+K` semantic search powered by OpenClaw's vector DB / `Cmd+K` 语义搜索，由 OpenClaw 的向量数据库驱动 |
 
 Everything runs locally — Mission Control is a **self-hosted AI dashboard**. No cloud services, no telemetry, no data ever leaves your machine.
 
 一切都在本地运行 —— Mission Control 是一个**自托管 AI 仪表盘**。没有云服务，没有遥测，数据永远不会离开你的电脑。
+
+### Power-user workflows / 高级工作流
+
+1. **Workspace node inspector**: Click a workspace node in Agents Org Chart to open a file-list modal, then jump directly to Docs for detailed edit flow.  
+   **工作空间节点检查器**：在智能体组织图点击工作空间节点可打开文件清单弹窗，并一键跳转 Docs 进行深度编辑。
+2. **Subagent command center**: Spawn with task payloads, run direct commands, list active sessions only, and kill quickly from one panel.  
+   **子智能体命令中心**：支持携带任务创建、直发命令、仅展示活动会话，并在同一面板快速终止。
+3. **Credential control**: Vercel-style double-input secret editing, reveal/hide toggles, and auto-discovered integration/skill credentials.  
+   **凭据控制**：Vercel 风格双输入密钥编辑、显示/隐藏开关，以及自动发现集成/技能凭据。
+4. **Tailscale control plane**: View configured exposure mode + live tunnel active/inactive state, then toggle and run runtime actions without leaving UI.  
+   **Tailscale 控制平面**：可查看配置暴露模式与隧道实时活跃状态，并在 UI 内完成开关及运行时操作。
 
 ---
 
@@ -124,11 +140,17 @@ Everything runs locally — Mission Control is a **self-hosted AI dashboard**. N
 
 *实时概览你的智能体、网关状态和系统指标*
 
-### Tasks / 任务看板
-![Tasks](promo-tasks.png)
-*Kanban board synchronized with your workspace*
+### Agents Org Chart / 智能体组织图
+![Agents](promo-agents.png)
+*Interactive hierarchy view with channels, workspaces, and runtime context*
 
-*与工作空间同步的看板*
+*可交互层级视图，包含通道、工作空间和运行态上下文*
+
+### Subagents Mission Control / 子智能体控制
+![Subagents](promo-subagents.png)
+*Spawn/list/kill subagents and run control commands from one place*
+
+*在一个界面中创建/查看/终止子智能体并运行控制命令*
 
 ### Cron Jobs / 定时任务
 ![Cron Jobs](promo-cron.png)
@@ -136,17 +158,47 @@ Everything runs locally — Mission Control is a **self-hosted AI dashboard**. N
 
 *管理和监控定时任务*
 
+### Models / 模型管理与认证
+![Models](promo-models.png)
+*Unified model runtime/config controls plus provider auth inventory*
+
+*统一模型运行态/配置控制，并提供认证清单*
+
+### Accounts & Keys / 账户与密钥
+![Accounts](promo-accounts.png)
+*Integration credentials, env key editing, and discovered secret sources*
+
+*集成凭据、环境密钥编辑和已发现密钥来源*
+
+### Tailscale / 网络暴露管理
+![Tailscale](promo-tailscale.png)
+*Integrated Tailscale status, exposure controls, and tunnel actions*
+
+*集成 Tailscale 状态、暴露控制与隧道操作*
+
+### Browser Relay / 浏览器中继
+![Browser Relay](promo-browser.png)
+*Debug extension relay connectivity and runtime health instantly*
+
+*快速排查扩展中继连接与运行状态*
+
+### Tasks / 任务看板
+![Tasks](promo-tasks.png)
+*Kanban board synchronized with your workspace*
+
+*与工作空间同步的看板*
+
 ### Sessions / 会话
 ![Sessions](promo-sessions.png)
 *Chat history and agent interactions*
 
 *对话历史和智能体交互记录*
 
-### System / 系统
-![System](promo-system.png)
-*CPU, memory, skills, and device management*
+### Gateway Diagnostics / 网关诊断
+![Gateway Diagnostics](promo-system.png)
+*Doctor/status checks, config/runtime drift visibility, and recovery actions*
 
-*CPU、内存、技能和设备管理*
+*Doctor/status 检查、配置与运行态漂移可视化，以及恢复操作*
 
 ### Memory / 记忆
 ![Memory](promo-memory.png)

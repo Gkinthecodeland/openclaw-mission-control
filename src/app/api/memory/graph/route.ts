@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mkdir, readFile, readdir, writeFile } from "fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { basename, join } from "path";
 import { getDefaultWorkspaceSync } from "@/lib/paths";
-import { runCli, runCliJson } from "@/lib/openclaw-cli";
+import { gatewayCall, runCli, runCliJson } from "@/lib/openclaw-cli";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +69,62 @@ type BootstrapFile = {
   name: string;
   content: string;
   source: "indexed" | "filesystem";
+};
+
+type SourceChunk = {
+  id: string;
+  topic: string;
+  kind: "heading" | "bullet" | "paragraph";
+  text: string;
+  startLine: number;
+  endLine: number;
+};
+
+type SourceFact = {
+  id: string;
+  topic: string;
+  statement: string;
+  canonical: string;
+  line: number;
+  confidenceHint: number;
+};
+
+type SourceDocument = {
+  id: string;
+  name: string;
+  path: string;
+  source: "workspace" | "memory";
+  mtimeMs: number;
+  size: number;
+  chunks: SourceChunk[];
+  facts: SourceFact[];
+};
+
+type RecentChatMessage = {
+  sessionKey: string;
+  role: string;
+  timestampMs: number;
+  text: string;
+};
+
+type GraphTelemetry = {
+  generatedAt: string;
+  sourceDocuments: SourceDocument[];
+  recentChatMessages: RecentChatMessage[];
+};
+
+type GatewayMessage = {
+  role?: unknown;
+  timestamp?: unknown;
+  content?: Array<{ type?: unknown; text?: unknown }>;
+};
+
+type SessionsListResult = {
+  sessions?: Array<{ key?: unknown; updatedAt?: unknown }>;
+};
+
+type ChatHistoryResult = {
+  messages?: GatewayMessage[];
 };
 
 function slug(input: string): string {
@@ -268,6 +324,16 @@ function normalizeTopic(raw: string): string {
   const t = cleanMarkdownInline(raw).replace(/^\d{4}-\d{2}-\d{2}\s*[-–]?\s*/g, "");
   if (!t) return "General";
   return t.length > 48 ? `${t.slice(0, 45)}...` : t;
+}
+
+function canonicalizeFact(text: string): string {
+  return cleanMarkdownInline(text)
+    .toLowerCase()
+    .replace(/\b(a|an|the|to|for|and|or|of|in|on|at|by|with)\b/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
 }
 
 function parseMarkdownFacts(markdown: string, maxFacts = 40): {
@@ -714,6 +780,212 @@ async function bestEffortReindex(): Promise<{ indexed: boolean; error?: string }
   }
 }
 
+function toEpochMs(value: unknown): number {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  return num < 1_000_000_000_000 ? Math.trunc(num * 1000) : Math.trunc(num);
+}
+
+function extractMessageText(msg: GatewayMessage): string {
+  const chunks = Array.isArray(msg.content) ? msg.content : [];
+  return chunks
+    .filter((chunk) => chunk?.type === "text" && typeof chunk.text === "string")
+    .map((chunk) => String(chunk.text))
+    .join("\n")
+    .trim();
+}
+
+function extractEvidenceFromMarkdown(content: string, maxChunks = 120): {
+  chunks: SourceChunk[];
+  facts: SourceFact[];
+} {
+  const chunks: SourceChunk[] = [];
+  const facts: SourceFact[] = [];
+  const seenFacts = new Set<string>();
+  let topic = "General";
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    const lineNo = idx + 1;
+    const raw = lines[idx] || "";
+    const line = raw.trim();
+    if (!line) continue;
+
+    const heading = line.match(/^#{1,4}\s+(.+)/);
+    if (heading?.[1]) {
+      topic = normalizeTopic(heading[1]);
+      if (chunks.length < maxChunks) {
+        chunks.push({
+          id: `chunk-heading-${lineNo}-${slug(topic)}`,
+          topic,
+          kind: "heading",
+          text: topic,
+          startLine: lineNo,
+          endLine: lineNo,
+        });
+      }
+      continue;
+    }
+
+    const bullet = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)/);
+    const kv = line.match(/^\s*([A-Za-z][^:]{1,48}):\s+(.+)/);
+    const text = cleanMarkdownInline(bullet?.[1] || (kv ? `${kv[1]}: ${kv[2]}` : line));
+    if (!text) continue;
+
+    if (chunks.length < maxChunks) {
+      chunks.push({
+        id: `chunk-${lineNo}-${slug(text)}`,
+        topic,
+        kind: bullet || kv ? "bullet" : "paragraph",
+        text: text.length > 280 ? `${text.slice(0, 277)}...` : text,
+        startLine: lineNo,
+        endLine: lineNo,
+      });
+    }
+
+    if (bullet || kv) {
+      const canonical = canonicalizeFact(text);
+      const factKey = `${topic.toLowerCase()}::${canonical}`;
+      if (!canonical || seenFacts.has(factKey)) continue;
+      seenFacts.add(factKey);
+      facts.push({
+        id: `fact-${lineNo}-${slug(canonical)}`,
+        topic,
+        statement: text.length > 360 ? `${text.slice(0, 357)}...` : text,
+        canonical,
+        line: lineNo,
+        confidenceHint: kv ? 0.8 : 0.72,
+      });
+    }
+  }
+
+  return { chunks, facts };
+}
+
+function collectGraphSourceHints(graph: KnowledgeGraph): Set<string> {
+  const out = new Set<string>();
+  for (const node of graph.nodes) {
+    const source = sanitizeText(node.source).toLowerCase();
+    if (
+      source &&
+      source !== "bootstrap" &&
+      source !== "manual" &&
+      source !== "template" &&
+      source !== "filesystem"
+    ) {
+      out.add(source);
+    }
+    for (const tag of node.tags || []) {
+      if (!tag.startsWith("file:")) continue;
+      const hint = sanitizeText(tag.slice("file:".length)).toLowerCase();
+      if (hint) out.add(hint);
+    }
+  }
+  for (const edge of graph.edges) {
+    const evidence = sanitizeText(edge.evidence).toLowerCase();
+    if (evidence.endsWith(".md")) out.add(evidence);
+  }
+  out.add("memory.md");
+  return out;
+}
+
+async function readSourceDocumentsForGraph(graph: KnowledgeGraph, limit = 20): Promise<SourceDocument[]> {
+  const docs: SourceDocument[] = [];
+  const byLowerName = new Set<string>();
+  const sourceHints = collectGraphSourceHints(graph);
+
+  const pushDoc = async (name: string, path: string, source: "workspace" | "memory") => {
+    const lower = name.toLowerCase();
+    if (!name.endsWith(".md") || byLowerName.has(lower)) return;
+    try {
+      const [fileStat, content] = await Promise.all([stat(path), readFile(path, "utf-8")]);
+      if (!fileStat.isFile()) return;
+      const parsed = extractEvidenceFromMarkdown(content, 140);
+      docs.push({
+        id: `doc-${slug(name)}`,
+        name,
+        path,
+        source,
+        mtimeMs: fileStat.mtimeMs || 0,
+        size: fileStat.size || Buffer.byteLength(content, "utf-8"),
+        chunks: parsed.chunks,
+        facts: parsed.facts,
+      });
+      byLowerName.add(lower);
+    } catch {
+      // Ignore per-file read errors.
+    }
+  };
+
+  await pushDoc("MEMORY.md", MEMORY_MD_PATH, "workspace");
+
+  try {
+    const entries = await readdir(MEMORY_DIR, { withFileTypes: true });
+    const names = entries
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
+      .map((entry) => entry.name);
+    for (const name of names) {
+      await pushDoc(name, join(MEMORY_DIR, name), "memory");
+    }
+  } catch {
+    // ignore missing memory dir
+  }
+
+  return docs
+    .sort((a, b) => {
+      const aHint = sourceHints.has(a.name.toLowerCase()) ? 1 : 0;
+      const bHint = sourceHints.has(b.name.toLowerCase()) ? 1 : 0;
+      if (aHint !== bHint) return bHint - aHint;
+      return b.mtimeMs - a.mtimeMs;
+    })
+    .slice(0, limit);
+}
+
+async function readRecentChatMessages(limitSessions = 8, perSessionLimit = 40): Promise<RecentChatMessage[]> {
+  try {
+    const sessionsResult = await gatewayCall<SessionsListResult>("sessions.list", undefined, 10000);
+    const sessions = Array.isArray(sessionsResult.sessions) ? sessionsResult.sessions : [];
+    const ranked = sessions
+      .map((session) => ({
+        key: sanitizeText(session.key),
+        updatedAtMs: toEpochMs(session.updatedAt),
+      }))
+      .filter((session) => session.key.startsWith("agent:"))
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs)
+      .slice(0, limitSessions);
+
+    const histories = await Promise.all(
+      ranked.map(async (session) => {
+        try {
+          const history = await gatewayCall<ChatHistoryResult>(
+            "chat.history",
+            { sessionKey: session.key, limit: perSessionLimit },
+            10000
+          );
+          const rows = Array.isArray(history.messages) ? history.messages : [];
+          return rows
+            .map((msg) => ({
+              sessionKey: session.key,
+              role: sanitizeText(msg.role, "unknown"),
+              timestampMs: toEpochMs(msg.timestamp),
+              text: extractMessageText(msg),
+            }))
+            .filter((msg) => msg.text.length > 0);
+        } catch {
+          return [] as RecentChatMessage[];
+        }
+      })
+    );
+
+    return histories
+      .flat()
+      .sort((a, b) => b.timestampMs - a.timestampMs)
+      .slice(0, limitSessions * perSessionLimit);
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -741,9 +1013,16 @@ export async function GET(request: NextRequest) {
         files: seedFiles.map((f) => f.name),
       };
     }
+    const telemetry: GraphTelemetry = {
+      generatedAt: new Date().toISOString(),
+      sourceDocuments: await readSourceDocumentsForGraph(graph, 24),
+      recentChatMessages: await readRecentChatMessages(8, 50),
+    };
+
     return NextResponse.json({
       graph,
       bootstrap: bootstrapInfo,
+      telemetry,
       workspace: WORKSPACE,
       paths: {
         json: GRAPH_JSON_PATH,

@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { readFile, readdir } from "fs/promises";
 import { join } from "path";
 import { getOpenClawHome, getSystemSkillsDir, getDefaultWorkspaceSync } from "@/lib/paths";
+import { fetchGatewaySessions, type NormalizedGatewaySession } from "@/lib/gateway-sessions";
 
 const OPENCLAW_HOME = getOpenClawHome();
+export const dynamic = "force-dynamic";
 
 type AgentInfo = {
   id: string;
@@ -71,7 +73,8 @@ async function readJsonSafe<T>(path: string, fallback: T): Promise<T> {
 }
 
 async function getAgents(
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  sessionsByAgent: Map<string, NormalizedGatewaySession[]>
 ): Promise<AgentInfo[]> {
   const agents: AgentInfo[] = [];
   const agentsConfig = (config.agents || {}) as Record<string, unknown>;
@@ -96,38 +99,18 @@ async function getAgents(
     const workspace =
       (agent.workspace as string) || defaultWorkspace;
 
-    // Count sessions
-    const sessionsPath = join(
-      OPENCLAW_HOME,
-      "agents",
-      id,
-      "sessions",
-      "sessions.json"
-    );
-    let sessionCount = 0;
-    let totalTokens = 0;
-    const recentSessions: AgentInfo["recentSessions"] = [];
-    try {
-      const sessionsData = await readJsonSafe<Record<string, Record<string, unknown>>>(
-        sessionsPath,
-        {}
-      );
-      const entries = Object.entries(sessionsData);
-      sessionCount = entries.length;
-      for (const [key, s] of entries) {
-        const tokens = (s.totalTokens as number) || 0;
-        totalTokens += tokens;
-        recentSessions.push({
-          key,
-          updatedAt: (s.updatedAt as number) || 0,
-          totalTokens: tokens,
-          origin: (s.origin as Record<string, unknown>)?.label as string,
-        });
-      }
-      recentSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-    } catch {
-      // sessions file may not exist
-    }
+    // Session stats from gateway source of truth.
+    const agentSessions = sessionsByAgent.get(id) || [];
+    const sessionCount = agentSessions.length;
+    const totalTokens = agentSessions.reduce((sum, s) => sum + s.totalTokens, 0);
+    const recentSessions: AgentInfo["recentSessions"] = agentSessions
+      .map((s) => ({
+        key: s.key,
+        updatedAt: s.updatedAt,
+        totalTokens: s.totalTokens,
+        origin: s.originLabel,
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
 
     agents.push({
       id,
@@ -256,51 +239,20 @@ async function getSkills(): Promise<SkillInfo[]> {
   return skills;
 }
 
-async function getAllSessions(): Promise<SessionInfo[]> {
-  const allSessions: SessionInfo[] = [];
-  const agentsDir = join(OPENCLAW_HOME, "agents");
-
-  try {
-    const agents = await readdir(agentsDir, { withFileTypes: true });
-    for (const agent of agents) {
-      if (!agent.isDirectory()) continue;
-      const sessionsPath = join(
-        agentsDir,
-        agent.name,
-        "sessions",
-        "sessions.json"
-      );
-      try {
-        const raw = await readFile(sessionsPath, "utf-8");
-        const data = JSON.parse(raw) as Record<
-          string,
-          Record<string, unknown>
-        >;
-        for (const [key, s] of Object.entries(data)) {
-          allSessions.push({
-            key,
-            sessionId: (s.sessionId as string) || key,
-            updatedAt: (s.updatedAt as number) || 0,
-            inputTokens: (s.inputTokens as number) || 0,
-            outputTokens: (s.outputTokens as number) || 0,
-            totalTokens: (s.totalTokens as number) || 0,
-            contextTokens: (s.contextTokens as number) || 0,
-            origin:
-              ((s.origin as Record<string, unknown>)?.label as string) ||
-              undefined,
-            agentId: agent.name,
-          });
-        }
-      } catch {
-        // sessions file may not exist
-      }
-    }
-  } catch {
-    // agents dir may not exist
-  }
-
-  allSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-  return allSessions;
+function toSessionInfo(sessions: NormalizedGatewaySession[]): SessionInfo[] {
+  return sessions
+    .map((s) => ({
+      key: s.key,
+      sessionId: s.sessionId || s.key,
+      updatedAt: s.updatedAt,
+      inputTokens: s.inputTokens,
+      outputTokens: s.outputTokens,
+      totalTokens: s.totalTokens,
+      contextTokens: s.contextTokens,
+      origin: s.originLabel,
+      agentId: s.agentId || "unknown",
+    }))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function GET() {
@@ -311,12 +263,22 @@ export async function GET() {
       {}
     );
 
-    const [agents, channels, devices, skills, sessions] = await Promise.all([
-      getAgents(config),
+    const gatewaySessions = await fetchGatewaySessions(10000).catch(() => []);
+    const sessions = toSessionInfo(gatewaySessions);
+    const sessionsByAgent = new Map<string, NormalizedGatewaySession[]>();
+    for (const s of gatewaySessions) {
+      const id = String(s.agentId || "").trim();
+      if (!id || id === "unknown") continue;
+      const existing = sessionsByAgent.get(id) || [];
+      existing.push(s);
+      sessionsByAgent.set(id, existing);
+    }
+
+    const [agents, channels, devices, skills] = await Promise.all([
+      getAgents(config, sessionsByAgent),
       getChannels(config),
       getDevices(),
       getSkills(),
-      getAllSessions(),
     ]);
 
     // Extract safe config info (NO secrets)

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -54,6 +55,7 @@ import { cn } from "@/lib/utils";
 import { requestRestart } from "@/lib/restart-store";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 import { InlineSpinner, LoadingState } from "@/components/ui/loading-state";
+import { SubagentsManagerView } from "@/components/subagents-manager-view";
 
 /* ================================================================
    Types
@@ -75,6 +77,16 @@ type Agent = {
   channels: string[];
   identitySnippet: string | null;
   subagents: string[];
+  runtimeSubagents: Array<{
+    sessionKey: string;
+    sessionId: string;
+    shortId: string;
+    model: string;
+    totalTokens: number;
+    lastActive: number;
+    ageMs: number;
+    status: "running" | "recent";
+  }>;
   status: "active" | "idle" | "unknown";
 };
 
@@ -99,6 +111,12 @@ function formatTokens(n: number): string {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}K`;
   return `${(n / 1_000_000).toFixed(2)}M`;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatAgo(ms: number | null): string {
@@ -246,6 +264,51 @@ function AgentNodeComponent({ data }: NodeProps) {
   );
 }
 
+function RuntimeSubagentNodeComponent({ data }: NodeProps) {
+  const d = data as {
+    parentAgentId: string;
+    shortId: string;
+    model: string;
+    status: "running" | "recent";
+    totalTokens: number;
+    lastActive: number;
+  };
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-3 py-2 min-w-[160px]",
+        d.status === "running"
+          ? "border-cyan-500/40 bg-cyan-950/35"
+          : "border-zinc-500/30 bg-zinc-900/40"
+      )}
+    >
+      <Handle
+        type="target"
+        position={Position.Left}
+        className={cn(
+          "!w-2 !h-2",
+          d.status === "running"
+            ? "!bg-cyan-500 !border-cyan-400"
+            : "!bg-zinc-500 !border-zinc-400"
+        )}
+      />
+      <div className="flex items-center gap-1.5">
+        <Sparkles className={cn("h-3.5 w-3.5", d.status === "running" ? "text-cyan-300" : "text-zinc-300")} />
+        <p className="text-[11px] font-semibold text-foreground/90">
+          subagent #{d.shortId}
+        </p>
+      </div>
+      <p className="mt-1 truncate text-[10px] text-muted-foreground">
+        {shortModel(d.model)}
+      </p>
+      <p className="mt-1 text-[10px] text-muted-foreground">
+        {d.status} · {formatTokens(d.totalTokens)} · {formatAgo(d.lastActive)}
+      </p>
+    </div>
+  );
+}
+
 function ChannelNodeComponent({ data }: NodeProps) {
   const d = data as { channel: string; accountIds: string[] };
 
@@ -268,10 +331,24 @@ function ChannelNodeComponent({ data }: NodeProps) {
 }
 
 function WorkspaceNodeComponent({ data }: NodeProps) {
-  const d = data as { path: string; agentNames: string[] };
+  const d = data as {
+    path: string;
+    agentNames: string[];
+    selected?: boolean;
+    onClick?: () => void;
+  };
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-950/40 px-3 py-2 min-w-[120px]">
+    <div
+      onClick={() => d.onClick?.()}
+      className={cn(
+        "flex items-center gap-2 rounded-lg border px-3 py-2 min-w-[120px] transition-colors",
+        d.selected
+          ? "border-amber-400/50 bg-amber-900/50 shadow-lg shadow-amber-500/10"
+          : "border-amber-500/20 bg-amber-950/40",
+        d.onClick ? "cursor-pointer hover:border-amber-400/35" : ""
+      )}
+    >
       <Handle type="target" position={Position.Left} className="!bg-amber-500 !border-amber-400 !w-2 !h-2" />
       <FolderOpen className="h-4 w-4 text-amber-400 shrink-0" />
       <div>
@@ -289,6 +366,7 @@ function WorkspaceNodeComponent({ data }: NodeProps) {
 const nodeTypes = {
   gateway: GatewayNode,
   agent: AgentNodeComponent,
+  runtimeSubagent: RuntimeSubagentNodeComponent,
   channel: ChannelNodeComponent,
   workspace: WorkspaceNodeComponent,
 };
@@ -300,7 +378,9 @@ const nodeTypes = {
 function buildGraph(
   data: AgentsResponse,
   selectedId: string | null,
-  onSelectAgent: (id: string) => void
+  onSelectAgent: (id: string) => void,
+  selectedWorkspacePath: string | null,
+  onSelectWorkspace: (workspacePath: string) => void
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -353,6 +433,8 @@ function buildGraph(
   const AGENT_SPACING_Y = 160;
   const SUB_AGENT_OFFSET_X = 50;
   const SUB_AGENT_OFFSET_Y = 170;
+  const RUNTIME_SUBAGENT_OFFSET_X = 290;
+  const RUNTIME_SUBAGENT_SPACING_Y = 94;
 
   const GATEWAY_X = 0;
   const GATEWAY_Y = 0;
@@ -468,6 +550,71 @@ function buildGraph(
     });
   }
 
+  // ── 3b. Runtime spawned subagents from gateway sessions ──
+  for (const parent of agents) {
+    const runtimeSubs = (parent.runtimeSubagents || [])
+      .filter((s) => s.status === "running")
+      .slice(0, 6);
+    if (runtimeSubs.length === 0) continue;
+
+    const parentNode = nodes.find((n) => n.id === `agent-${parent.id}`);
+    if (!parentNode) continue;
+    const px = parentNode.position.x;
+    const py = parentNode.position.y;
+    const staticChildren = subAgents.filter((s) => {
+      const parentForSub = agents.find((a) => a.subagents.includes(s.id));
+      return parentForSub?.id === parent.id;
+    }).length;
+    const runtimeStartY = py + SUB_AGENT_OFFSET_Y + Math.max(0, staticChildren) * 72;
+
+    runtimeSubs.forEach((sub, idx) => {
+      const runtimeNodeId = `runtime-subagent-${sub.sessionKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      nodes.push({
+        id: runtimeNodeId,
+        type: "runtimeSubagent",
+        position: {
+          x: px + RUNTIME_SUBAGENT_OFFSET_X,
+          y: runtimeStartY + idx * RUNTIME_SUBAGENT_SPACING_Y,
+        },
+        data: {
+          parentAgentId: parent.id,
+          shortId: sub.shortId,
+          model: sub.model,
+          status: sub.status,
+          totalTokens: sub.totalTokens,
+          lastActive: sub.lastActive,
+        },
+        draggable: true,
+      });
+
+      edges.push({
+        id: `runtime-sub-${parent.id}-${sub.shortId}-${idx}`,
+        source: `agent-${parent.id}`,
+        target: runtimeNodeId,
+        sourceHandle: "sub",
+        type: "default",
+        animated: sub.status === "running",
+        style: {
+          stroke: sub.status === "running" ? "#06b6d4" : "#64748b",
+          strokeWidth: 1.5,
+          strokeDasharray: "5 4",
+        },
+        label: sub.status === "running" ? "runtime" : "recent",
+        labelStyle: {
+          fill: sub.status === "running" ? "#22d3ee" : "#94a3b8",
+          fontSize: 10,
+        },
+        labelBgStyle: { fill: "var(--card)", fillOpacity: 0.9 },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: sub.status === "running" ? "#06b6d4" : "#64748b",
+          width: 12,
+          height: 9,
+        },
+      });
+    });
+  }
+
   // ── 4. Channel nodes (left of gateway) ──
   const channels = Array.from(channelMap.entries()).map(([channel, accountIds]) => [
     channel,
@@ -533,7 +680,12 @@ function buildGraph(
       id: nodeId,
       type: "workspace",
       position: { x: WORKSPACE_X, y: wsStartY + i * wsSpacing },
-      data: { path: ws, agentNames },
+      data: {
+        path: ws,
+        agentNames,
+        selected: selectedWorkspacePath === ws,
+        onClick: () => onSelectWorkspace(ws),
+      },
       draggable: true,
     });
 
@@ -928,16 +1080,27 @@ function FlowViewInner({
   data,
   selectedId,
   onSelect,
+  selectedWorkspacePath,
+  onSelectWorkspace,
 }: {
   data: AgentsResponse;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  selectedWorkspacePath: string | null;
+  onSelectWorkspace: (workspacePath: string) => void;
 }) {
   const { fitView } = useReactFlow();
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
-    () => buildGraph(data, selectedId, onSelect),
-    [data, selectedId, onSelect]
+    () =>
+      buildGraph(
+        data,
+        selectedId,
+        onSelect,
+        selectedWorkspacePath,
+        onSelectWorkspace
+      ),
+    [data, selectedId, onSelect, selectedWorkspacePath, onSelectWorkspace]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -945,10 +1108,24 @@ function FlowViewInner({
 
   // Update when data or selection changes
   useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = buildGraph(data, selectedId, onSelect);
+    const { nodes: newNodes, edges: newEdges } = buildGraph(
+      data,
+      selectedId,
+      onSelect,
+      selectedWorkspacePath,
+      onSelectWorkspace
+    );
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [data, selectedId, onSelect, setNodes, setEdges]);
+  }, [
+    data,
+    selectedId,
+    onSelect,
+    selectedWorkspacePath,
+    onSelectWorkspace,
+    setNodes,
+    setEdges,
+  ]);
 
   // Re-fit whenever nodes change (after React Flow has measured them)
   const onNodesChangeWrapped = useCallback(
@@ -991,10 +1168,14 @@ function FlowView({
   data,
   selectedId,
   onSelect,
+  selectedWorkspacePath,
+  onSelectWorkspace,
 }: {
   data: AgentsResponse;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  selectedWorkspacePath: string | null;
+  onSelectWorkspace: (workspacePath: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -1023,7 +1204,13 @@ function FlowView({
       {dims ? (
         <div style={{ width: dims.w, height: dims.h, position: "absolute", inset: 0 }}>
           <ReactFlowProvider>
-            <FlowViewInner data={data} selectedId={selectedId} onSelect={onSelect} />
+            <FlowViewInner
+              data={data}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              selectedWorkspacePath={selectedWorkspacePath}
+              onSelectWorkspace={onSelectWorkspace}
+            />
           </ReactFlowProvider>
         </div>
       ) : (
@@ -1324,33 +1511,40 @@ function ModelPicker({
                   if (!m) return null;
                   const provider = key.split("/")[0];
                   const isAuthed = authedProviders.has(provider);
+                  const isAvailable = !!(m.available || m.local);
+                  const needsKey = !isAvailable && !isAuthed;
                   const meta = PROVIDER_META[provider];
                   return (
                     <button
                       key={key}
                       type="button"
                       onClick={() => {
-                        if (!isAuthed) {
+                        if (needsKey) {
                           setAddingProvider(provider);
                           return;
                         }
+                        if (!isAvailable) return;
                         onChange(key);
                         setOpen(false);
                       }}
                       className={cn(
                         "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] transition-colors",
                         value === key ? "bg-violet-500/[0.08] text-violet-400" : "hover:bg-foreground/[0.03]",
-                        !isAuthed && "opacity-60"
+                        !isAvailable && "opacity-60"
                       )}
                     >
                       <span className="text-[11px]">{meta?.icon || "🤖"}</span>
                       <span className="flex-1 font-medium">{m.name || key.split("/").pop()}</span>
-                      {isAuthed ? (
+                      {isAvailable ? (
                         <ShieldCheck className="h-3 w-3 text-emerald-500" />
-                      ) : (
+                      ) : needsKey ? (
                         <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400">
                           <Key className="h-2.5 w-2.5" />
                           Needs key
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-zinc-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-zinc-400">
+                          Unavailable
                         </span>
                       )}
                     </button>
@@ -2672,16 +2866,197 @@ function EditAgentModal({
   );
 }
 
+type WorkspaceFileEntry = {
+  relativePath: string;
+  size: number;
+  mtime: number;
+  ext: string;
+};
+
+function WorkspaceFilesModal({
+  workspacePath,
+  onClose,
+  onOpenDocs,
+}: {
+  workspacePath: string;
+  onClose: () => void;
+  onOpenDocs: (workspacePath: string) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [files, setFiles] = useState<WorkspaceFileEntry[]>([]);
+  const [truncated, setTruncated] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/workspace/files?path=${encodeURIComponent(workspacePath)}`,
+          { cache: "no-store" }
+        );
+        const body = (await res.json()) as {
+          error?: string;
+          files?: WorkspaceFileEntry[];
+          truncated?: boolean;
+        };
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        if (!mounted) return;
+        setFiles(Array.isArray(body.files) ? body.files : []);
+        setTruncated(Boolean(body.truncated));
+      } catch (err) {
+        if (!mounted) return;
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, [workspacePath]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const filteredFiles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return files;
+    return files.filter((f) => f.relativePath.toLowerCase().includes(q));
+  }, [files, search]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] sm:pt-[8vh]">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 mx-3 flex max-h-[88vh] w-full max-w-[min(44rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card/95 shadow-2xl sm:mx-4 sm:max-h-[82vh]">
+        <div className="flex shrink-0 items-center justify-between border-b border-foreground/[0.06] px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <FolderOpen className="h-4 w-4 text-amber-400" />
+              <h2 className="text-sm font-semibold text-foreground">
+                Workspace Files
+              </h2>
+            </div>
+            <p className="mt-1 truncate text-[10px] text-muted-foreground">
+              <code>{workspacePath}</code>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-muted-foreground/60 hover:text-foreground/70"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="shrink-0 space-y-3 border-b border-foreground/[0.06] px-5 py-3">
+          <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm text-muted-foreground">
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter files by path..."
+              className="flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/50"
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground/70">
+            {loading
+              ? "Scanning workspace..."
+              : `${filteredFiles.length} file${filteredFiles.length !== 1 ? "s" : ""}${
+                  search.trim() ? ` (filtered from ${files.length})` : ""
+                }`}
+            {truncated ? " · truncated snapshot" : ""}
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading ? (
+            <div className="flex items-center gap-2 text-[12px] text-muted-foreground/70">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading workspace files...
+            </div>
+          ) : error ? (
+            <div className="rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2 text-[12px] text-red-400">
+              {error}
+            </div>
+          ) : filteredFiles.length === 0 ? (
+            <p className="text-[12px] text-muted-foreground/60">
+              No files match this filter.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {filteredFiles.map((file) => (
+                <div
+                  key={file.relativePath}
+                  className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2"
+                >
+                  <p className="truncate text-[12px] font-medium text-foreground/80">
+                    {file.relativePath}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                    {file.ext || "(no ext)"} · {formatBytes(file.size)} ·{" "}
+                    {formatAgo(file.mtime)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-foreground/[0.06] px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-foreground/[0.08] px-4 py-2 text-[12px] text-muted-foreground transition-colors hover:bg-foreground/[0.05]"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onOpenDocs(workspacePath);
+              onClose();
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-[12px] font-medium text-white transition-colors hover:bg-violet-500"
+          >
+            Open in Docs
+            <ExternalLink className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ================================================================
    Main Export
    ================================================================ */
 
 export function AgentsView() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab: "agents" | "subagents" =
+    (searchParams.get("tab") || "").toLowerCase() === "subagents" ? "subagents" : "agents";
   const [data, setData] = useState<AgentsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [selectedWorkspacePath, setSelectedWorkspacePath] = useState<string | null>(null);
   const [view, setView] = useState<"flow" | "grid">("flow");
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -2689,6 +3064,17 @@ export function AgentsView() {
     setSelectedId(id);
     setEditingAgentId(id);
   }, []);
+
+  const handleWorkspaceClick = useCallback((workspacePath: string) => {
+    setSelectedWorkspacePath(workspacePath);
+  }, []);
+
+  const openDocsForWorkspace = useCallback((workspacePath: string) => {
+    const params = new URLSearchParams();
+    params.set("section", "docs");
+    params.set("workspace", workspacePath);
+    router.push(`/?${params.toString()}`);
+  }, [router]);
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -2756,6 +3142,34 @@ export function AgentsView() {
     [data, editingAgentId]
   );
 
+  const switchTab = useCallback((next: "agents" | "subagents") => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("section", "agents");
+    if (next === "subagents") params.set("tab", "subagents");
+    else params.delete("tab");
+    router.push(`/?${params.toString()}`);
+  }, [router, searchParams]);
+
+  useEffect(() => {
+    if (tab === "subagents") {
+      setShowAddModal(false);
+      setEditingAgentId(null);
+      setSelectedWorkspacePath(null);
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    if (view !== "flow") {
+      setSelectedWorkspacePath(null);
+    }
+  }, [view]);
+
+  const agentCount = data?.agents.length ?? 0;
+  const sectionDescription =
+    tab === "agents"
+      ? `${agentCount} agent${agentCount !== 1 ? "s" : ""} configured`
+      : "Subagent orchestration, controls, and defaults";
+
   if (loading) {
     return <LoadingState label="Loading agents..." />;
   }
@@ -2784,43 +3198,75 @@ export function AgentsView() {
             Agents
           </span>
         }
-        description={`${data.agents.length} agent${data.agents.length !== 1 ? "s" : ""} configured`}
+        description={sectionDescription}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-500/20"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Add Agent</span>
-            </button>
             <div className="flex rounded-lg border border-foreground/[0.06] bg-card">
               <button
                 type="button"
-                onClick={() => setView("flow")}
+                onClick={() => switchTab("agents")}
                 className={cn(
                   "rounded-l-lg px-3 py-1.5 text-[11px] font-medium transition",
-                  view === "flow"
+                  tab === "agents"
                     ? "bg-violet-500/15 text-violet-400"
                     : "text-muted-foreground hover:text-foreground/70"
                 )}
               >
-                Org Chart
+                Agents
               </button>
               <button
                 type="button"
-                onClick={() => setView("grid")}
+                onClick={() => switchTab("subagents")}
                 className={cn(
-                  "rounded-r-lg px-3 py-1.5 text-[11px] font-medium transition",
-                  view === "grid"
+                  "border-l border-foreground/[0.06] rounded-r-lg px-3 py-1.5 text-[11px] font-medium transition",
+                  tab === "subagents"
                     ? "bg-violet-500/15 text-violet-400"
                     : "text-muted-foreground hover:text-foreground/70"
                 )}
               >
-                Grid
+                Subagents
               </button>
             </div>
+
+            {tab === "agents" && (
+              <>
+                <div className="flex rounded-lg border border-foreground/[0.06] bg-card">
+                  <button
+                    type="button"
+                    onClick={() => setView("flow")}
+                    className={cn(
+                      "rounded-l-lg px-3 py-1.5 text-[11px] font-medium transition",
+                      view === "flow"
+                        ? "bg-violet-500/15 text-violet-400"
+                        : "text-muted-foreground hover:text-foreground/70"
+                    )}
+                  >
+                    Org Chart
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView("grid")}
+                    className={cn(
+                      "border-l border-foreground/[0.06] rounded-r-lg px-3 py-1.5 text-[11px] font-medium transition",
+                      view === "grid"
+                        ? "bg-violet-500/15 text-violet-400"
+                        : "text-muted-foreground hover:text-foreground/70"
+                    )}
+                  >
+                    Grid
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-500/20"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Add Agent</span>
+                </button>
+              </>
+            )}
+
             <button type="button" onClick={fetchAgents} className="rounded-lg border border-foreground/[0.06] bg-card p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground/70">
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
@@ -2829,17 +3275,28 @@ export function AgentsView() {
         className="py-3"
       />
 
+      {tab === "subagents" && (
+        <SubagentsManagerView
+          agents={data.agents}
+          onAgentsReload={() => {
+            void fetchAgents();
+          }}
+        />
+      )}
+
       {/* Flow view: full width, full remaining height */}
-      {view === "flow" && (
+      {tab === "agents" && view === "flow" && (
         <FlowView
           data={data}
           selectedId={selectedId}
           onSelect={handleAgentClick}
+          selectedWorkspacePath={selectedWorkspacePath}
+          onSelectWorkspace={handleWorkspaceClick}
         />
       )}
 
       {/* Grid view + detail: scrollable with max-width */}
-      {view === "grid" && (
+      {tab === "agents" && view === "grid" && (
         <SectionBody width="content" padding="roomy" innerClassName="space-y-5">
           <SummaryBar agents={data.agents} />
           <GridView
@@ -2858,7 +3315,7 @@ export function AgentsView() {
       )}
 
       {/* Add Agent Modal */}
-      {showAddModal && (
+      {tab === "agents" && showAddModal && (
         <AddAgentModal
           onClose={() => setShowAddModal(false)}
           onCreated={() => {
@@ -2872,7 +3329,7 @@ export function AgentsView() {
       )}
 
       {/* Edit Agent Modal */}
-      {editingAgent && (
+      {tab === "agents" && editingAgent && (
         <EditAgentModal
           agent={editingAgent}
           idx={editingIdx}
@@ -2886,6 +3343,14 @@ export function AgentsView() {
           onChannelsChanged={() => {
             void fetchAgents();
           }}
+        />
+      )}
+
+      {tab === "agents" && selectedWorkspacePath && (
+        <WorkspaceFilesModal
+          workspacePath={selectedWorkspacePath}
+          onClose={() => setSelectedWorkspacePath(null)}
+          onOpenDocs={openDocsForWorkspace}
         />
       )}
     </SectionLayout>

@@ -20,6 +20,9 @@ import { AgentsView } from "@/components/agents-view";
 import { UsageView } from "@/components/usage-view";
 import { TerminalView } from "@/components/terminal-view";
 import { PermissionsView } from "@/components/permissions-view";
+import { TailscaleView } from "@/components/tailscale-view";
+import { BrowserRelayView } from "@/components/browser-relay-view";
+import { AccountsKeysView } from "@/components/accounts-keys-view";
 import { setChatActive } from "@/lib/chat-store";
 
 function SectionContent({ section }: { section: string }) {
@@ -49,6 +52,8 @@ function SectionContent({ section }: { section: string }) {
       return <SkillsView />;
     case "models":
       return <ModelsView />;
+    case "accounts":
+      return <AccountsKeysView />;
     case "audio":
       return <AudioView />;
     case "vectors":
@@ -61,6 +66,10 @@ function SectionContent({ section }: { section: string }) {
       return <TerminalView />;
     case "permissions":
       return <PermissionsView />;
+    case "tailscale":
+      return <TailscaleView />;
+    case "browser":
+      return <BrowserRelayView />;
     default:
       return <DashboardView />;
   }

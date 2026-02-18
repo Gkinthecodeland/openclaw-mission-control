@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  Check,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+} from "lucide-react";
 import { requestRestart } from "@/lib/restart-store";
 import { cn } from "@/lib/utils";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -86,6 +95,78 @@ type ModelOption = {
   oauthStatus: string | null;
 };
 
+type ModelCredentialProvider = {
+  provider: string;
+  connected: boolean;
+  effectiveKind: string | null;
+  effectiveDetail: string | null;
+  profileCount: number;
+  oauthCount: number;
+  tokenCount: number;
+  apiKeyCount: number;
+  labels: string[];
+  envSource: string | null;
+  envValue: string | null;
+  modelsJsonSource: string | null;
+};
+
+type ModelCredentialAgentRow = {
+  agentId: string;
+  storePath: string | null;
+  shellEnvFallback: { enabled: boolean; appliedKeys: string[] };
+  providers: ModelCredentialProvider[];
+  oauthProfiles: Array<{
+    profileId: string;
+    provider: string;
+    type: string;
+    status: string;
+    source: string;
+    label: string;
+    expiresAt: number | null;
+    remainingMs: number | null;
+  }>;
+  unusableProfiles: Array<{
+    profileId: string;
+    provider: string;
+    kind: string;
+    until: number | null;
+    remainingMs: number | null;
+  }>;
+};
+
+type AgentAuthProfileStore = {
+  agentId: string;
+  path: string;
+  exists: boolean;
+  lastGood: Record<string, string>;
+  profiles: Array<{
+    id: string;
+    provider: string;
+    type: string;
+    accountId: string | null;
+    expiresAt: number | null;
+    remainingMs: number | null;
+    usage: {
+      lastUsed: number | null;
+      errorCount: number | null;
+      lastFailureAt: number | null;
+      cooldownUntil: number | null;
+    };
+    secretFields: Array<{ key: string; value: string; redacted: boolean }>;
+  }>;
+};
+
+type ModelsCredentialSnapshot = {
+  sourceOfTruth: { modelsStatus: boolean };
+  summary: {
+    modelProvidersConnected: number;
+    modelProvidersTotal: number;
+    authProfiles: number;
+  };
+  modelAuthByAgent: ModelCredentialAgentRow[];
+  agentAuthProfiles: AgentAuthProfileStore[];
+};
+
 type Toast = {
   type: "success" | "error";
   message: string;
@@ -104,6 +185,26 @@ function formatAgo(ts: number | null): string {
   const diffHr = Math.floor(diffMin / 60);
   if (diffHr < 24) return `${diffHr}h ago`;
   return `${Math.floor(diffHr / 24)}d ago`;
+}
+
+function formatDuration(ms: number | null): string {
+  if (!ms || ms <= 0) return "n/a";
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function masked(value: string): string {
+  if (!value) return "";
+  if (value.length <= 8) return "••••••••";
+  return `${value.slice(0, 4)}••••${value.slice(-4)}`;
+}
+
+function renderSecret(value: string, reveal: boolean, alreadyRedacted: boolean): string {
+  if (alreadyRedacted) return value;
+  return reveal ? value : masked(value);
 }
 
 function modelProvider(key: string): string {
@@ -204,6 +305,21 @@ export function ModelsView() {
   const [agents, setAgents] = useState<AgentModelInfo[]>([]);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentRuntimeStatus>>({});
   const [liveModels, setLiveModels] = useState<Record<string, LiveModelInfo>>({});
+  const [modelCredentialSummary, setModelCredentialSummary] = useState<{
+    connected: number;
+    total: number;
+    profiles: number;
+    sourceOfTruth: boolean;
+  }>({
+    connected: 0,
+    total: 0,
+    profiles: 0,
+    sourceOfTruth: false,
+  });
+  const [modelAuthByAgent, setModelAuthByAgent] = useState<ModelCredentialAgentRow[]>([]);
+  const [agentAuthProfiles, setAgentAuthProfiles] = useState<AgentAuthProfileStore[]>([]);
+  const [modelCredsError, setModelCredsError] = useState<string | null>(null);
+  const [revealModelSecrets, setRevealModelSecrets] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -240,6 +356,34 @@ export function ModelsView() {
         (data.agentStatuses || {}) as Record<string, AgentRuntimeStatus>
       );
       setLiveModels((data.liveModels || {}) as Record<string, LiveModelInfo>);
+
+      try {
+        const accountsRes = await fetch("/api/accounts", { cache: "no-store" });
+        const accountsData = (await accountsRes.json()) as
+          | (ModelsCredentialSnapshot & { error?: string })
+          | { error?: string };
+        if (!accountsRes.ok) {
+          throw new Error(
+            (accountsData as { error?: string })?.error || `HTTP ${accountsRes.status}`
+          );
+        }
+        const snapshot = accountsData as ModelsCredentialSnapshot;
+        setModelCredentialSummary({
+          connected: Number(snapshot.summary?.modelProvidersConnected || 0),
+          total: Number(snapshot.summary?.modelProvidersTotal || 0),
+          profiles: Number(snapshot.summary?.authProfiles || 0),
+          sourceOfTruth: Boolean(snapshot.sourceOfTruth?.modelsStatus),
+        });
+        setModelAuthByAgent(
+          Array.isArray(snapshot.modelAuthByAgent) ? snapshot.modelAuthByAgent : []
+        );
+        setAgentAuthProfiles(
+          Array.isArray(snapshot.agentAuthProfiles) ? snapshot.agentAuthProfiles : []
+        );
+        setModelCredsError(null);
+      } catch (err) {
+        setModelCredsError(err instanceof Error ? err.message : String(err));
+      }
     } catch (err) {
       console.warn("Failed to fetch models:", err);
       flash("Failed to load models", "error");
@@ -322,6 +466,12 @@ export function ModelsView() {
       if (a.id !== "main" && b.id === "main") return 1;
       return a.name.localeCompare(b.name);
     });
+  }, [agents]);
+
+  const agentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const agent of agents) map.set(agent.id, agent.name);
+    return map;
   }, [agents]);
 
   const providerAuthMap = useMemo(() => {
@@ -836,6 +986,150 @@ export function ModelsView() {
                 />
               );
             })}
+          </div>
+        </section>
+
+        <section className="mc-panel">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground">
+              Model Credentials & Auth Stores
+            </h2>
+            <div className="flex items-center gap-2">
+              <StatusPill
+                tone={modelCredentialSummary.sourceOfTruth ? "good" : "warn"}
+                label={modelCredentialSummary.sourceOfTruth ? "gateway source-of-truth" : "partial"}
+              />
+              <button
+                type="button"
+                onClick={() => setRevealModelSecrets((prev) => !prev)}
+                className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+              >
+                {revealModelSecrets ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                {revealModelSecrets ? "Hide values" : "Reveal values"}
+              </button>
+            </div>
+          </div>
+
+          <p className="mt-2 text-sm text-muted-foreground">
+            Unified model auth inventory (moved from Accounts & Keys): provider auth, env-backed model keys, and auth profile stores.
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <StatusPill tone="good" label={`provider access ${modelCredentialSummary.connected}/${modelCredentialSummary.total}`} />
+            <StatusPill tone="info" label={`auth profiles ${modelCredentialSummary.profiles}`} />
+            <StatusPill tone="neutral" label={`${modelAuthByAgent.length} agents`} />
+          </div>
+
+          {modelCredsError && (
+            <p className="mc-note-warning mt-3 text-xs">
+              Could not load model credential details: {modelCredsError}
+            </p>
+          )}
+
+          <div className="mt-4 space-y-3">
+            {modelAuthByAgent.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No model auth rows found.</p>
+            ) : (
+              modelAuthByAgent.map((row) => (
+                <div key={row.agentId} className="rounded-xl border border-border/70 bg-card/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {agentNameById.get(row.agentId) || row.agentId}
+                      <span className="ml-1 text-xs text-muted-foreground">({row.agentId})</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      store: <code>{row.storePath || "n/a"}</code>
+                    </p>
+                  </div>
+                  <div className="mt-2 space-y-2">
+                    {row.providers.map((provider) => (
+                      <div
+                        key={`${row.agentId}:${provider.provider}`}
+                        className="rounded-md border border-border/60 bg-muted/20 p-2 text-xs"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-medium text-foreground">{provider.provider}</p>
+                          <StatusPill
+                            tone={provider.connected ? "good" : "warn"}
+                            label={
+                              provider.connected
+                                ? `${provider.effectiveKind || "connected"}${provider.effectiveDetail ? ` · ${provider.effectiveDetail}` : ""}`
+                                : "missing"
+                            }
+                          />
+                        </div>
+                        <p className="mt-1 text-muted-foreground">
+                          profiles={provider.profileCount} oauth={provider.oauthCount} token={provider.tokenCount} apiKey={provider.apiKeyCount}
+                        </p>
+                        {provider.envValue ? (
+                          <p className="mt-1 break-all text-muted-foreground">
+                            env: <code>{provider.envSource || "unknown"}</code> ={" "}
+                            <code>{renderSecret(provider.envValue, revealModelSecrets, false)}</code>
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  {row.unusableProfiles.length > 0 && (
+                    <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-300">
+                      {row.unusableProfiles.map((u) => (
+                        <p key={`${row.agentId}:${u.profileId}`}>
+                          {u.profileId} ({u.provider}) · {u.kind} · {formatDuration(u.remainingMs)} remaining
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Auth Profile Stores</h3>
+            {agentAuthProfiles.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No auth profile stores discovered.</p>
+            ) : (
+              agentAuthProfiles.map((agentRow) => (
+                <div key={agentRow.agentId} className="rounded-xl border border-border/70 bg-card/50 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    {agentNameById.get(agentRow.agentId) || agentRow.agentId} · <code>{agentRow.path}</code>
+                  </p>
+                  {!agentRow.exists ? (
+                    <p className="mt-2 text-xs text-amber-300">auth-profiles.json not found.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {agentRow.profiles.map((profile) => (
+                        <div
+                          key={`${agentRow.agentId}:${profile.id}`}
+                          className="rounded-md border border-border/60 bg-muted/20 p-2 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-medium text-foreground">
+                              {profile.id} ({profile.provider}/{profile.type})
+                            </p>
+                            <p className="text-muted-foreground">
+                              expires {profile.expiresAt ? formatAgo(profile.expiresAt) : "n/a"}
+                            </p>
+                          </div>
+                          <p className="mt-1 text-muted-foreground">
+                            accountId={profile.accountId || "n/a"} · lastUsed={formatAgo(profile.usage.lastUsed)} · errors={profile.usage.errorCount ?? 0}
+                          </p>
+                          {profile.secretFields.length > 0 && (
+                            <div className="mt-1 space-y-1">
+                              {profile.secretFields.map((field) => (
+                                <p key={`${profile.id}:${field.key}`} className="break-all text-muted-foreground">
+                                  {field.key}: <code>{renderSecret(field.value, revealModelSecrets, field.redacted)}</code>
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </section>
       </SectionBody>

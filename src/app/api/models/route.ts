@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readdir, readFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import { join } from "path";
 import { runCliJson, runCli, gatewayCall } from "@/lib/openclaw-cli";
 import { getOpenClawHome } from "@/lib/paths";
+import { fetchGatewaySessions } from "@/lib/gateway-sessions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -305,75 +306,26 @@ async function readParsedAgentModelConfig(
   }
 }
 
-async function readLiveModelForAgent(agentId: string): Promise<LiveModelInfo | null> {
-  try {
-    const sessionsPath = join(
-      OPENCLAW_HOME,
-      "agents",
-      agentId,
-      "sessions",
-      "sessions.json"
-    );
-    const raw = await readFile(sessionsPath, "utf-8");
-    const parsed = JSON.parse(raw) as Record<string, Record<string, unknown>>;
-    let bestKey: string | null = null;
-    let bestUpdatedAt = -1;
-    let bestModel: string | null = null;
-    let bestProvider: string | null = null;
-
-    for (const [key, value] of Object.entries(parsed || {})) {
-      if (!value || typeof value !== "object") continue;
-      const updatedAt = Number(value.updatedAt || 0);
-      if (!Number.isFinite(updatedAt) || updatedAt <= bestUpdatedAt) continue;
-      const model = typeof value.model === "string" ? value.model : null;
-      const provider =
-        typeof value.modelProvider === "string" ? value.modelProvider : null;
-      bestUpdatedAt = updatedAt;
-      bestKey = key;
-      bestModel = model;
-      bestProvider = provider;
-    }
-
-    if (bestUpdatedAt <= 0) return null;
-    const fullModel =
-      bestModel && bestModel.includes("/")
-        ? bestModel
-        : bestModel
-          ? `${bestProvider || "unknown"}/${bestModel}`
-          : null;
-
-    return {
-      fullModel,
-      model: bestModel,
-      provider: bestProvider,
-      updatedAt: bestUpdatedAt,
-      sessionKey: bestKey,
-    };
-  } catch {
-    return null;
-  }
-}
-
 async function readLiveModels(agentIds: string[]): Promise<Record<string, LiveModelInfo>> {
-  const ids = Array.from(new Set(agentIds.filter(Boolean)));
-  if (ids.length === 0) {
-    try {
-      const dirs = await readdir(join(OPENCLAW_HOME, "agents"), {
-        withFileTypes: true,
-      });
-      for (const dir of dirs) {
-        if (dir.isDirectory()) ids.push(dir.name);
-      }
-    } catch {
-      // ignore
-    }
-  }
-  const pairs = await Promise.all(
-    ids.map(async (id) => [id, await readLiveModelForAgent(id)] as const)
-  );
   const out: Record<string, LiveModelInfo> = {};
-  for (const [id, info] of pairs) {
-    if (info) out[id] = info;
+  try {
+    const ids = new Set(agentIds.filter(Boolean));
+    const sessions = await fetchGatewaySessions(10000);
+    for (const session of sessions) {
+      if (!session.agentId) continue;
+      if (ids.size > 0 && !ids.has(session.agentId)) continue;
+      const prev = out[session.agentId];
+      if (prev && (prev.updatedAt || 0) >= session.updatedAt) continue;
+      out[session.agentId] = {
+        fullModel: session.fullModel || null,
+        model: session.model || null,
+        provider: session.modelProvider || null,
+        updatedAt: session.updatedAt || null,
+        sessionKey: session.key || null,
+      };
+    }
+  } catch {
+    // ignore
   }
   return out;
 }

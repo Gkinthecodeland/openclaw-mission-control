@@ -4,6 +4,7 @@ import { statfs, readdir, stat, readFile } from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
+import { gatewayCall } from "@/lib/openclaw-cli";
 
 export const dynamic = "force-dynamic";
 const exec = promisify(execFile);
@@ -113,6 +114,21 @@ async function getLogFileSize(home: string): Promise<number> {
 }
 
 async function getSessionCount(home: string): Promise<number> {
+  // Gateway session list is the runtime source of truth.
+  try {
+    const data = await gatewayCall<{ count?: number; sessions?: unknown[] }>(
+      "sessions.list",
+      undefined,
+      8000
+    );
+    if (typeof data.count === "number" && Number.isFinite(data.count) && data.count >= 0) {
+      return Math.trunc(data.count);
+    }
+    if (Array.isArray(data.sessions)) return data.sessions.length;
+  } catch {
+    // Fall back to local metadata only if gateway is unavailable.
+  }
+
   let count = 0;
   try {
     const agentsDir = join(home, "agents");

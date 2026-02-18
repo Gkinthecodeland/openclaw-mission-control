@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runCli, runCliJson } from "@/lib/openclaw-cli";
-import { getOpenClawHome } from "@/lib/paths";
-import { readFile, readdir } from "fs/promises";
-import { join } from "path";
+import { runCli, runCliJson, gatewayCall } from "@/lib/openclaw-cli";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +41,7 @@ type CronRunEntry = {
 /**
  * Extract known delivery targets from:
  *   1. Existing cron jobs that already have `delivery.to` set
- *   2. Session files on disk (deliveryContext.to and origin.to fields)
+ *   2. Gateway sessions.list payload (deliveryContext.to and origin.from fields)
  */
 async function collectKnownTargets(): Promise<
   { target: string; channel: string; source: string }[]
@@ -64,43 +61,31 @@ async function collectKnownTargets(): Promise<
     /* ignore */
   }
 
-  // 2. Scan agent session files for deliveryContext.to
+  // 2. Scan gateway session list for delivery targets
   try {
-    const home = getOpenClawHome();
-    const agentsDir = join(home, "agents");
-    const agents = await readdir(agentsDir).catch(() => [] as string[]);
-
-    for (const agentId of agents) {
-      const sessPath = join(agentsDir, agentId, "sessions", "sessions.json");
-      try {
-        const raw = await readFile(sessPath, "utf-8");
-        const sessions = JSON.parse(raw) as Record<
-          string,
-          {
-            deliveryContext?: { channel?: string; to?: string };
-            origin?: { from?: string; to?: string; surface?: string };
-          }
-        >;
-        for (const [_key, sess] of Object.entries(sessions)) {
-          // deliveryContext.to is the most reliable source
-          if (sess.deliveryContext?.to) {
-            const to = sess.deliveryContext.to;
-            const ch = sess.deliveryContext.channel || detectChannel(to);
-            if (!targets.has(to)) {
-              targets.set(to, { channel: ch, source: `session (${agentId})` });
-            }
-          }
-          // Also check origin.from for additional targets
-          if (sess.origin?.from && sess.origin.from !== sess.deliveryContext?.to) {
-            const from = sess.origin.from;
-            const ch = sess.origin.surface || detectChannel(from);
-            if (!targets.has(from)) {
-              targets.set(from, { channel: ch, source: `session (${agentId})` });
-            }
-          }
+    const data = await gatewayCall<{
+      sessions?: Array<{
+        key?: string;
+        deliveryContext?: { channel?: string; to?: string };
+        origin?: { from?: string; to?: string; surface?: string };
+      }>;
+    }>("sessions.list", undefined, 10000);
+    for (const sess of data.sessions || []) {
+      const key = String(sess.key || "");
+      const agentId = key.startsWith("agent:") ? (key.split(":")[1] || "unknown") : "unknown";
+      if (sess.deliveryContext?.to) {
+        const to = sess.deliveryContext.to;
+        const ch = sess.deliveryContext.channel || detectChannel(to);
+        if (!targets.has(to)) {
+          targets.set(to, { channel: ch, source: `session (${agentId})` });
         }
-      } catch {
-        // Session file doesn't exist or isn't valid JSON — skip
+      }
+      if (sess.origin?.from && sess.origin.from !== sess.deliveryContext?.to) {
+        const from = sess.origin.from;
+        const ch = sess.origin.surface || detectChannel(from);
+        if (!targets.has(from)) {
+          targets.set(from, { channel: ch, source: `session (${agentId})` });
+        }
       }
     }
   } catch {

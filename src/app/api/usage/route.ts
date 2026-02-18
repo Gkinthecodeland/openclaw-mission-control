@@ -3,8 +3,10 @@ import { readFile, readdir, stat } from "fs/promises";
 import { join } from "path";
 import { getOpenClawHome } from "@/lib/paths";
 import { runCliJson } from "@/lib/openclaw-cli";
+import { fetchGatewaySessions } from "@/lib/gateway-sessions";
 
 const OPENCLAW_HOME = getOpenClawHome();
+export const dynamic = "force-dynamic";
 
 /* ── Types ──────────────────────────────────────── */
 
@@ -136,37 +138,33 @@ export async function GET() {
       }
     } catch { /* ok */ }
 
-    // 2. Read sessions for every agent
+    // 2. Read sessions from gateway source of truth
     const allSessions: SessionWithAgent[] = [];
-
-    for (const agentId of agentIds) {
-      const sessPath = join(OPENCLAW_HOME, "agents", agentId, "sessions", "sessions.json");
-      const sessData = await readJsonSafe<Record<string, Record<string, unknown>>>(sessPath, {});
-      for (const [, s] of Object.entries(sessData)) {
-        const model = (s.model as string) || (s.modelProvider as string ? `${s.modelProvider}/${s.model}` : "unknown");
-        allSessions.push({
-          key: (s.key as string) || "",
-          kind: (s.kind as string) || "direct",
-          updatedAt: (s.updatedAt as number) || 0,
-          ageMs: Date.now() - ((s.updatedAt as number) || 0),
-          sessionId: (s.sessionId as string) || "",
-          inputTokens: (s.inputTokens as number) || 0,
-          outputTokens: (s.outputTokens as number) || 0,
-          totalTokens: (s.totalTokens as number) || 0,
-          totalTokensFresh: (s.totalTokensFresh as boolean) || false,
-          model,
-          contextTokens: (s.contextTokens as number) || 0,
-          thinkingLevel: (s.thinkingLevel as string) || undefined,
-          systemSent: (s.systemSent as boolean) || false,
-          percentUsed: (s.contextTokens as number)
-            ? Math.round(((s.totalTokens as number) || 0) / ((s.contextTokens as number) || 1) * 100)
-            : undefined,
-          remainingTokens: (s.contextTokens as number)
-            ? ((s.contextTokens as number) || 0) - ((s.totalTokens as number) || 0)
-            : undefined,
-          agentId,
-        });
-      }
+    const liveSessions = await fetchGatewaySessions(12000).catch(() => []);
+    for (const s of liveSessions) {
+      allSessions.push({
+        key: s.key,
+        kind: s.kind,
+        updatedAt: s.updatedAt,
+        ageMs: s.ageMs,
+        sessionId: s.sessionId,
+        inputTokens: s.inputTokens,
+        outputTokens: s.outputTokens,
+        totalTokens: s.totalTokens,
+        totalTokensFresh: s.totalTokensFresh,
+        model: s.model,
+        contextTokens: s.contextTokens,
+        thinkingLevel: s.thinkingLevel,
+        systemSent: s.systemSent,
+        abortedLastRun: s.abortedLastRun,
+        percentUsed: s.contextTokens
+          ? Math.round((s.totalTokens / Math.max(1, s.contextTokens)) * 100)
+          : undefined,
+        remainingTokens: s.contextTokens
+          ? s.contextTokens - s.totalTokens
+          : undefined,
+        agentId: s.agentId || "unknown",
+      });
     }
 
     // 3. Sort by updatedAt desc

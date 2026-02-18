@@ -1483,6 +1483,7 @@ function CreateCronForm({
 export function CronView() {
   const searchParams = useSearchParams();
   const showMode = searchParams.get("show"); // "errors" to auto-expand first error
+  const targetJobId = searchParams.get("job");
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1494,6 +1495,7 @@ export function CronView() {
   const [showCreate, setShowCreate] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didAutoExpand = useRef(false);
+  const didAutoFocusJob = useRef<string | null>(null);
 
   const flash = useCallback(
     (message: string, type: "success" | "error" = "success") => {
@@ -1535,6 +1537,7 @@ export function CronView() {
 
   // Auto-expand the first errored job when navigated with ?show=errors
   useEffect(() => {
+    if (targetJobId) return;
     if (showMode === "errors" && jobs.length > 0 && !didAutoExpand.current) {
       const firstError = jobs.find((j) => j.state.lastStatus === "error");
       if (firstError) {
@@ -1549,7 +1552,24 @@ export function CronView() {
         }, 200);
       }
     }
-  }, [showMode, jobs, runs, fetchRuns]);
+  }, [showMode, jobs, runs, fetchRuns, targetJobId]);
+
+  // Auto-expand a specific job when navigated with ?job=<id>
+  useEffect(() => {
+    if (!targetJobId || jobs.length === 0) return;
+    const target = jobs.find((j) => j.id === targetJobId);
+    if (!target) return;
+    if (didAutoFocusJob.current === targetJobId) return;
+    didAutoFocusJob.current = targetJobId;
+    queueMicrotask(() => setExpanded(target.id));
+    if (!runs[target.id]) {
+      queueMicrotask(() => fetchRuns(target.id));
+    }
+    setTimeout(() => {
+      const el = document.getElementById(`cron-job-${target.id}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 200);
+  }, [targetJobId, jobs, runs, fetchRuns]);
 
   const toggleExpand = (id: string) => {
     if (expanded === id) {
@@ -1665,6 +1685,7 @@ export function CronView() {
         {jobs.map((job) => {
           const isExpanded = expanded === job.id;
           const isEditing = editing === job.id;
+          const isFocusedFromLink = targetJobId === job.id;
           const st = job.state;
           const hasError = st.lastStatus === "error";
           const delivery = describeDelivery(job.delivery);
@@ -1679,7 +1700,8 @@ export function CronView() {
                 hasError
                   ? "border-red-500/20"
                   : "border-foreground/[0.06]",
-                hasError && expanded === job.id && "ring-1 ring-red-500/30"
+                hasError && expanded === job.id && "ring-1 ring-red-500/30",
+                isFocusedFromLink && "ring-1 ring-violet-500/35"
               )}
             >
               {/* Job header */}

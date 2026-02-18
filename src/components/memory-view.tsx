@@ -810,12 +810,7 @@ export function MemoryView() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 pb-3">
-            <div className="mb-4 rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-3">
-              <p className="text-[11px] font-semibold text-foreground/85">OpenClaw Memory Model</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/75">
-                `MEMORY.md` (or `memory.md`) is curated long-term memory. `memory/*.md` is rolling journal memory. `openclaw memory index` vectorizes these files per agent workspace.
-              </p>
-            </div>
+         
 
             {/* Core workspace memory */}
             {memoryMd && (

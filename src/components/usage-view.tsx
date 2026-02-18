@@ -400,7 +400,7 @@ export function UsageView() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("/api/usage");
+      const res = await fetch("/api/usage", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as UsageData;
       setData(json);
@@ -414,6 +414,18 @@ export function UsageView() {
 
   useEffect(() => {
     void fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState === "visible") void fetchData();
+    }, 15000);
+    const onFocus = () => void fetchData();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(pollId);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [fetchData]);
 
   const activeBucket = useMemo(() => (data ? data.buckets[period] : null), [data, period]);

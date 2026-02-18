@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readFile, readdir } from "fs/promises";
 import { join } from "path";
 import { getOpenClawHome, getGatewayUrl, getGatewayPort } from "@/lib/paths";
+import { fetchGatewaySessions, summarizeSessionsByAgent } from "@/lib/gateway-sessions";
 
 const OPENCLAW_HOME = getOpenClawHome();
 
@@ -178,30 +179,18 @@ async function readRecentCronRuns(): Promise<CronRunEntry[]> {
 async function readAgentSessions(): Promise<
   { id: string; sessionCount: number; totalTokens: number; lastActivity: number }[]
 > {
-  const agentsDir = join(OPENCLAW_HOME, "agents");
-  const result: { id: string; sessionCount: number; totalTokens: number; lastActivity: number }[] = [];
   try {
-    const agents = await readdir(agentsDir, { withFileTypes: true });
-    for (const agent of agents) {
-      if (!agent.isDirectory()) continue;
-      const sessionsPath = join(agentsDir, agent.name, "sessions", "sessions.json");
-      try {
-        const data = JSON.parse(await readFile(sessionsPath, "utf-8")) as Record<string, Record<string, unknown>>;
-        let totalTokens = 0;
-        let lastActivity = 0;
-        for (const s of Object.values(data)) {
-          totalTokens += (s.totalTokens as number) || 0;
-          const u = (s.updatedAt as number) || 0;
-          if (u > lastActivity) lastActivity = u;
-        }
-        result.push({
-          id: agent.name,
-          sessionCount: Object.keys(data).length,
-          totalTokens,
-          lastActivity,
-        });
-      } catch { /* skip */ }
-    }
-  } catch { /* agents dir may not exist */ }
-  return result;
+    const sessions = await fetchGatewaySessions(10000);
+    const summary = summarizeSessionsByAgent(sessions);
+    return [...summary.entries()]
+      .map(([id, s]) => ({
+        id,
+        sessionCount: s.sessionCount,
+        totalTokens: s.totalTokens,
+        lastActivity: s.lastActive,
+      }))
+      .sort((a, b) => b.lastActivity - a.lastActivity);
+  } catch {
+    return [];
+  }
 }

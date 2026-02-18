@@ -3,8 +3,10 @@ import { readFile, writeFile, readdir } from "fs/promises";
 import { join } from "path";
 import { getOpenClawHome, getDefaultWorkspaceSync } from "@/lib/paths";
 import { runCliJson, runCli } from "@/lib/openclaw-cli";
+import { fetchGatewaySessions, summarizeSessionsByAgent } from "@/lib/gateway-sessions";
 
 const OPENCLAW_HOME = getOpenClawHome();
+export const dynamic = "force-dynamic";
 
 type CliAgent = {
   id: string;
@@ -37,8 +39,68 @@ type AgentFull = {
   channels: string[];
   identitySnippet: string | null;
   subagents: string[];
+  runtimeSubagents: Array<{
+    sessionKey: string;
+    sessionId: string;
+    shortId: string;
+    model: string;
+    totalTokens: number;
+    lastActive: number;
+    ageMs: number;
+    status: "running" | "recent";
+  }>;
   status: "active" | "idle" | "unknown";
 };
+
+const SUBAGENT_RECENT_WINDOW_MS = 30 * 60 * 1000;
+const SUBAGENT_ACTIVE_WINDOW_MS = 2 * 60 * 1000;
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
+}
+
+function isSubagentSessionKey(key: string): boolean {
+  return key.includes(":subagent:");
+}
+
+function shortSubagentId(key: string, sessionId: string): string {
+  const fromKey = key.split(":").pop() || "";
+  if (fromKey) return fromKey.slice(0, 8);
+  return sessionId.slice(0, 8);
+}
+
+function connectedChannelsFromStatus(raw: unknown): Set<string> {
+  const out = new Set<string>();
+  const obj = asRecord(raw);
+  const channels = asRecord(obj.channels);
+  for (const [channel, rowRaw] of Object.entries(channels)) {
+    const row = asRecord(rowRaw);
+    const probe = asRecord(row.probe);
+    if (row.running === true || probe.ok === true) {
+      out.add(channel);
+    }
+  }
+
+  const channelAccounts = asRecord(obj.channelAccounts);
+  for (const [channel, entriesRaw] of Object.entries(channelAccounts)) {
+    const entries = Array.isArray(entriesRaw) ? entriesRaw : [];
+    for (const entryRaw of entries) {
+      const entry = asRecord(entryRaw);
+      const probe = asRecord(entry.probe);
+      if (
+        entry.running === true ||
+        probe.ok === true
+      ) {
+        out.add(channel);
+        break;
+      }
+    }
+  }
+
+  return out;
+}
 
 async function readJsonSafe<T>(path: string, fallback: T): Promise<T> {
   try {
@@ -122,10 +184,57 @@ export async function GET() {
       };
     });
 
+    const channelStatusRaw = await runCliJson<Record<string, unknown>>(
+      ["channels", "status", "--probe"],
+      12000
+    ).catch(() => ({}));
+    const connectedChannels = connectedChannelsFromStatus(channelStatusRaw);
+
     // Build a lookup from config list
     const configMap = new Map<string, Record<string, unknown>>();
     for (const c of configList) {
       if (c.id) configMap.set(c.id as string, c);
+    }
+
+    // Session state comes from gateway RPC (source of truth), not local files.
+    let gatewaySessions = [] as Awaited<ReturnType<typeof fetchGatewaySessions>>;
+    let sessionsByAgent = new Map<string, { sessionCount: number; totalTokens: number; lastActive: number }>();
+    const runtimeSubagentsByAgent = new Map<
+      string,
+      AgentFull["runtimeSubagents"]
+    >();
+    try {
+      gatewaySessions = await fetchGatewaySessions(10000);
+      sessionsByAgent = summarizeSessionsByAgent(gatewaySessions);
+
+      const now = Date.now();
+      for (const session of gatewaySessions) {
+        if (!isSubagentSessionKey(session.key)) continue;
+        if (!session.agentId) continue;
+        if (!session.updatedAt) continue;
+        const ageMs = Math.max(0, now - session.updatedAt);
+        if (ageMs > SUBAGENT_RECENT_WINDOW_MS) continue;
+        const row: AgentFull["runtimeSubagents"][number] = {
+          sessionKey: session.key,
+          sessionId: session.sessionId,
+          shortId: shortSubagentId(session.key, session.sessionId),
+          model: session.fullModel || "unknown",
+          totalTokens: session.totalTokens,
+          lastActive: session.updatedAt,
+          ageMs,
+          status: ageMs <= SUBAGENT_ACTIVE_WINDOW_MS ? "running" : "recent",
+        };
+        const existing = runtimeSubagentsByAgent.get(session.agentId) || [];
+        existing.push(row);
+        runtimeSubagentsByAgent.set(session.agentId, existing);
+      }
+
+      for (const [agentId, rows] of runtimeSubagentsByAgent.entries()) {
+        rows.sort((a, b) => b.lastActive - a.lastActive);
+        runtimeSubagentsByAgent.set(agentId, rows.slice(0, 6));
+      }
+    } catch {
+      // Keep agents page usable even if gateway session RPC is temporarily unavailable.
     }
 
     const agents: AgentFull[] = [];
@@ -135,6 +244,9 @@ export async function GET() {
     for (const cli of cliAgents) agentIds.add(cli.id);
     for (const cfg of configList) {
       if (cfg.id) agentIds.add(cfg.id as string);
+    }
+    for (const sessionAgentId of sessionsByAgent.keys()) {
+      if (sessionAgentId) agentIds.add(sessionAgentId);
     }
 
     // Also scan agents directory
@@ -208,32 +320,20 @@ export async function GET() {
         const ch = b.split(" ")[0];
         if (ch && !channels.includes(ch)) channels.push(ch);
       }
-
-      // Sessions & tokens
-      let sessionCount = 0;
-      let lastActive: number | null = null;
-      let totalTokens = 0;
-      const sessionsPath = join(
-        OPENCLAW_HOME,
-        "agents",
-        id,
-        "sessions",
-        "sessions.json"
-      );
-      try {
-        const sessData = await readJsonSafe<
-          Record<string, Record<string, unknown>>
-        >(sessionsPath, {});
-        const entries = Object.values(sessData);
-        sessionCount = entries.length;
-        for (const s of entries) {
-          const updAt = (s.updatedAt as number) || 0;
-          if (!lastActive || updAt > lastActive) lastActive = updAt;
-          totalTokens += (s.totalTokens as number) || 0;
+      if (id === discoveredDefaultAgentId || cli?.isDefault) {
+        for (const ch of connectedChannels) {
+          if (!channels.includes(ch)) channels.push(ch);
         }
-      } catch {
-        // ok
       }
+
+      // Sessions & tokens from gateway truth.
+      const sessionSummary = sessionsByAgent.get(id);
+      const sessionCount = sessionSummary?.sessionCount || 0;
+      const lastActive = sessionSummary && sessionSummary.lastActive > 0
+        ? sessionSummary.lastActive
+        : null;
+      const totalTokens = sessionSummary?.totalTokens || 0;
+      const runtimeSubagents = runtimeSubagentsByAgent.get(id) || [];
 
       // Identity snippet (first few meaningful lines)
       let identitySnippet: string | null = null;
@@ -264,7 +364,7 @@ export async function GET() {
         fallbackModels,
         workspace,
         agentDir,
-        isDefault: cli?.isDefault || false,
+        isDefault: Boolean(cli?.isDefault || id === discoveredDefaultAgentId),
         sessionCount,
         lastActive,
         totalTokens,
@@ -272,6 +372,7 @@ export async function GET() {
         channels,
         identitySnippet,
         subagents,
+        runtimeSubagents,
         status,
       });
     }

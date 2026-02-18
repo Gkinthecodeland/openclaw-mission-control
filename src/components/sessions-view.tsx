@@ -66,7 +66,7 @@ export function SessionsView() {
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch("/api/sessions");
+      const res = await fetch("/api/sessions", { cache: "no-store" });
       const data = await res.json();
       setSessions(data.sessions || []);
     } catch { /* ignore */ }
@@ -75,6 +75,21 @@ export function SessionsView() {
 
   useEffect(() => {
     queueMicrotask(() => fetchSessions());
+  }, [fetchSessions]);
+
+  useEffect(() => {
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState === "visible") void fetchSessions();
+    }, 5000);
+
+    const onFocus = () => {
+      void fetchSessions();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(pollId);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [fetchSessions]);
 
   const killSession = useCallback(
@@ -87,13 +102,13 @@ export function SessionsView() {
         );
         const data = await res.json();
         if (data.ok || data.deleted) {
-          setSessions((prev) => prev.filter((s) => s.key !== key));
+          await fetchSessions();
         }
       } catch { /* ignore */ }
       setDeleting(null);
       setConfirmDelete(null);
     },
-    []
+    [fetchSessions]
   );
 
   if (loading) {

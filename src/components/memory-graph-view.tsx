@@ -1,54 +1,41 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ReactFlow,
-  addEdge,
   Background,
   Controls,
   MiniMap,
-  useEdgesState,
-  useNodesState,
   MarkerType,
   type Edge,
   type Node,
-  type Connection,
-  type OnSelectionChangeParams,
+  type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  Save,
-  Sparkles,
-  Plus,
-  Link2,
-  GitBranch,
-  Bot,
-  Loader2,
-  UploadCloud,
   AlertTriangle,
-  Search,
-  Trash2,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Filter,
+  GitBranch,
+  Layers,
+  Loader2,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Save,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  Table2,
+  UploadCloud,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { InlineSpinner, LoadingState } from "@/components/ui/loading-state";
-
-type GraphNodeData = {
-  label: string;
-  kind: string;
-  summary: string;
-  confidence: number;
-  source: string;
-  tags: string[];
-};
-
-type GraphEdgeData = {
-  relation: string;
-  weight: number;
-  evidence: string;
-};
 
 type GraphNodePayload = {
   id: string;
@@ -78,168 +65,391 @@ type GraphPayload = {
   edges: GraphEdgePayload[];
 };
 
+type SourceChunk = {
+  id: string;
+  topic: string;
+  kind: "heading" | "bullet" | "paragraph";
+  text: string;
+  startLine: number;
+  endLine: number;
+};
+
+type SourceFact = {
+  id: string;
+  topic: string;
+  statement: string;
+  canonical: string;
+  line: number;
+  confidenceHint: number;
+};
+
+type SourceDocument = {
+  id: string;
+  name: string;
+  path: string;
+  source: "workspace" | "memory";
+  mtimeMs: number;
+  size: number;
+  chunks: SourceChunk[];
+  facts: SourceFact[];
+};
+
+type RecentChatMessage = {
+  sessionKey: string;
+  role: string;
+  timestampMs: number;
+  text: string;
+};
+
+type GraphTelemetry = {
+  generatedAt: string;
+  sourceDocuments: SourceDocument[];
+  recentChatMessages: RecentChatMessage[];
+};
+
+type GraphApiResponse = {
+  graph?: GraphPayload;
+  telemetry?: GraphTelemetry;
+  bootstrap?: { source: "indexed" | "filesystem"; files: string[] };
+  error?: string;
+};
+
+type LensMode = "topic" | "entity" | "decision" | "file";
+type LayerMode = "overview" | "topic" | "forensics";
+type TimeRange = "7d" | "30d" | "90d" | "all";
+
+type AggregatedEdge = {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+  count: number;
+  confidence: number;
+  maxConfidence: number;
+  evidence: string[];
+  lastSeenMs: number;
+};
+
+type NodeInsight = {
+  usefulness: number;
+  retrievalFrequency: number;
+  retrievalInWindow: number;
+  recencyMs: number;
+  recencyScore: number;
+  conflictRate: number;
+  conflicts: number;
+  provenanceQuality: number;
+  taskRelevance: number;
+  breadth: number;
+  sources: string[];
+  lowProvenance: boolean;
+  stale: boolean;
+};
+
+type FlowNodeData = {
+  label: ReactNode;
+};
+
+type FlowEdgeData = {
+  relation: string;
+  count: number;
+  confidence: number;
+  lastSeenMs: number;
+};
+
 type Notice = { kind: "success" | "error"; text: string } | null;
 
-const KIND_OPTIONS = [
-  "system",
-  "profile",
-  "person",
-  "project",
-  "topic",
-  "fact",
-  "task",
-] as const;
+type TopicRow = {
+  topicId: string;
+  topic: string;
+  factsCount: number;
+  lastUpdatedMs: number;
+  usageCount: number;
+  conflictsCount: number;
+  topSource: string;
+};
 
-function nodeStyle(kind: string, confidence = 0.75): React.CSSProperties {
-  const map: Record<string, [number, number, number]> = {
-    system: [56, 189, 248],
-    profile: [168, 85, 247],
-    person: [34, 197, 94],
-    project: [244, 114, 182],
-    topic: [251, 191, 36],
-    fact: [99, 102, 241],
-    task: [248, 113, 113],
-  };
-  const [r, g, b] = map[kind] || [148, 163, 184];
-  const conf = Math.max(0, Math.min(1, confidence || 0));
-  const bgAlpha = 0.12 + conf * 0.2;
-  const glowAlpha = 0.1 + conf * 0.2;
-  const borderAlpha = 0.12 + conf * 0.2;
-  return {
-    borderRadius: 14,
-    border: `1px solid rgba(255,255,255,${borderAlpha})`,
-    background: `linear-gradient(135deg, rgba(${r},${g},${b},${bgAlpha}) 0%, rgba(0,0,0,0.28) 100%)`,
-    color: "#f4f4f5",
-    fontSize: 12,
-    minWidth: 180,
-    opacity: 0.68 + conf * 0.32,
-    boxShadow: `0 8px 26px rgba(0,0,0,0.26), 0 0 ${8 + Math.round(conf * 14)}px rgba(${r},${g},${b},${glowAlpha})`,
-    padding: "10px 12px",
-  };
+const MAX_VISIBLE_NODES = 20;
+const MAX_VISIBLE_EDGES = 40;
+const EMPTY_NODES: GraphNodePayload[] = [];
+const EMPTY_EDGES: GraphEdgePayload[] = [];
+const DEFAULT_CONFIDENCE_THRESHOLD = 0.25;
+const DEFAULT_TIME_RANGE: TimeRange = "all";
+const DEFAULT_USED_IN_LAST_N_CHATS = 0;
+
+const RELATION_NODE_HINTS = new Set([
+  "mentions_topic",
+  "contains_topic",
+  "supports",
+  "captures_preference",
+  "action_item",
+  "about_entity",
+  "project_signal",
+  "related_to",
+]);
+
+const LENS_OPTIONS: Array<{ value: LensMode; label: string }> = [
+  { value: "topic", label: "Topic lens" },
+  { value: "entity", label: "Entity lens" },
+  { value: "decision", label: "Decision lens" },
+  { value: "file", label: "File lens" },
+];
+
+const LAYER_OPTIONS: Array<{ value: LayerMode; label: string }> = [
+  { value: "overview", label: "Layer A · Overview" },
+  { value: "topic", label: "Layer B · Topic" },
+  { value: "forensics", label: "Layer C · Forensics" },
+];
+
+const TIME_OPTIONS: Array<{ value: TimeRange; label: string }> = [
+  { value: "7d", label: "Last 7d" },
+  { value: "30d", label: "Last 30d" },
+  { value: "90d", label: "Last 90d" },
+  { value: "all", label: "All time" },
+];
+
+function normalizeRelation(value: string): string {
+  return String(value || "related_to")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "related_to";
 }
 
-function asFlowNodes(payloadNodes: GraphNodePayload[]): Node<GraphNodeData>[] {
-  return payloadNodes.map((n) => ({
-    id: n.id,
-    position: { x: n.x, y: n.y },
-    data: {
-      label: n.label,
-      kind: n.kind,
-      summary: n.summary,
-      confidence: n.confidence,
-      source: n.source,
-      tags: Array.isArray(n.tags) ? n.tags : [],
-    },
-    style: nodeStyle(n.kind, n.confidence),
-  }));
+function relationLabel(value: string): string {
+  return normalizeRelation(value)
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
-function asFlowEdges(payloadEdges: GraphEdgePayload[]): Edge<GraphEdgeData>[] {
-  return payloadEdges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    label: e.relation,
-    data: {
-      relation: e.relation,
-      weight: e.weight,
-      evidence: e.evidence,
-    },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-    style: {
-      stroke: "rgba(168,85,247,0.65)",
-      strokeWidth: Math.max(1.5, Math.round((e.weight || 0.5) * 3)),
-    },
-  }));
+function canonicalText(input: string): string {
+  return String(input || "")
+    .toLowerCase()
+    .replace(/\b(a|an|the|to|for|and|or|of|in|on|at|by|with)\b/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
 }
 
-function toPayload(nodes: Node<GraphNodeData>[], edges: Edge<GraphEdgeData>[]): GraphPayload {
-  return {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    nodes: nodes.map((n) => ({
-      id: n.id,
-      label: (n.data?.label || "Untitled").trim() || "Untitled",
-      kind: (n.data?.kind || "fact").trim() || "fact",
-      summary: (n.data?.summary || "").trim(),
-      confidence: Math.max(0, Math.min(1, Number(n.data?.confidence ?? 0.75))),
-      source: (n.data?.source || "manual").trim() || "manual",
-      tags: Array.isArray(n.data?.tags) ? n.data.tags.filter(Boolean).slice(0, 8) : [],
-      x: Math.round(n.position.x),
-      y: Math.round(n.position.y),
-    })),
-    edges: edges
-      .filter((e) => e.source && e.target)
-      .map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        relation: String(e.data?.relation || e.label || "related_to").trim() || "related_to",
-        weight: Math.max(0, Math.min(1, Number(e.data?.weight ?? 0.7))),
-        evidence: String(e.data?.evidence || "").trim(),
-      })),
-  };
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function formatAgo(timestampMs: number): string {
+  if (!timestampMs || !Number.isFinite(timestampMs)) return "unknown";
+  const diff = Date.now() - timestampMs;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.max(1, Math.floor(diff / 60_000))}m ago`;
+  if (diff < 86_400_000) return `${Math.max(1, Math.floor(diff / 3_600_000))}h ago`;
+  return `${Math.max(1, Math.floor(diff / 86_400_000))}d ago`;
+}
+
+function timeRangeMs(range: TimeRange): number {
+  if (range === "7d") return 7 * 86_400_000;
+  if (range === "30d") return 30 * 86_400_000;
+  if (range === "90d") return 90 * 86_400_000;
+  return Number.POSITIVE_INFINITY;
+}
+
+function nodeKindColor(kind: string, isDark: boolean): string {
+  const normalized = String(kind || "").toLowerCase();
+  if (normalized === "topic") return isDark ? "rgba(56,189,248,0.32)" : "rgba(56,189,248,0.18)";
+  if (normalized === "fact") return isDark ? "rgba(99,102,241,0.28)" : "rgba(99,102,241,0.16)";
+  if (normalized === "profile") return isDark ? "rgba(168,85,247,0.30)" : "rgba(168,85,247,0.16)";
+  if (normalized === "person") return isDark ? "rgba(34,197,94,0.30)" : "rgba(34,197,94,0.16)";
+  if (normalized === "task") return isDark ? "rgba(251,146,60,0.30)" : "rgba(251,146,60,0.17)";
+  if (normalized === "project") return isDark ? "rgba(236,72,153,0.28)" : "rgba(236,72,153,0.14)";
+  return isDark ? "rgba(148,163,184,0.26)" : "rgba(148,163,184,0.12)";
+}
+
+function scoreRecency(ts: number): number {
+  if (!ts) return 0.25;
+  const ageDays = (Date.now() - ts) / 86_400_000;
+  if (ageDays <= 3) return 1;
+  if (ageDays <= 14) return 0.82;
+  if (ageDays <= 30) return 0.64;
+  if (ageDays <= 90) return 0.38;
+  return 0.16;
+}
+
+function isRelationInstanceNode(
+  node: GraphNodePayload,
+  inDegree: number,
+  outDegree: number
+): boolean {
+  if (inDegree === 0 || outDegree === 0) return false;
+  const kind = String(node.kind || "").toLowerCase();
+  const label = normalizeRelation(node.label || node.id || "");
+  if (kind === "relation") return true;
+  return RELATION_NODE_HINTS.has(label);
+}
+
+function collectNodeSourceHints(node: GraphNodePayload): string[] {
+  const hints = new Set<string>();
+  const source = String(node.source || "").trim();
+  if (
+    source &&
+    !["bootstrap", "manual", "template", "filesystem"].includes(source.toLowerCase())
+  ) {
+    hints.add(source.toLowerCase());
+  }
+  for (const tag of node.tags || []) {
+    if (!tag.startsWith("file:")) continue;
+    const parsed = String(tag.slice("file:".length)).trim().toLowerCase();
+    if (parsed) hints.add(parsed);
+  }
+  return [...hints];
+}
+
+function shortestPath(
+  start: string,
+  goal: string,
+  adjacency: Map<string, string[]>
+): string[] | null {
+  if (start === goal) return [start];
+  const queue: string[] = [start];
+  const prev = new Map<string, string | null>([[start, null]]);
+
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    if (!curr) break;
+    for (const next of adjacency.get(curr) || []) {
+      if (prev.has(next)) continue;
+      prev.set(next, curr);
+      if (next === goal) {
+        const path: string[] = [goal];
+        let cursor: string | null = curr;
+        while (cursor) {
+          path.push(cursor);
+          cursor = prev.get(cursor) || null;
+        }
+        return path.reverse();
+      }
+      queue.push(next);
+    }
+  }
+  return null;
+}
+
+function withinLens(node: GraphNodePayload, lens: LensMode, conflictCount: number): boolean {
+  const kind = String(node.kind || "fact").toLowerCase();
+  if (lens === "topic") return ["topic", "fact", "task", "profile", "project", "system"].includes(kind);
+  if (lens === "entity") return ["person", "profile", "project", "topic", "system"].includes(kind);
+  if (lens === "decision") {
+    if (["task", "profile", "fact", "project"].includes(kind)) return true;
+    return conflictCount > 0;
+  }
+  if (kind === "project" && node.label.toLowerCase().endsWith(".md")) return true;
+  return ["project", "topic", "system"].includes(kind);
+}
+
+function cmpNumberDesc(a: number, b: number): number {
+  return b - a;
+}
+
+function pickWithCap(
+  sortedIds: string[],
+  cap: number,
+  mustInclude: string[]
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of mustInclude) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  for (const id of sortedIds) {
+    if (out.length >= cap) break;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out.slice(0, cap);
 }
 
 export function MemoryGraphView() {
-  const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node<GraphNodeData>>([]);
-  const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge<GraphEdgeData>>([]);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme !== "light";
+
+  const [graph, setGraph] = useState<GraphPayload | null>(null);
+  const [telemetry, setTelemetry] = useState<GraphTelemetry>({
+    generatedAt: "",
+    sourceDocuments: [],
+    recentChatMessages: [],
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [notice, setNotice] = useState<Notice>(null);
+
+  const [layer, setLayer] = useState<LayerMode>("topic");
+  const [lens, setLens] = useState<LensMode>("topic");
+  const [showTopicTable, setShowTopicTable] = useState(true);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<Notice>(null);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
 
-  const onNodesChange = useCallback(
-    (changes: Parameters<typeof onNodesChangeBase>[0]) => {
-      onNodesChangeBase(changes);
-      if (changes.length) setDirty(true);
-    },
-    [onNodesChangeBase]
-  );
+  const [confidenceThreshold, setConfidenceThreshold] = useState(DEFAULT_CONFIDENCE_THRESHOLD);
+  const [timeRange, setTimeRange] = useState<TimeRange>(DEFAULT_TIME_RANGE);
+  const [usedInLastNChats, setUsedInLastNChats] = useState(DEFAULT_USED_IN_LAST_N_CHATS);
+  const [conflictsOnly, setConflictsOnly] = useState(false);
+  const [lowProvenanceOnly, setLowProvenanceOnly] = useState(false);
+  const [showThreeHops, setShowThreeHops] = useState(false);
 
-  const onEdgesChange = useCallback(
-    (changes: Parameters<typeof onEdgesChangeBase>[0]) => {
-      onEdgesChangeBase(changes);
-      if (changes.length) setDirty(true);
-    },
-    [onEdgesChangeBase]
-  );
+  const [overlayConflicts, setOverlayConflicts] = useState(true);
+  const [overlayStaleness, setOverlayStaleness] = useState(true);
+  const [overlayLowProvenance, setOverlayLowProvenance] = useState(true);
+  const [overlayDupes, setOverlayDupes] = useState(false);
+  const [overlayMergeSuggestions, setOverlayMergeSuggestions] = useState(false);
 
-  const loadGraph = useCallback(async (options?: { bootstrap?: boolean }) => {
+  const [enabledRelations, setEnabledRelations] = useState<Record<string, boolean>>({});
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+
+  const loadGraph = useCallback(async (mode?: "bootstrap") => {
     setLoading(true);
     try {
-      const endpoint = options?.bootstrap
-        ? "/api/memory/graph?mode=bootstrap"
-        : "/api/memory/graph";
-      const res = await fetch(endpoint);
-      const data = await res.json();
-      const graph = (data.graph || {}) as GraphPayload;
-      setNodes(asFlowNodes(graph.nodes || []));
-      setEdges(asFlowEdges(graph.edges || []));
-      setDirty(Boolean(options?.bootstrap));
-      if (options?.bootstrap && data.bootstrap) {
-        const source =
-          data.bootstrap.source === "indexed" ? "indexed vectors" : "filesystem markdown";
-        const fileCount = Array.isArray(data.bootstrap.files) ? data.bootstrap.files.length : 0;
-        setNotice({
-          kind: "success",
-          text: `Graph rebuilt from ${source} (${fileCount} files).`,
-        });
+      const endpoint = mode === "bootstrap" ? "/api/memory/graph?mode=bootstrap" : "/api/memory/graph";
+      const res = await fetch(endpoint, { cache: "no-store" });
+      const data = (await res.json()) as GraphApiResponse;
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+      const nextGraph = data.graph || { version: 1, updatedAt: new Date().toISOString(), nodes: [], edges: [] };
+      setGraph(nextGraph);
+      setTelemetry(
+        data.telemetry || {
+          generatedAt: new Date().toISOString(),
+          sourceDocuments: [],
+          recentChatMessages: [],
+        }
+      );
+      setDirty(mode === "bootstrap");
+
+      if (mode === "bootstrap") {
+        const source = data.bootstrap?.source === "indexed" ? "indexed vectors" : "filesystem markdown";
+        const files = data.bootstrap?.files?.length || 0;
+        setNotice({ kind: "success", text: `Graph rebuilt from ${source} (${files} files).` });
       } else {
         setNotice(null);
       }
-    } catch {
-      setNotice({ kind: "error", text: "Failed to load memory graph." });
+    } catch (err) {
+      setNotice({ kind: "error", text: err instanceof Error ? err.message : "Failed to load memory graph." });
     } finally {
       setLoading(false);
     }
-  }, [setEdges, setNodes]);
+  }, []);
 
   useEffect(() => {
     void loadGraph();
@@ -247,547 +457,1518 @@ export function MemoryGraphView() {
 
   useEffect(() => {
     if (!notice) return;
-    const t = setTimeout(() => setNotice(null), 3200);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setNotice(null), 3600);
+    return () => clearTimeout(timer);
   }, [notice]);
 
-  const selectedNode = useMemo(
-    () => nodes.find((n) => n.id === selectedNodeId) || null,
-    [nodes, selectedNodeId]
-  );
-  const selectedEdge = useMemo(
-    () => edges.find((e) => e.id === selectedEdgeId) || null,
-    [edges, selectedEdgeId]
-  );
+  const nodes = useMemo(() => graph?.nodes || EMPTY_NODES, [graph?.nodes]);
+  const rawEdges = useMemo(() => graph?.edges || EMPTY_EDGES, [graph?.edges]);
 
-  const filteredNodes = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return nodes;
-    return nodes.filter((n) => {
-      const haystack = `${n.data.label} ${n.data.summary} ${n.data.kind} ${n.data.tags.join(" ")}`.toLowerCase();
-      return haystack.includes(q);
+  const sourceDocByName = useMemo(() => {
+    const map = new Map<string, SourceDocument>();
+    for (const doc of telemetry.sourceDocuments || []) {
+      map.set(doc.name.toLowerCase(), doc);
+    }
+    return map;
+  }, [telemetry.sourceDocuments]);
+
+  const collapsed = useMemo(() => {
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const inDegree = new Map<string, number>();
+    const outDegree = new Map<string, number>();
+    for (const edge of rawEdges) {
+      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+      outDegree.set(edge.source, (outDegree.get(edge.source) || 0) + 1);
+    }
+
+    const relationNodeIds = new Set<string>();
+    for (const node of nodes) {
+      if (isRelationInstanceNode(node, inDegree.get(node.id) || 0, outDegree.get(node.id) || 0)) {
+        relationNodeIds.add(node.id);
+      }
+    }
+
+    const incoming = new Map<string, GraphEdgePayload[]>();
+    const outgoing = new Map<string, GraphEdgePayload[]>();
+    for (const edge of rawEdges) {
+      if (!incoming.has(edge.target)) incoming.set(edge.target, []);
+      if (!outgoing.has(edge.source)) outgoing.set(edge.source, []);
+      incoming.get(edge.target)!.push(edge);
+      outgoing.get(edge.source)!.push(edge);
+    }
+
+    const typedEdges: Array<{
+      source: string;
+      target: string;
+      relation: string;
+      confidence: number;
+      evidence: string;
+    }> = [];
+
+    for (const edge of rawEdges) {
+      if (relationNodeIds.has(edge.source) || relationNodeIds.has(edge.target)) continue;
+      typedEdges.push({
+        source: edge.source,
+        target: edge.target,
+        relation: normalizeRelation(edge.relation),
+        confidence: clamp01(Number(edge.weight || 0.7)),
+        evidence: String(edge.evidence || "").trim(),
+      });
+    }
+
+    for (const relationNodeId of relationNodeIds) {
+      const relationNode = nodeById.get(relationNodeId);
+      const relation = normalizeRelation(relationNode?.label || relationNode?.id || "related_to");
+      const ins = incoming.get(relationNodeId) || [];
+      const outs = outgoing.get(relationNodeId) || [];
+
+      for (const edgeIn of ins) {
+        for (const edgeOut of outs) {
+          if (!edgeIn.source || !edgeOut.target || edgeIn.source === edgeOut.target) continue;
+          typedEdges.push({
+            source: edgeIn.source,
+            target: edgeOut.target,
+            relation,
+            confidence: clamp01((Number(edgeIn.weight || 0.6) + Number(edgeOut.weight || 0.6)) / 2),
+            evidence: [edgeIn.evidence, edgeOut.evidence, relationNode?.label]
+              .map((v) => String(v || "").trim())
+              .filter(Boolean)
+              .join(" | "),
+          });
+        }
+      }
+    }
+
+    const aggregatedMap = new Map<string, AggregatedEdge>();
+
+    const resolveRecency = (source: string, target: string, evidence: string): number => {
+      const candidates = new Set<string>();
+      if (evidence) {
+        for (const token of evidence.split(/[|,;]+/g)) {
+          const t = token.trim().toLowerCase();
+          if (t.endsWith(".md")) candidates.add(t);
+        }
+      }
+      const sourceNode = nodeById.get(source);
+      const targetNode = nodeById.get(target);
+      for (const hint of sourceNode ? collectNodeSourceHints(sourceNode) : []) candidates.add(hint);
+      for (const hint of targetNode ? collectNodeSourceHints(targetNode) : []) candidates.add(hint);
+
+      let best = 0;
+      for (const key of candidates) {
+        const hit = sourceDocByName.get(key);
+        if (hit?.mtimeMs && hit.mtimeMs > best) best = hit.mtimeMs;
+      }
+      return best;
+    };
+
+    for (const edge of typedEdges) {
+      const key = `${edge.source}::${edge.target}::${edge.relation}`;
+      const recency = resolveRecency(edge.source, edge.target, edge.evidence);
+      const existing = aggregatedMap.get(key);
+      if (!existing) {
+        aggregatedMap.set(key, {
+          id: key,
+          source: edge.source,
+          target: edge.target,
+          relation: edge.relation,
+          count: 1,
+          confidence: edge.confidence,
+          maxConfidence: edge.confidence,
+          evidence: edge.evidence ? [edge.evidence] : [],
+          lastSeenMs: recency,
+        });
+      } else {
+        existing.count += 1;
+        existing.confidence = clamp01((existing.confidence * (existing.count - 1) + edge.confidence) / existing.count);
+        existing.maxConfidence = Math.max(existing.maxConfidence, edge.confidence);
+        if (edge.evidence) existing.evidence.push(edge.evidence);
+        if (recency > existing.lastSeenMs) existing.lastSeenMs = recency;
+      }
+    }
+
+    const keptNodes = nodes.filter((node) => !relationNodeIds.has(node.id));
+    const keptNodeIds = new Set(keptNodes.map((node) => node.id));
+    const aggregatedEdges = [...aggregatedMap.values()].filter(
+      (edge) => keptNodeIds.has(edge.source) && keptNodeIds.has(edge.target)
+    );
+
+    return {
+      nodes: keptNodes,
+      edges: aggregatedEdges,
+      nodeById: new Map(keptNodes.map((node) => [node.id, node])),
+    };
+  }, [nodes, rawEdges, sourceDocByName]);
+
+  const relationTypes = useMemo(() => {
+    return [...new Set(collapsed.edges.map((edge) => edge.relation))].sort((a, b) => a.localeCompare(b));
+  }, [collapsed.edges]);
+
+  useEffect(() => {
+    setEnabledRelations((prev) => {
+      const next: Record<string, boolean> = { ...prev };
+      for (const relation of relationTypes) {
+        if (typeof next[relation] !== "boolean") next[relation] = true;
+      }
+      for (const key of Object.keys(next)) {
+        if (!relationTypes.includes(key)) delete next[key];
+      }
+      return next;
     });
-  }, [nodes, query]);
+  }, [relationTypes]);
 
-  const handleSelectionChange = useCallback((sel: OnSelectionChangeParams) => {
-    const nextNode = sel.nodes?.[0]?.id || null;
-    const nextEdge = sel.edges?.[0]?.id || null;
-    setSelectedNodeId(nextNode);
-    setSelectedEdgeId(nextNode ? null : nextEdge);
+  const resetFilters = useCallback(() => {
+    setLayer("topic");
+    setLens("topic");
+    setQuery("");
+    setConfidenceThreshold(DEFAULT_CONFIDENCE_THRESHOLD);
+    setTimeRange(DEFAULT_TIME_RANGE);
+    setUsedInLastNChats(DEFAULT_USED_IN_LAST_N_CHATS);
+    setConflictsOnly(false);
+    setLowProvenanceOnly(false);
+    setShowThreeHops(false);
+    setEnabledRelations(() => {
+      const next: Record<string, boolean> = {};
+      for (const relation of relationTypes) next[relation] = true;
+      return next;
+    });
+  }, [relationTypes]);
+
+  const diagnostics = useMemo(() => {
+    const conflictByCanonical = new Map<string, { statements: Set<string>; refs: Array<{ doc: string; line: number }> }>();
+    for (const doc of telemetry.sourceDocuments || []) {
+      for (const fact of doc.facts || []) {
+        const canonical = canonicalText(fact.canonical || fact.statement);
+        if (!canonical) continue;
+        if (!conflictByCanonical.has(canonical)) {
+          conflictByCanonical.set(canonical, { statements: new Set<string>(), refs: [] });
+        }
+        const entry = conflictByCanonical.get(canonical)!;
+        entry.statements.add(String(fact.statement || ""));
+        entry.refs.push({ doc: doc.name, line: Number(fact.line || 0) });
+      }
+    }
+
+    const conflicts = [...conflictByCanonical.entries()]
+      .filter(([, entry]) => entry.statements.size > 1)
+      .map(([canonical, entry]) => ({
+        canonical,
+        statements: [...entry.statements],
+        refs: entry.refs,
+      }));
+
+    const labelGroups = new Map<string, GraphNodePayload[]>();
+    for (const node of collapsed.nodes) {
+      const key = canonicalText(node.label);
+      if (!key) continue;
+      if (!labelGroups.has(key)) labelGroups.set(key, []);
+      labelGroups.get(key)!.push(node);
+    }
+    const duplicates = [...labelGroups.entries()]
+      .filter(([, grouped]) => grouped.length > 1)
+      .map(([labelKey, grouped]) => ({ labelKey, ids: grouped.map((node) => node.id), labels: grouped.map((node) => node.label) }));
+
+    const mergeSuggestions: Array<{ a: GraphNodePayload; b: GraphNodePayload; similarity: number }> = [];
+    const allNodes = collapsed.nodes;
+    for (let i = 0; i < allNodes.length; i += 1) {
+      const a = allNodes[i];
+      const aKey = canonicalText(a.label);
+      if (!aKey) continue;
+      const aSet = new Set(aKey.split(" ").filter(Boolean));
+      for (let j = i + 1; j < allNodes.length; j += 1) {
+        const b = allNodes[j];
+        if (a.kind !== b.kind) continue;
+        const bKey = canonicalText(b.label);
+        if (!bKey) continue;
+        const bSet = new Set(bKey.split(" ").filter(Boolean));
+        let overlap = 0;
+        for (const token of aSet) {
+          if (bSet.has(token)) overlap += 1;
+        }
+        const denom = Math.max(1, aSet.size + bSet.size - overlap);
+        const similarity = overlap / denom;
+        if (similarity >= 0.74) {
+          mergeSuggestions.push({ a, b, similarity });
+        }
+      }
+    }
+
+    return { conflicts, duplicates, mergeSuggestions };
+  }, [collapsed.nodes, telemetry.sourceDocuments]);
+
+  const nodeInsights = useMemo(() => {
+    const conflictMap = new Map<string, number>();
+    const conflictByCanonical = new Map<string, number>();
+    for (const conflict of diagnostics.conflicts) {
+      conflictByCanonical.set(conflict.canonical, conflict.statements.length - 1);
+    }
+
+    const incident = new Map<string, AggregatedEdge[]>();
+    for (const edge of collapsed.edges) {
+      if (!incident.has(edge.source)) incident.set(edge.source, []);
+      if (!incident.has(edge.target)) incident.set(edge.target, []);
+      incident.get(edge.source)!.push(edge);
+      incident.get(edge.target)!.push(edge);
+    }
+
+    const sourceTimes = new Map<string, number>();
+    for (const doc of telemetry.sourceDocuments || []) {
+      sourceTimes.set(doc.name.toLowerCase(), Number(doc.mtimeMs || 0));
+    }
+
+    const chatTexts = (telemetry.recentChatMessages || []).map((msg) => String(msg.text || "").toLowerCase());
+
+    const provisional = new Map<string, Omit<NodeInsight, "usefulness"> & { retrievalRaw: number }>();
+    let maxRetrieval = 1;
+
+    for (const node of collapsed.nodes) {
+      const edges = incident.get(node.id) || [];
+      const relationSet = new Set<string>();
+      const neighborSet = new Set<string>();
+      const sourceSet = new Set<string>();
+
+      for (const source of collectNodeSourceHints(node)) sourceSet.add(source);
+
+      for (const edge of edges) {
+        relationSet.add(edge.relation);
+        neighborSet.add(edge.source === node.id ? edge.target : edge.source);
+        for (const evidence of edge.evidence) {
+          const tokenized = evidence.toLowerCase().split(/[|,;]+/g).map((x) => x.trim());
+          for (const token of tokenized) {
+            if (token.endsWith(".md")) sourceSet.add(token);
+          }
+        }
+      }
+
+      let recencyMs = 0;
+      for (const source of sourceSet) {
+        const ts = sourceTimes.get(source);
+        if (ts && ts > recencyMs) recencyMs = ts;
+      }
+      for (const edge of edges) {
+        if (edge.lastSeenMs > recencyMs) recencyMs = edge.lastSeenMs;
+      }
+
+      const q = canonicalText(node.label);
+      const summaryQ = canonicalText(node.summary || "");
+      let retrievalRaw = 0;
+      for (let i = 0; i < chatTexts.length; i += 1) {
+        const text = chatTexts[i];
+        if (!text) continue;
+        if ((q && text.includes(q)) || (summaryQ && summaryQ.length >= 5 && text.includes(summaryQ))) {
+          retrievalRaw += 1;
+        }
+      }
+      if (retrievalRaw > maxRetrieval) maxRetrieval = retrievalRaw;
+
+      const canonical = canonicalText(node.summary || node.label);
+      const conflicts = conflictByCanonical.get(canonical) || 0;
+      conflictMap.set(node.id, conflicts);
+
+      const hasProvenance = sourceSet.size > 0;
+      const provenanceQuality = clamp01(
+        (hasProvenance ? 0.35 : 0) +
+          Math.min(0.45, sourceSet.size * 0.18) +
+          Math.min(0.2, edges.length * 0.05)
+      );
+
+      let taskRelevance = 0.4;
+      const kind = node.kind.toLowerCase();
+      if (kind === "task") taskRelevance = 1;
+      else if (kind === "project") taskRelevance = 0.84;
+      else if (kind === "profile") taskRelevance = 0.76;
+      else if (edges.some((edge) => edge.relation === "action_item")) taskRelevance = 0.88;
+      else if (kind === "fact") taskRelevance = 0.62;
+      else if (kind === "topic") taskRelevance = 0.58;
+
+      const breadth = clamp01(relationSet.size / 6 + neighborSet.size / 10);
+      const recencyScore = scoreRecency(recencyMs);
+      const conflictRate = clamp01(conflicts / 4);
+
+      provisional.set(node.id, {
+        retrievalRaw,
+        retrievalFrequency: 0,
+        retrievalInWindow: 0,
+        recencyMs,
+        recencyScore,
+        conflictRate,
+        conflicts,
+        provenanceQuality,
+        taskRelevance,
+        breadth,
+        sources: [...sourceSet],
+        lowProvenance: provenanceQuality < 0.42,
+        stale: recencyMs > 0 ? Date.now() - recencyMs > 45 * 86_400_000 : true,
+      });
+    }
+
+    const windowSize = Math.max(0, Math.trunc(usedInLastNChats));
+    const windowTexts = chatTexts.slice(0, windowSize);
+
+    const out = new Map<string, NodeInsight>();
+    for (const node of collapsed.nodes) {
+      const partial = provisional.get(node.id);
+      if (!partial) continue;
+      const retrievalFrequency = clamp01(partial.retrievalRaw / maxRetrieval);
+      const q = canonicalText(node.label);
+      const summaryQ = canonicalText(node.summary || "");
+      let retrievalInWindow = 0;
+      for (const text of windowTexts) {
+        if ((q && text.includes(q)) || (summaryQ && summaryQ.length >= 5 && text.includes(summaryQ))) {
+          retrievalInWindow += 1;
+        }
+      }
+
+      const usefulness = clamp01(
+        0.28 * retrievalFrequency +
+          0.2 * partial.recencyScore +
+          0.18 * (1 - partial.conflictRate) +
+          0.16 * partial.provenanceQuality +
+          0.1 * partial.taskRelevance +
+          0.08 * partial.breadth
+      );
+
+      out.set(node.id, {
+        usefulness,
+        retrievalFrequency,
+        retrievalInWindow,
+        recencyMs: partial.recencyMs,
+        recencyScore: partial.recencyScore,
+        conflictRate: partial.conflictRate,
+        conflicts: partial.conflicts,
+        provenanceQuality: partial.provenanceQuality,
+        taskRelevance: partial.taskRelevance,
+        breadth: partial.breadth,
+        sources: partial.sources,
+        lowProvenance: partial.lowProvenance,
+        stale: partial.stale,
+      });
+    }
+
+    return out;
+  }, [collapsed.edges, collapsed.nodes, diagnostics.conflicts, telemetry.recentChatMessages, telemetry.sourceDocuments, usedInLastNChats]);
+
+  const topicRows = useMemo(() => {
+    const topicNodes = collapsed.nodes.filter((node) => node.kind.toLowerCase() === "topic");
+    const edgesByNode = new Map<string, AggregatedEdge[]>();
+    for (const edge of collapsed.edges) {
+      if (!edgesByNode.has(edge.source)) edgesByNode.set(edge.source, []);
+      if (!edgesByNode.has(edge.target)) edgesByNode.set(edge.target, []);
+      edgesByNode.get(edge.source)!.push(edge);
+      edgesByNode.get(edge.target)!.push(edge);
+    }
+
+    const rows: TopicRow[] = topicNodes.map((topic) => {
+      const incident = edgesByNode.get(topic.id) || [];
+      const neighborIds = incident.map((edge) => (edge.source === topic.id ? edge.target : edge.source));
+      const factNeighbors = neighborIds.filter((id) => {
+        const node = collapsed.nodeById.get(id);
+        return node ? ["fact", "profile", "task", "project"].includes(node.kind.toLowerCase()) : false;
+      });
+
+      let usageCount = 0;
+      let conflictCount = 0;
+      let topSource = "n/a";
+      let lastUpdatedMs = 0;
+
+      const sourceCounter = new Map<string, number>();
+      for (const id of [topic.id, ...factNeighbors]) {
+        const insight = nodeInsights.get(id);
+        if (!insight) continue;
+        usageCount += insight.retrievalInWindow;
+        conflictCount += insight.conflicts;
+        if (insight.recencyMs > lastUpdatedMs) lastUpdatedMs = insight.recencyMs;
+        for (const source of insight.sources) {
+          sourceCounter.set(source, (sourceCounter.get(source) || 0) + 1);
+        }
+      }
+
+      if (sourceCounter.size > 0) {
+        topSource = [...sourceCounter.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      }
+
+      return {
+        topicId: topic.id,
+        topic: topic.label,
+        factsCount: factNeighbors.length,
+        lastUpdatedMs,
+        usageCount,
+        conflictsCount: conflictCount,
+        topSource,
+      };
+    });
+
+    rows.sort((a, b) => {
+      if (b.usageCount !== a.usageCount) return b.usageCount - a.usageCount;
+      if (b.conflictsCount !== a.conflictsCount) return b.conflictsCount - a.conflictsCount;
+      return b.factsCount - a.factsCount;
+    });
+
+    return rows;
+  }, [collapsed.edges, collapsed.nodeById, collapsed.nodes, nodeInsights]);
+
+  const adjacency = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const edge of collapsed.edges) {
+      if (!map.has(edge.source)) map.set(edge.source, []);
+      if (!map.has(edge.target)) map.set(edge.target, []);
+      map.get(edge.source)!.push(edge.target);
+      map.get(edge.target)!.push(edge.source);
+    }
+    return map;
+  }, [collapsed.edges]);
+
+  const selectedNode = selectedNodeId ? collapsed.nodeById.get(selectedNodeId) || null : null;
+
+  useEffect(() => {
+    if (!selectedNodeId && collapsed.nodes.length > 0) {
+      setSelectedNodeId(collapsed.nodes[0].id);
+    }
+  }, [collapsed.nodes, selectedNodeId]);
+
+  useEffect(() => {
+    if (selectedNode && selectedNode.kind.toLowerCase() === "topic") {
+      setSelectedTopicId(selectedNode.id);
+    }
+  }, [selectedNode]);
+
+  const selectedTopic = useMemo(() => {
+    const explicit = selectedTopicId ? collapsed.nodeById.get(selectedTopicId) : null;
+    if (explicit && explicit.kind.toLowerCase() === "topic") return explicit;
+    const fallbackId = topicRows[0]?.topicId;
+    return fallbackId ? collapsed.nodeById.get(fallbackId) || null : null;
+  }, [collapsed.nodeById, selectedTopicId, topicRows]);
+
+  const filteredScope = useMemo(() => {
+    const allNodeIds = collapsed.nodes.map((node) => node.id);
+    const scoreById = new Map<string, number>();
+    for (const nodeId of allNodeIds) {
+      scoreById.set(nodeId, nodeInsights.get(nodeId)?.usefulness || 0);
+    }
+
+    const queryLower = query.trim().toLowerCase();
+    const timeLimit = timeRangeMs(timeRange);
+
+    const layerBase = (() => {
+      if (layer === "overview") {
+        return new Set(
+          collapsed.nodes
+            .filter((node) => node.kind.toLowerCase() === "topic" || node.kind.toLowerCase() === "system")
+            .map((node) => node.id)
+        );
+      }
+      if (layer === "topic") {
+        if (!selectedTopic) return new Set(allNodeIds);
+        const ids = new Set<string>([selectedTopic.id]);
+        for (const edge of collapsed.edges) {
+          if (edge.source === selectedTopic.id) ids.add(edge.target);
+          if (edge.target === selectedTopic.id) ids.add(edge.source);
+        }
+        return ids;
+      }
+      const focus = selectedNode?.id || selectedTopic?.id;
+      if (!focus) return new Set(allNodeIds);
+      const ids = new Set<string>([focus]);
+      let frontier = [focus];
+      for (let hop = 0; hop < 2; hop += 1) {
+        const next: string[] = [];
+        for (const curr of frontier) {
+          for (const neigh of adjacency.get(curr) || []) {
+            if (ids.has(neigh)) continue;
+            ids.add(neigh);
+            next.push(neigh);
+          }
+        }
+        frontier = next;
+      }
+      return ids;
+    })();
+
+    const conflictById = new Map<string, number>();
+    for (const [nodeId, insight] of nodeInsights.entries()) {
+      conflictById.set(nodeId, insight.conflicts);
+    }
+
+    const eligible = collapsed.nodes.filter((node) => {
+      if (!layerBase.has(node.id)) return false;
+      const insight = nodeInsights.get(node.id);
+      if (!insight) return false;
+      if (!withinLens(node, lens, conflictById.get(node.id) || 0)) return false;
+      if (queryLower) {
+        const hay = `${node.label} ${node.summary} ${node.kind} ${(node.tags || []).join(" ")}`.toLowerCase();
+        if (!hay.includes(queryLower)) return false;
+      }
+      if (node.confidence < confidenceThreshold) return false;
+      if (timeLimit < Number.POSITIVE_INFINITY && insight.recencyMs > 0 && Date.now() - insight.recencyMs > timeLimit) {
+        return false;
+      }
+      if (usedInLastNChats > 0 && insight.retrievalInWindow <= 0) return false;
+      if (conflictsOnly && insight.conflicts <= 0) return false;
+      if (lowProvenanceOnly && !insight.lowProvenance) return false;
+      return true;
+    });
+
+    const sortedEligible = [...eligible].sort((a, b) => cmpNumberDesc(scoreById.get(a.id) || 0, scoreById.get(b.id) || 0));
+
+    const mustInclude = [selectedNode?.id || "", selectedTopic?.id || "", ...pinnedIds].filter(Boolean);
+
+    let selectedIds = pickWithCap(sortedEligible.map((node) => node.id), MAX_VISIBLE_NODES, mustInclude);
+
+    // If strict filters hide everything, relax to show useful defaults instead of blank canvas.
+    if (selectedIds.length === 0) {
+      const relaxed = collapsed.nodes
+        .filter((node) => layerBase.has(node.id) && withinLens(node, lens, conflictById.get(node.id) || 0))
+        .sort((a, b) => cmpNumberDesc(scoreById.get(a.id) || 0, scoreById.get(b.id) || 0));
+      const fallback = relaxed.length > 0 ? relaxed : [...collapsed.nodes];
+      selectedIds = pickWithCap(fallback.map((node) => node.id), MAX_VISIBLE_NODES, mustInclude);
+    }
+
+    if (pinnedIds.length >= 2) {
+      const pinnedSet = new Set<string>(pinnedIds);
+      const connecting = new Set<string>([...pinnedSet]);
+      for (let i = 0; i < pinnedIds.length; i += 1) {
+        for (let j = i + 1; j < pinnedIds.length; j += 1) {
+          const path = shortestPath(pinnedIds[i], pinnedIds[j], adjacency);
+          if (!path) continue;
+          for (const id of path) connecting.add(id);
+        }
+      }
+      const scored = [...connecting].sort((a, b) => cmpNumberDesc(scoreById.get(a) || 0, scoreById.get(b) || 0));
+      selectedIds = pickWithCap(scored, MAX_VISIBLE_NODES, mustInclude);
+    }
+
+    const selectedSet = new Set(selectedIds);
+
+    const edgeCandidates = collapsed.edges.filter((edge) => {
+      if (!selectedSet.has(edge.source) || !selectedSet.has(edge.target)) return false;
+      if (!enabledRelations[edge.relation]) return false;
+      if (edge.confidence < confidenceThreshold) return false;
+      if (timeLimit < Number.POSITIVE_INFINITY && edge.lastSeenMs > 0 && Date.now() - edge.lastSeenMs > timeLimit) {
+        return false;
+      }
+      return true;
+    });
+
+    const scoredEdges = edgeCandidates
+      .map((edge) => {
+        const recency = scoreRecency(edge.lastSeenMs);
+        const score = clamp01(0.45 * edge.confidence + 0.3 * Math.min(1, Math.log2(edge.count + 1) / 3) + 0.25 * recency);
+        return { edge, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_VISIBLE_EDGES)
+      .map((entry) => entry.edge);
+
+    const edgeSet = new Set(scoredEdges.map((edge) => edge.id));
+    const scopedNodeSet = new Set<string>();
+    for (const edge of scoredEdges) {
+      scopedNodeSet.add(edge.source);
+      scopedNodeSet.add(edge.target);
+    }
+    for (const id of selectedSet) scopedNodeSet.add(id);
+
+    let hopDistance = new Map<string, number>();
+    const focusId = selectedNode?.id || selectedTopic?.id || null;
+
+    if (focusId && scopedNodeSet.has(focusId)) {
+      hopDistance = new Map<string, number>([[focusId, 0]]);
+      const queue = [focusId];
+      while (queue.length > 0) {
+        const curr = queue.shift();
+        if (!curr) break;
+        const dist = hopDistance.get(curr) || 0;
+        for (const neigh of adjacency.get(curr) || []) {
+          if (!scopedNodeSet.has(neigh)) continue;
+          if (hopDistance.has(neigh)) continue;
+          hopDistance.set(neigh, dist + 1);
+          queue.push(neigh);
+        }
+      }
+    }
+
+    if (focusId && !showThreeHops) {
+      for (const nodeId of [...scopedNodeSet]) {
+        const dist = hopDistance.get(nodeId);
+        if (typeof dist === "number" && dist >= 3) scopedNodeSet.delete(nodeId);
+      }
+    }
+
+    return {
+      nodeIds: scopedNodeSet,
+      edges: scoredEdges.filter((edge) => edgeSet.has(edge.id) && scopedNodeSet.has(edge.source) && scopedNodeSet.has(edge.target)),
+      hopDistance,
+      scoreById,
+    };
+  }, [
+    adjacency,
+    collapsed.edges,
+    collapsed.nodes,
+    confidenceThreshold,
+    conflictsOnly,
+    enabledRelations,
+    layer,
+    lens,
+    lowProvenanceOnly,
+    nodeInsights,
+    pinnedIds,
+    query,
+    selectedNode,
+    selectedTopic,
+    showThreeHops,
+    timeRange,
+    usedInLastNChats,
+  ]);
+
+  const flowNodes = useMemo(() => {
+    const visible = collapsed.nodes.filter((node) => filteredScope.nodeIds.has(node.id));
+    const count = Math.max(1, visible.length);
+
+    return visible.map((node, idx) => {
+      const insight = nodeInsights.get(node.id);
+      const dist = filteredScope.hopDistance.get(node.id);
+      const selected = selectedNodeId === node.id;
+      const pinned = pinnedIds.includes(node.id);
+
+      let opacity = 1;
+      if (typeof dist === "number" && dist === 2) opacity = 0.42;
+      if (selected) opacity = 1;
+
+      const ringTone = insight?.conflicts
+        ? "ring-rose-400/60"
+        : insight?.lowProvenance
+        ? "ring-amber-300/60"
+        : "ring-cyan-300/40";
+
+      const baseX = Number.isFinite(node.x) ? node.x : 200 + (idx % 5) * 220;
+      const baseY = Number.isFinite(node.y) ? node.y : 100 + Math.floor(idx / 5) * 140;
+      const position =
+        layer === "overview"
+          ? {
+              x: 220 + Math.cos((idx / count) * Math.PI * 2) * 360,
+              y: 220 + Math.sin((idx / count) * Math.PI * 2) * 240,
+            }
+          : { x: baseX, y: baseY };
+
+      return {
+        id: node.id,
+        position,
+        draggable: false,
+        data: {
+          label: (
+            <div className={cn("rounded-xl border border-border/80 bg-background/85 px-3 py-2 text-left text-[11px] shadow-sm backdrop-blur-sm", selected && `ring-2 ${ringTone}`)}>
+              <p className="truncate text-[12px] font-semibold text-foreground">{node.label}</p>
+              <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                {node.kind} · {Math.round((insight?.usefulness || 0) * 100)} usefulness
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">conf {Math.round(node.confidence * 100)}%</span>
+                {insight?.conflicts ? <span className="rounded bg-rose-500/20 px-1.5 py-0.5 text-[9px] text-rose-700 dark:text-rose-200">conflicts {insight.conflicts}</span> : null}
+                {insight?.lowProvenance ? <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-700 dark:text-amber-200">low provenance</span> : null}
+                {pinned ? <span className="rounded bg-violet-500/25 px-1.5 py-0.5 text-[9px] text-violet-700 dark:text-violet-100">pinned</span> : null}
+              </div>
+            </div>
+          ),
+        },
+        style: {
+          borderRadius: 14,
+          border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(15,23,42,0.14)",
+          background: `linear-gradient(140deg, ${nodeKindColor(node.kind, isDark)} 0%, ${
+            isDark ? "rgba(12,12,16,0.72)" : "rgba(255,255,255,0.94)"
+          } 100%)`,
+          color: isDark ? "#f4f4f5" : "#111827",
+          opacity,
+          minWidth: 190,
+          boxShadow: selected
+            ? isDark
+              ? "0 0 0 1px rgba(255,255,255,0.20), 0 12px 28px rgba(0,0,0,0.36)"
+              : "0 0 0 1px rgba(30,41,59,0.18), 0 10px 24px rgba(15,23,42,0.16)"
+            : isDark
+              ? "0 10px 24px rgba(0,0,0,0.30)"
+              : "0 8px 20px rgba(15,23,42,0.12)",
+          padding: 0,
+        },
+      } as Node<FlowNodeData>;
+    });
+  }, [collapsed.nodes, filteredScope.hopDistance, filteredScope.nodeIds, isDark, layer, nodeInsights, pinnedIds, selectedNodeId]);
+
+  const flowEdges = useMemo(() => {
+    return filteredScope.edges.map((edge) => {
+      const distSource = filteredScope.hopDistance.get(edge.source);
+      const distTarget = filteredScope.hopDistance.get(edge.target);
+      const faint = (distSource === 2 || distTarget === 2) && !showThreeHops;
+      const label = `${relationLabel(edge.relation)} · x${edge.count} · ${Math.round(edge.confidence * 100)}% · ${formatAgo(edge.lastSeenMs)}`;
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        label,
+        data: {
+          relation: edge.relation,
+          count: edge.count,
+          confidence: edge.confidence,
+          lastSeenMs: edge.lastSeenMs,
+        },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+        style: {
+          stroke: edge.confidence >= 0.7
+            ? isDark
+              ? "rgba(34,197,94,0.70)"
+              : "rgba(21,128,61,0.74)"
+            : isDark
+              ? "rgba(56,189,248,0.68)"
+              : "rgba(3,105,161,0.74)",
+          strokeWidth: Math.max(1.4, Math.min(4.2, 1 + edge.confidence * 2.4 + Math.log2(edge.count + 1) * 0.45)),
+          opacity: faint ? 0.32 : 0.85,
+        },
+        labelStyle: {
+          fontSize: 10.5,
+          fill: isDark ? "rgba(241,245,249,0.96)" : "rgba(15,23,42,0.92)",
+          fontWeight: 600,
+        },
+        labelShowBg: true,
+        labelBgPadding: [6, 3],
+        labelBgBorderRadius: 6,
+        labelBgStyle: {
+          fill: isDark ? "rgba(9,14,24,0.82)" : "rgba(255,255,255,0.92)",
+          stroke: isDark ? "rgba(71,85,105,0.7)" : "rgba(148,163,184,0.65)",
+          strokeWidth: 0.8,
+        },
+      } as Edge<FlowEdgeData>;
+    });
+  }, [filteredScope.edges, filteredScope.hopDistance, isDark, showThreeHops]);
+
+  const forensics = useMemo(() => {
+    const anchor = selectedNode || selectedTopic;
+    if (!anchor) {
+      return { docs: [] as SourceDocument[], facts: [] as Array<SourceFact & { doc: string }>, diffs: [] as Array<{ canonical: string; statements: string[] }> };
+    }
+
+    const terms = [anchor.label, anchor.summary, selectedTopic?.label || ""]
+      .map((value) => canonicalText(value))
+      .filter((value) => value.length >= 3);
+
+    const docs: SourceDocument[] = [];
+    const facts: Array<SourceFact & { doc: string }> = [];
+
+    for (const doc of telemetry.sourceDocuments || []) {
+      const hit = doc.chunks.some((chunk) => {
+        const hay = canonicalText(`${chunk.topic} ${chunk.text}`);
+        return terms.some((term) => hay.includes(term));
+      });
+      if (!hit) continue;
+      docs.push(doc);
+      for (const fact of doc.facts || []) {
+        const hay = canonicalText(`${fact.topic} ${fact.statement} ${fact.canonical}`);
+        if (terms.some((term) => hay.includes(term))) {
+          facts.push({ ...fact, doc: doc.name });
+        }
+      }
+    }
+
+    const byCanonical = new Map<string, Set<string>>();
+    for (const fact of facts) {
+      const canonical = canonicalText(fact.canonical || fact.statement);
+      if (!canonical) continue;
+      if (!byCanonical.has(canonical)) byCanonical.set(canonical, new Set<string>());
+      byCanonical.get(canonical)!.add(fact.statement);
+    }
+
+    const diffs = [...byCanonical.entries()]
+      .filter(([, statements]) => statements.size > 1)
+      .map(([canonical, statements]) => ({ canonical, statements: [...statements] }));
+
+    return { docs, facts, diffs };
+  }, [selectedNode, selectedTopic, telemetry.sourceDocuments]);
+
+  const applyNodePatch = useCallback((nodeId: string, patch: Partial<GraphNodePayload>) => {
+    setGraph((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        nodes: prev.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
+      };
+    });
+    setDirty(true);
   }, []);
 
-  const addNode = useCallback(() => {
-    const id = `node-${Date.now()}`;
-    const node: Node<GraphNodeData> = {
-      id,
-      position: { x: 260 + (nodes.length % 3) * 220, y: 120 + (nodes.length % 5) * 110 },
-      data: {
-        label: "New Memory",
-        kind: "fact",
-        summary: "",
-        confidence: 0.75,
-        source: "manual",
-        tags: [],
-      },
-      style: nodeStyle("fact", 0.75),
-    };
-    setNodes((prev) => [...prev, node]);
-    setSelectedNodeId(id);
-    setSelectedEdgeId(null);
-    setDirty(true);
-  }, [nodes.length, setNodes]);
-
-  const handleConnect = useCallback(
-    (conn: Connection) => {
-      if (!conn.source || !conn.target) return;
-      const relation = "related_to";
-      const next = addEdge(
-        {
-          id: `edge-${Date.now()}`,
-          source: conn.source,
-          target: conn.target,
-          label: relation,
-          data: { relation, weight: 0.7, evidence: "" },
-          markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-          style: { stroke: "rgba(168,85,247,0.65)", strokeWidth: 2 },
-        },
-        edges
-      );
-      setEdges(next);
-      setDirty(true);
-    },
-    [edges, setEdges]
-  );
-
-  const autoLayout = useCallback(() => {
-    const kindBuckets = new Map<string, Node<GraphNodeData>[]>();
-    for (const node of nodes) {
-      const kind = node.data.kind || "fact";
-      if (!kindBuckets.has(kind)) kindBuckets.set(kind, []);
-      kindBuckets.get(kind)!.push(node);
-    }
-
-    const kinds = [...kindBuckets.keys()];
-    const next = nodes.map((n) => ({ ...n }));
-    const byId = new Map(next.map((n) => [n.id, n]));
-
-    kinds.forEach((kind, colIdx) => {
-      const bucket = kindBuckets.get(kind) || [];
-      bucket.forEach((node, rowIdx) => {
-        const target = byId.get(node.id);
-        if (!target) return;
-        target.position = {
-          x: 80 + colIdx * 310,
-          y: 70 + rowIdx * 120,
-        };
-      });
+  const togglePin = useCallback((nodeId: string) => {
+    setPinnedIds((prev) => {
+      if (prev.includes(nodeId)) return prev.filter((id) => id !== nodeId);
+      if (prev.length >= 5) return [...prev.slice(1), nodeId];
+      return [...prev, nodeId];
     });
+  }, []);
 
-    setNodes(next);
-    setDirty(true);
-  }, [nodes, setNodes]);
+  const handleConfirm = useCallback(() => {
+    if (!selectedNode) return;
+    const tags = new Set(selectedNode.tags || []);
+    tags.add("confirmed");
+    applyNodePatch(selectedNode.id, {
+      confidence: clamp01(selectedNode.confidence + 0.08),
+      tags: [...tags],
+    });
+    setNotice({ kind: "success", text: `Confirmed: ${selectedNode.label}` });
+  }, [applyNodePatch, selectedNode]);
 
-  const updateSelectedNode = useCallback(
-    (patch: Partial<GraphNodeData>) => {
-      if (!selectedNodeId) return;
-      setNodes((prev) =>
-        prev.map((n) => {
-          if (n.id !== selectedNodeId) return n;
-          const nextData = { ...n.data, ...patch };
-          return { ...n, data: nextData, style: nodeStyle(nextData.kind, nextData.confidence) };
-        })
-      );
-      setDirty(true);
-    },
-    [selectedNodeId, setNodes]
-  );
+  const handleDeprecate = useCallback(() => {
+    if (!selectedNode) return;
+    const tags = new Set(selectedNode.tags || []);
+    tags.add("deprecated");
+    applyNodePatch(selectedNode.id, {
+      confidence: clamp01(selectedNode.confidence - 0.2),
+      tags: [...tags],
+    });
+    setNotice({ kind: "success", text: `Deprecated: ${selectedNode.label}` });
+  }, [applyNodePatch, selectedNode]);
 
-  const updateSelectedEdge = useCallback(
-    (patch: Partial<GraphEdgeData>) => {
-      if (!selectedEdgeId) return;
-      setEdges((prev) =>
-        prev.map((e) => {
-          if (e.id !== selectedEdgeId) return e;
-          const nextData = { ...e.data, ...patch } as GraphEdgeData;
-          return {
-            ...e,
-            data: nextData,
-            label: nextData.relation,
-            style: {
-              ...e.style,
-              strokeWidth: Math.max(1.5, Math.round((nextData.weight || 0.5) * 3)),
-            },
-          };
-        })
-      );
-      setDirty(true);
-    },
-    [selectedEdgeId, setEdges]
-  );
+  const startEditing = useCallback(() => {
+    if (!selectedNode) return;
+    setEditingNodeId(selectedNode.id);
+    setEditDraft(selectedNode.summary || "");
+  }, [selectedNode]);
 
-  const deleteSelected = useCallback(() => {
-    if (selectedNodeId) {
-      setNodes((prev) => prev.filter((n) => n.id !== selectedNodeId));
-      setEdges((prev) =>
-        prev.filter((e) => e.source !== selectedNodeId && e.target !== selectedNodeId)
-      );
-      setSelectedNodeId(null);
-      setDirty(true);
-      return;
-    }
-    if (selectedEdgeId) {
-      setEdges((prev) => prev.filter((e) => e.id !== selectedEdgeId));
-      setSelectedEdgeId(null);
-      setDirty(true);
-    }
-  }, [selectedEdgeId, selectedNodeId, setEdges, setNodes]);
+  const saveEdit = useCallback(() => {
+    if (!selectedNode || editingNodeId !== selectedNode.id) return;
+    applyNodePatch(selectedNode.id, { summary: editDraft.trim() });
+    setEditingNodeId(null);
+    setNotice({ kind: "success", text: `Updated summary for ${selectedNode.label}` });
+  }, [applyNodePatch, editDraft, editingNodeId, selectedNode]);
 
   const saveGraph = useCallback(async () => {
+    if (!graph) return;
     setSaving(true);
     try {
-      const payload = toPayload(nodes, edges);
       const res = await fetch("/api/memory/graph", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", graph: payload, reindex: true }),
+        body: JSON.stringify({ action: "save", graph, reindex: true }),
       });
       const data = await res.json();
-      if (data.ok) {
-        if (data.graph) {
-          setNodes(asFlowNodes(data.graph.nodes || []));
-          setEdges(asFlowEdges(data.graph.edges || []));
-        }
-        setDirty(false);
-        setNotice({ kind: "success", text: data.indexed ? "Graph saved and indexed." : "Graph saved." });
-      } else {
-        setNotice({ kind: "error", text: data.error || "Failed to save graph." });
-      }
-    } catch {
-      setNotice({ kind: "error", text: "Failed to save graph." });
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.graph) setGraph(data.graph as GraphPayload);
+      setDirty(false);
+      setNotice({ kind: "success", text: data.indexed ? "Graph saved and indexed." : "Graph saved." });
+    } catch (err) {
+      setNotice({ kind: "error", text: err instanceof Error ? err.message : "Failed to save graph." });
     } finally {
       setSaving(false);
     }
-  }, [edges, nodes, setEdges, setNodes]);
+  }, [graph]);
 
   const publishSnapshot = useCallback(async () => {
+    if (!graph) return;
     setPublishing(true);
     try {
-      const payload = toPayload(nodes, edges);
       const res = await fetch("/api/memory/graph", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "publish-memory-md", graph: payload, reindex: true }),
+        body: JSON.stringify({ action: "publish-memory-md", graph, reindex: true }),
       });
       const data = await res.json();
-      if (data.ok) {
-        setNotice({
-          kind: "success",
-          text: data.indexed
-            ? "Snapshot published to MEMORY.md and indexed."
-            : "Snapshot published to MEMORY.md.",
-        });
-      } else {
-        setNotice({ kind: "error", text: data.error || "Failed to publish snapshot." });
-      }
-    } catch {
-      setNotice({ kind: "error", text: "Failed to publish snapshot." });
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setNotice({
+        kind: "success",
+        text: data.indexed ? "Snapshot published to MEMORY.md and indexed." : "Snapshot published to MEMORY.md.",
+      });
+    } catch (err) {
+      setNotice({ kind: "error", text: err instanceof Error ? err.message : "Failed to publish snapshot." });
     } finally {
       setPublishing(false);
     }
-  }, [edges, nodes]);
+  }, [graph]);
 
   const rebuildFromMemory = useCallback(async () => {
     setRebuilding(true);
     try {
-      await loadGraph({ bootstrap: true });
+      await loadGraph("bootstrap");
     } finally {
       setRebuilding(false);
     }
   }, [loadGraph]);
 
-  if (loading) {
-    return <LoadingState label="Building memory graph..." className="min-h-0" />;
+  const onNodeClick = useCallback<NodeMouseHandler<Node<FlowNodeData>>>((_, node) => {
+    if (inspectorCollapsed) setInspectorCollapsed(false);
+    setSelectedNodeId(node.id);
+    if (layer === "overview") setShowTopicTable(false);
+    const selected = collapsed.nodeById.get(node.id);
+    if (selected?.kind.toLowerCase() === "topic") {
+      setSelectedTopicId(node.id);
+      if (layer === "overview") setLayer("topic");
+    }
+  }, [collapsed.nodeById, inspectorCollapsed, layer]);
+
+  if (loading || !graph) {
+    return <LoadingState label="Building memory decision graph..." className="min-h-0" />;
   }
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden">
-      <aside className="flex w-[290px] shrink-0 flex-col border-r border-foreground/[0.08] bg-card/60">
-        <div className="space-y-3 border-b border-foreground/[0.06] p-3">
-          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+      <aside className="flex w-[360px] shrink-0 flex-col border-r border-foreground/[0.08] bg-card/60">
+        <div className="space-y-2 border-b border-foreground/[0.06] p-3">
+          <div className="grid grid-cols-3 gap-1.5 text-[11px]">
             <button
               type="button"
-              onClick={addNode}
-              className="flex items-center justify-center gap-1 rounded-md border border-foreground/[0.08] bg-muted/40 px-2 py-1.5 text-foreground/80 transition-colors hover:bg-muted"
+              onClick={() => void loadGraph()}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-foreground/[0.1] bg-muted/40 px-2 py-1.5 text-foreground/85 hover:bg-muted"
             >
-              <Plus className="h-3 w-3" />
-              Add Node
+              <RefreshCw className="h-3 w-3" /> Refresh
             </button>
             <button
               type="button"
-              onClick={autoLayout}
-              className="flex items-center justify-center gap-1 rounded-md border border-foreground/[0.08] bg-muted/40 px-2 py-1.5 text-foreground/80 transition-colors hover:bg-muted"
-            >
-              <GitBranch className="h-3 w-3" />
-              Auto Layout
-            </button>
-            <button
-              type="button"
-              onClick={rebuildFromMemory}
+              onClick={() => void rebuildFromMemory()}
               disabled={rebuilding || saving || publishing}
-              className="col-span-2 flex items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1.5 text-sky-200 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Rebuild graph from indexed memory content"
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-200 disabled:opacity-50"
             >
-              {rebuilding ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3 w-3" />
-              )}
-              Rebuild from Memory
+              {rebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />} Rebuild
             </button>
             <button
               type="button"
               onClick={saveGraph}
-              disabled={saving || !dirty}
-              className="flex items-center justify-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/15 px-2 py-1.5 text-violet-200 transition-colors hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!dirty || saving}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-violet-500/35 bg-violet-500/15 px-2 py-1.5 text-violet-700 hover:bg-violet-500/25 dark:text-violet-200 disabled:opacity-50"
             >
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save Graph
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
             </button>
-            <button
-              type="button"
-              onClick={publishSnapshot}
-              disabled={publishing}
-              className="flex items-center justify-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-emerald-200 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {publishing ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <UploadCloud className="h-3 w-3" />
-              )}
-              Publish
-            </button>
+          </div>
+          <button
+            type="button"
+            onClick={publishSnapshot}
+            disabled={publishing}
+            className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-200 disabled:opacity-50"
+          >
+            {publishing ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3 w-3" />} Publish Snapshot
+          </button>
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <span>Gateway source-of-truth sync</span>
+            <span>{telemetry.generatedAt ? `telemetry ${formatAgo(new Date(telemetry.generatedAt).getTime())}` : "telemetry unknown"}</span>
           </div>
         </div>
 
-        <div className="border-b border-foreground/[0.06] p-3">
+        <div className="space-y-2 border-b border-foreground/[0.06] p-3">
           <div className="flex items-center gap-2 rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5">
-            <Search className="h-3.5 w-3.5 text-muted-foreground/60" />
+            <Search className="h-3.5 w-3.5 text-muted-foreground/65" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter entities..."
-              className="w-full bg-transparent text-[12px] text-foreground/85 outline-none placeholder:text-muted-foreground/60"
+              placeholder="What matters now?"
+              className="w-full bg-transparent text-[12px] text-foreground/90 outline-none placeholder:text-muted-foreground/60"
             />
           </div>
+
+          <div className="grid grid-cols-1 gap-1.5 text-[11px]">
+            <select
+              value={layer}
+              onChange={(e) => setLayer(e.target.value as LayerMode)}
+              className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-foreground/85"
+            >
+              {LAYER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              value={lens}
+              onChange={(e) => setLens(e.target.value as LensMode)}
+              className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-foreground/85"
+            >
+              {LENS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1 text-[10px]">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-foreground/80 hover:bg-muted"
+            >
+              Reset Recommended
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAdvancedFilters((prev) => !prev)}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-foreground/80 hover:bg-muted"
+            >
+              <SlidersHorizontal className="h-3 w-3" />
+              {showAdvancedFilters ? "Hide Advanced" : "Show Advanced"}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-1 text-[10px]">
+            <button
+              type="button"
+              onClick={() => setShowThreeHops((prev) => !prev)}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-foreground/80 hover:bg-muted"
+            >
+              {showThreeHops ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+              3 hops {showThreeHops ? "on" : "off"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTopicTable((prev) => !prev)}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-foreground/80 hover:bg-muted"
+            >
+              <Table2 className="h-3 w-3" /> {showTopicTable ? "Hide Topic Home" : "Show Topic Home"}
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Default mode shows a populated graph first. Use Advanced only when you need tighter control.
+          </p>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-          {filteredNodes.map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              onClick={() => {
-                setSelectedNodeId(n.id);
-                setSelectedEdgeId(null);
-              }}
-              className={cn(
-                "w-full rounded-md border px-2 py-1.5 text-left transition-colors",
-                selectedNodeId === n.id
-                  ? "border-violet-500/35 bg-violet-500/15"
-                  : "border-foreground/[0.06] bg-card/40 hover:bg-card/80"
-              )}
-            >
-              <p className="truncate text-[12px] font-medium text-foreground/90">{n.data.label}</p>
-              <p className="mt-0.5 truncate text-[10px] text-muted-foreground/70">
-                {n.data.kind} • {Math.round((n.data.confidence || 0.75) * 100)}%
+        {showAdvancedFilters ? (
+          <>
+            <div className="space-y-2 border-b border-foreground/[0.06] p-3">
+              <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                <label className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-muted-foreground">
+                  Confidence ≥ {Math.round(confidenceThreshold * 100)}%
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={0.95}
+                    step={0.05}
+                    value={confidenceThreshold}
+                    onChange={(e) => setConfidenceThreshold(Number(e.target.value))}
+                    className="mt-1 w-full accent-violet-400"
+                  />
+                </label>
+
+                <label className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-muted-foreground">
+                  Used in last N chats
+                  <input
+                    type="number"
+                    min={0}
+                    max={80}
+                    value={usedInLastNChats}
+                    onChange={(e) => setUsedInLastNChats(Math.max(0, Number(e.target.value || 0)))}
+                    className="mt-1 w-full rounded border border-foreground/[0.08] bg-background px-1.5 py-0.5 text-[11px] text-foreground"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                <select
+                  value={timeRange}
+                  onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+                  className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-foreground/85"
+                >
+                  {TIME_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <span className="inline-flex items-center justify-center rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-muted-foreground">
+                  time window
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                <label className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-muted-foreground">
+                  <input type="checkbox" checked={conflictsOnly} onChange={(e) => setConflictsOnly(e.target.checked)} className="h-3 w-3" />
+                  conflicts only
+                </label>
+                <label className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-muted-foreground">
+                  <input type="checkbox" checked={lowProvenanceOnly} onChange={(e) => setLowProvenanceOnly(e.target.checked)} className="h-3 w-3" />
+                  low provenance only
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2 border-b border-foreground/[0.06] p-3">
+              <p className="flex items-center gap-1 text-[11px] font-medium text-foreground/80">
+                <Filter className="h-3.5 w-3.5" /> Relation filters
               </p>
+              <div className="max-h-24 space-y-1 overflow-y-auto pr-1">
+                {relationTypes.map((relation) => (
+                  <label key={relation} className="inline-flex w-full items-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-[10px] text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(enabledRelations[relation])}
+                      onChange={(e) => setEnabledRelations((prev) => ({ ...prev, [relation]: e.target.checked }))}
+                      className="h-3 w-3"
+                    />
+                    <span className="truncate">{relationLabel(relation)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 border-b border-foreground/[0.06] p-3">
+              <p className="flex items-center gap-1 text-[11px] font-medium text-foreground/80">
+                <Layers className="h-3.5 w-3.5" /> Diagnostics overlays
+              </p>
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                <label className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-muted-foreground"><input type="checkbox" checked={overlayConflicts} onChange={(e) => setOverlayConflicts(e.target.checked)} className="h-3 w-3" />conflicts</label>
+                <label className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-muted-foreground"><input type="checkbox" checked={overlayStaleness} onChange={(e) => setOverlayStaleness(e.target.checked)} className="h-3 w-3" />staleness</label>
+                <label className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-muted-foreground"><input type="checkbox" checked={overlayLowProvenance} onChange={(e) => setOverlayLowProvenance(e.target.checked)} className="h-3 w-3" />low provenance</label>
+                <label className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-muted-foreground"><input type="checkbox" checked={overlayDupes} onChange={(e) => setOverlayDupes(e.target.checked)} className="h-3 w-3" />duplication</label>
+                <label className="col-span-2 inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-muted-foreground"><input type="checkbox" checked={overlayMergeSuggestions} onChange={(e) => setOverlayMergeSuggestions(e.target.checked)} className="h-3 w-3" />merge suggestions</label>
+              </div>
+
+              <div className="rounded-md border border-foreground/[0.08] bg-card/60 p-2 text-[10px] text-muted-foreground">
+                <p>conflicts: <span className="text-rose-700 dark:text-rose-300">{diagnostics.conflicts.length}</span></p>
+                <p>duplication groups: <span className="text-amber-700 dark:text-amber-200">{diagnostics.duplicates.length}</span></p>
+                <p>merge suggestions: <span className="text-sky-700 dark:text-sky-200">{diagnostics.mergeSuggestions.length}</span></p>
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-foreground/85">Pinned ({pinnedIds.length}/5)</p>
+            <button
+              type="button"
+              onClick={() => setPinnedIds([])}
+              className="rounded border border-foreground/[0.08] px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
+            >
+              clear
             </button>
-          ))}
-          {filteredNodes.length === 0 && (
-            <div className="rounded-md border border-dashed border-foreground/[0.08] p-3 text-[11px] text-muted-foreground/60">
-              No matching entities.
+          </div>
+          {pinnedIds.length === 0 ? (
+            <p className="text-[10px] text-muted-foreground/70">Pin up to 5 nodes to isolate the smallest connecting subgraph.</p>
+          ) : (
+            <div className="space-y-1">
+              {pinnedIds.map((id) => {
+                const node = collapsed.nodeById.get(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setSelectedNodeId(id)}
+                    className="w-full rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-left text-[10px] text-violet-700 hover:bg-violet-500/20 dark:text-violet-100"
+                  >
+                    {node?.label || id}
+                  </button>
+                );
+              })}
             </div>
           )}
+
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-foreground/85">Topic Home</p>
+            <span className="text-[10px] text-muted-foreground">{showTopicTable ? "visible" : "hidden"}</span>
+          </div>
+
+          {showTopicTable ? (
+            <div className="mt-2 overflow-hidden rounded-md border border-foreground/[0.08]">
+              <div className="grid grid-cols-[1.2fr,0.6fr,0.8fr,0.6fr,0.8fr] gap-1 border-b border-foreground/[0.06] bg-muted/30 px-2 py-1 text-[9px] uppercase tracking-wide text-muted-foreground">
+                <span>topic</span>
+                <span>facts</span>
+                <span>updated</span>
+                <span>usage</span>
+                <span>conflicts</span>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {topicRows.slice(0, 22).map((row) => (
+                  <button
+                    key={row.topicId}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTopicId(row.topicId);
+                      setSelectedNodeId(row.topicId);
+                      setLayer("topic");
+                    }}
+                    className="grid w-full grid-cols-[1.2fr,0.6fr,0.8fr,0.6fr,0.8fr] gap-1 border-b border-foreground/[0.04] px-2 py-1.5 text-left text-[10px] text-foreground/85 hover:bg-muted/50"
+                  >
+                    <span className="truncate">{row.topic}</span>
+                    <span>{row.factsCount}</span>
+                    <span>{formatAgo(row.lastUpdatedMs)}</span>
+                    <span>{row.usageCount}</span>
+                    <span className={cn(row.conflictsCount > 0 ? "text-rose-700 dark:text-rose-300" : "text-muted-foreground")}>{row.conflictsCount}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </aside>
 
-      <main className="relative min-h-0 flex-1 bg-[radial-gradient(circle_at_20%_0%,rgba(124,58,237,0.20),transparent_45%),radial-gradient(circle_at_80%_100%,rgba(14,165,233,0.16),transparent_40%)]">
+      <main
+        className={cn(
+          "relative min-h-0 flex-1",
+          isDark
+            ? "bg-[radial-gradient(circle_at_20%_0%,rgba(34,197,94,0.11),transparent_45%),radial-gradient(circle_at_88%_100%,rgba(56,189,248,0.14),transparent_44%)]"
+            : "bg-[radial-gradient(circle_at_20%_0%,rgba(16,185,129,0.08),transparent_42%),radial-gradient(circle_at_88%_100%,rgba(14,165,233,0.12),transparent_42%)]"
+        )}
+      >
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={handleConnect}
-          onSelectionChange={handleSelectionChange}
+          nodes={flowNodes}
+          edges={flowEdges}
+          onNodeClick={onNodeClick}
+          onPaneClick={() => setSelectedNodeId(null)}
           fitView
-          fitViewOptions={{ padding: 0.25 }}
-          defaultEdgeOptions={{
-            markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-          }}
+          fitViewOptions={{ padding: 0.24 }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable
           className="h-full w-full"
         >
-          <Background gap={18} size={1} color="rgba(255,255,255,0.12)" />
+          <Background gap={20} size={1} color={isDark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.14)"} />
           <MiniMap pannable zoomable />
           <Controls />
         </ReactFlow>
+
+        <div className="pointer-events-none absolute left-3 top-3 z-20 inline-flex items-center gap-2 rounded-md border border-foreground/[0.12] bg-card/85 px-2.5 py-1 text-[11px] text-foreground/85 shadow-sm backdrop-blur">
+          <Sparkles className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
+          <span>
+            Top {MAX_VISIBLE_NODES} nodes / {MAX_VISIBLE_EDGES} edges by expected usefulness.
+          </span>
+        </div>
       </main>
 
       <aside
         className={cn(
           "flex shrink-0 flex-col border-l border-foreground/[0.08] bg-card/60 transition-all duration-200",
-          rightCollapsed ? "w-11" : "w-[320px]"
+          inspectorCollapsed ? "w-11" : "w-[360px]"
         )}
       >
-        <div className="border-b border-foreground/[0.06] p-2">
-          <div className={cn("flex items-center", rightCollapsed ? "justify-center" : "justify-between")}>
-            {!rightCollapsed && (
-              <p className="text-[12px] font-semibold text-foreground/85">Inspector</p>
-            )}
-            <div className="flex items-center gap-1">
-              {!rightCollapsed && (selectedNode || selectedEdge) && (
-                <button
-                  type="button"
-                  onClick={deleteSelected}
-                  className="inline-flex items-center gap-1 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-300 hover:bg-red-500/20"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  Delete
-                </button>
+        <div className="space-y-2 border-b border-foreground/[0.06] p-3">
+          <div className={cn("flex items-start", inspectorCollapsed ? "justify-center" : "justify-between")}>
+            {!inspectorCollapsed ? (
+              <div>
+                <p className="text-[12px] font-semibold text-foreground/90">Decision Inspector</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Layer {layer === "overview" ? "A" : layer === "topic" ? "B" : "C"} · {lens} lens ·
+                  visible nodes {flowNodes.length}
+                </p>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setInspectorCollapsed((prev) => !prev)}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-foreground/[0.08] bg-card text-muted-foreground transition-colors hover:text-foreground/80"
+              title={inspectorCollapsed ? "Expand inspector" : "Collapse inspector"}
+              aria-label={inspectorCollapsed ? "Expand inspector" : "Collapse inspector"}
+            >
+              {inspectorCollapsed ? (
+                <ChevronLeft className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
               )}
-              <button
-                type="button"
-                onClick={() => setRightCollapsed((v) => !v)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-foreground/[0.08] bg-card text-muted-foreground transition-colors hover:text-foreground/80"
-                title={rightCollapsed ? "Expand inspector" : "Collapse inspector"}
-              >
-                {rightCollapsed ? (
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5" />
-                )}
-              </button>
-            </div>
+            </button>
           </div>
         </div>
 
-        {rightCollapsed ? (
+        {inspectorCollapsed ? (
           <div className="flex min-h-0 flex-1 items-center justify-center p-1">
             <span className="select-none text-[10px] tracking-wide text-muted-foreground/70 [writing-mode:vertical-rl]">
               Inspector
             </span>
           </div>
         ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           {selectedNode ? (
-            <div className="space-y-3">
-              <p className="flex items-center gap-1.5 text-[11px] font-medium text-violet-300">
-                <Bot className="h-3.5 w-3.5" />
-                Entity Node
+            <div className="space-y-2 rounded-lg border border-foreground/[0.08] bg-card/45 p-3">
+              <p className="text-sm font-semibold text-foreground">{selectedNode.label}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {selectedNode.kind} · confidence {Math.round(selectedNode.confidence * 100)}% · updated {formatAgo(nodeInsights.get(selectedNode.id)?.recencyMs || 0)}
               </p>
-              <label className="block text-[11px] text-muted-foreground/80">
-                Label
-                <input
-                  value={selectedNode.data.label}
-                  onChange={(e) => updateSelectedNode({ label: e.target.value })}
-                  className="mt-1 w-full rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-[12px] text-foreground/90 outline-none"
-                />
-              </label>
-              <label className="block text-[11px] text-muted-foreground/80">
-                Kind
-                <select
-                  value={selectedNode.data.kind}
-                  onChange={(e) => updateSelectedNode({ kind: e.target.value })}
-                  className="mt-1 w-full rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-[12px] text-foreground/90 outline-none"
-                >
-                  {KIND_OPTIONS.map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-[11px] text-muted-foreground/80">
-                Summary
-                <textarea
-                  value={selectedNode.data.summary}
-                  onChange={(e) => updateSelectedNode({ summary: e.target.value })}
-                  rows={4}
-                  className="mt-1 w-full resize-y rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-[12px] text-foreground/90 outline-none"
-                />
-              </label>
-              <label className="block text-[11px] text-muted-foreground/80">
-                Confidence ({Math.round((selectedNode.data.confidence || 0) * 100)}%)
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={selectedNode.data.confidence}
-                  onChange={(e) =>
-                    updateSelectedNode({ confidence: Number(e.target.value) })
-                  }
-                  className="mt-1 w-full accent-violet-400"
-                />
-              </label>
-              <label className="block text-[11px] text-muted-foreground/80">
-                Tags (comma separated)
-                <input
-                  value={(selectedNode.data.tags || []).join(", ")}
-                  onChange={(e) =>
-                    updateSelectedNode({
-                      tags: e.target.value
-                        .split(",")
-                        .map((t) => t.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-[12px] text-foreground/90 outline-none"
-                />
-              </label>
-            </div>
-          ) : selectedEdge ? (
-            <div className="space-y-3">
-              <p className="flex items-center gap-1.5 text-[11px] font-medium text-sky-300">
-                <Link2 className="h-3.5 w-3.5" />
-                Relationship Edge
-              </p>
-              <label className="block text-[11px] text-muted-foreground/80">
-                Relation
-                <input
-                  value={selectedEdge.data?.relation || ""}
-                  onChange={(e) => updateSelectedEdge({ relation: e.target.value })}
-                  className="mt-1 w-full rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-[12px] text-foreground/90 outline-none"
-                />
-              </label>
-              <label className="block text-[11px] text-muted-foreground/80">
-                Weight ({Math.round((selectedEdge.data?.weight || 0) * 100)}%)
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={selectedEdge.data?.weight || 0.7}
-                  onChange={(e) => updateSelectedEdge({ weight: Number(e.target.value) })}
-                  className="mt-1 w-full accent-sky-400"
-                />
-              </label>
-              <label className="block text-[11px] text-muted-foreground/80">
-                Evidence
-                <textarea
-                  value={selectedEdge.data?.evidence || ""}
-                  onChange={(e) => updateSelectedEdge({ evidence: e.target.value })}
-                  rows={4}
-                  className="mt-1 w-full resize-y rounded-md border border-foreground/[0.08] bg-card px-2 py-1.5 text-[12px] text-foreground/90 outline-none"
-                />
-              </label>
+
+              <div className="flex flex-wrap gap-1 text-[10px]">
+                <span className="rounded bg-muted px-1.5 py-0.5">usefulness {Math.round((nodeInsights.get(selectedNode.id)?.usefulness || 0) * 100)}</span>
+                <span className="rounded bg-muted px-1.5 py-0.5">provenance {Math.round((nodeInsights.get(selectedNode.id)?.provenanceQuality || 0) * 100)}%</span>
+                <span className="rounded bg-muted px-1.5 py-0.5">retrieval {nodeInsights.get(selectedNode.id)?.retrievalInWindow || 0}</span>
+                {(overlayConflicts && (nodeInsights.get(selectedNode.id)?.conflicts || 0) > 0) ? (
+                  <span className="rounded bg-rose-500/20 px-1.5 py-0.5 text-rose-700 dark:text-rose-200">conflicts {nodeInsights.get(selectedNode.id)?.conflicts}</span>
+                ) : null}
+                {(overlayStaleness && nodeInsights.get(selectedNode.id)?.stale) ? (
+                  <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-700 dark:text-amber-200">stale</span>
+                ) : null}
+                {(overlayLowProvenance && nodeInsights.get(selectedNode.id)?.lowProvenance) ? (
+                  <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-700 dark:text-amber-200">low provenance</span>
+                ) : null}
+              </div>
+
+              {editingNodeId === selectedNode.id ? (
+                <div className="space-y-1">
+                  <textarea
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-md border border-foreground/[0.08] bg-background px-2 py-1.5 text-[12px] text-foreground/90 outline-none"
+                  />
+                  <div className="flex gap-1">
+                    <button type="button" onClick={saveEdit} className="rounded bg-violet-600 px-2 py-1 text-[10px] text-white hover:bg-violet-500">Save edit</button>
+                    <button type="button" onClick={() => setEditingNodeId(null)} className="rounded border border-foreground/[0.08] px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[12px] text-muted-foreground">{selectedNode.summary || "No summary yet."}</p>
+              )}
+
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                <button type="button" onClick={handleConfirm} className="inline-flex items-center justify-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-200"><CheckCircle2 className="h-3 w-3" />confirm</button>
+                <button type="button" onClick={startEditing} className="inline-flex items-center justify-center gap-1 rounded border border-foreground/[0.08] bg-card px-2 py-1 text-foreground/80 hover:bg-muted">edit</button>
+                <button type="button" onClick={handleDeprecate} className="inline-flex items-center justify-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-700 hover:bg-amber-500/20 dark:text-amber-200">deprecate</button>
+                <button type="button" onClick={() => togglePin(selectedNode.id)} className="inline-flex items-center justify-center gap-1 rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-violet-700 hover:bg-violet-500/20 dark:text-violet-200">{pinnedIds.includes(selectedNode.id) ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}{pinnedIds.includes(selectedNode.id) ? "unpin" : "pin"}</button>
+              </div>
+
+              <div className="rounded border border-foreground/[0.08] bg-background/30 p-2 text-[10px] text-muted-foreground">
+                <p className="font-medium text-foreground/85">Provenance</p>
+                {(nodeInsights.get(selectedNode.id)?.sources || []).length === 0 ? (
+                  <p className="mt-1">No explicit provenance source.</p>
+                ) : (
+                  <div className="mt-1 space-y-0.5">
+                    {(nodeInsights.get(selectedNode.id)?.sources || []).slice(0, 8).map((source) => (
+                      <p key={source} className="truncate">{source}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-foreground/[0.12] bg-card/30 p-4 text-[12px] text-muted-foreground/70">
-              <p className="flex items-center gap-1.5 font-medium text-foreground/80">
-                <Sparkles className="h-3.5 w-3.5 text-violet-300" />
-                Memory Graph Workflow
-              </p>
-              <p className="mt-2">
-                Add entities, connect relationships, and encode stable knowledge as a graph.
-              </p>
-              <p className="mt-1">
-                Save writes structured graph memory and materializes it into markdown for OpenClaw retrieval.
-              </p>
-              <p className="mt-1">
-                Publish injects a high-signal snapshot into `MEMORY.md`.
-              </p>
+            <div className="rounded-lg border border-dashed border-foreground/[0.12] bg-card/30 p-3 text-[11px] text-muted-foreground">
+              Select a node to inspect what is wrong and what to do next.
             </div>
           )}
+
+          {(layer === "topic" || layer === "forensics") && selectedTopic ? (
+            <div className="space-y-2 rounded-lg border border-foreground/[0.08] bg-card/45 p-3">
+              <p className="text-[12px] font-semibold text-foreground">Topic focus: {selectedTopic.label}</p>
+              <div className="space-y-1 text-[10px]">
+                {collapsed.edges
+                  .filter((edge) => edge.source === selectedTopic.id || edge.target === selectedTopic.id)
+                  .sort((a, b) => b.confidence - a.confidence)
+                  .slice(0, 8)
+                  .map((edge) => {
+                    const otherId = edge.source === selectedTopic.id ? edge.target : edge.source;
+                    const other = collapsed.nodeById.get(otherId);
+                    return (
+                      <button
+                        key={edge.id}
+                        type="button"
+                        onClick={() => setSelectedNodeId(otherId)}
+                        className="w-full rounded border border-foreground/[0.08] bg-card px-2 py-1 text-left text-foreground/85 hover:bg-muted"
+                      >
+                        <p className="truncate">{other?.label || otherId}</p>
+                        <p className="truncate text-muted-foreground">{relationLabel(edge.relation)} · conf {Math.round(edge.confidence * 100)}% · {formatAgo(edge.lastSeenMs)}</p>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+
+          {layer === "forensics" ? (
+            <div className="space-y-2 rounded-lg border border-foreground/[0.08] bg-card/45 p-3">
+              <p className="text-[12px] font-semibold text-foreground">Forensics</p>
+              <p className="text-[10px] text-muted-foreground">
+                Raw chunks, provenance, and diffs for current focus.
+              </p>
+
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium text-foreground/85">Raw chunks</p>
+                {forensics.docs.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground">No matching chunks for this focus.</p>
+                ) : (
+                  forensics.docs.slice(0, 4).map((doc) => (
+                    <div key={doc.id} className="rounded border border-foreground/[0.08] bg-card px-2 py-1.5">
+                      <p className="truncate text-[10px] font-medium text-foreground/90">{doc.name}</p>
+                      <p className="text-[9px] text-muted-foreground">{doc.path}</p>
+                      <div className="mt-1 max-h-24 space-y-1 overflow-y-auto">
+                        {doc.chunks.slice(0, 4).map((chunk) => (
+                          <p key={chunk.id} className="rounded bg-background/60 px-1.5 py-1 text-[9px] text-muted-foreground">
+                            L{chunk.startLine}: {chunk.text}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium text-foreground/85">Provenance facts</p>
+                <div className="max-h-28 space-y-1 overflow-y-auto">
+                  {forensics.facts.slice(0, 12).map((fact) => (
+                    <p key={`${fact.doc}:${fact.id}`} className="rounded border border-foreground/[0.08] bg-background/40 px-1.5 py-1 text-[9px] text-muted-foreground">
+                      {fact.doc}:L{fact.line} · {fact.statement}
+                    </p>
+                  ))}
+                  {forensics.facts.length === 0 ? <p className="text-[9px] text-muted-foreground">No matched facts.</p> : null}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium text-foreground/85">Diffs / contradictions</p>
+                {forensics.diffs.length === 0 ? (
+                  <p className="text-[9px] text-muted-foreground">No contradictions detected in current forensics scope.</p>
+                ) : (
+                  forensics.diffs.slice(0, 6).map((diff) => (
+                    <div key={diff.canonical} className="rounded border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[9px] text-rose-700 dark:text-rose-100">
+                      {diff.statements.map((statement, idx) => (
+                        <p key={`${diff.canonical}:${idx}`}>• {statement}</p>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {(overlayDupes || overlayMergeSuggestions) ? (
+            <div className="space-y-2 rounded-lg border border-foreground/[0.08] bg-card/45 p-3">
+              {overlayDupes ? (
+                <div>
+                  <p className="text-[10px] font-medium text-foreground/85">Duplication</p>
+                  <div className="mt-1 max-h-20 space-y-1 overflow-y-auto">
+                    {diagnostics.duplicates.slice(0, 8).map((group) => (
+                      <p key={group.labelKey} className="text-[9px] text-muted-foreground">
+                        {group.labels.join(" | ")}
+                      </p>
+                    ))}
+                    {diagnostics.duplicates.length === 0 ? <p className="text-[9px] text-muted-foreground">No duplicate labels.</p> : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {overlayMergeSuggestions ? (
+                <div>
+                  <p className="text-[10px] font-medium text-foreground/85">Merge suggestions</p>
+                  <div className="mt-1 max-h-20 space-y-1 overflow-y-auto">
+                    {diagnostics.mergeSuggestions.slice(0, 8).map((pair) => (
+                      <p key={`${pair.a.id}:${pair.b.id}`} className="text-[9px] text-muted-foreground">
+                        {pair.a.label} ↔ {pair.b.label} ({Math.round(pair.similarity * 100)}%)
+                      </p>
+                    ))}
+                    {diagnostics.mergeSuggestions.length === 0 ? <p className="text-[9px] text-muted-foreground">No merge candidates.</p> : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="rounded-lg border border-foreground/[0.08] bg-card/40 p-3 text-[10px] text-muted-foreground">
+            <p className="font-medium text-foreground/85">Current defaults</p>
+            <p>Focus + context: 1-hop full, 2-hop faint, 3-hop hidden unless expanded.</p>
+            <p>Render caps: top {MAX_VISIBLE_NODES} nodes, top {MAX_VISIBLE_EDGES} edges in scope.</p>
+            <p>Ranking signals: retrieval frequency, recency, conflict rate, provenance, task relevance, breadth.</p>
+          </div>
         </div>
         )}
       </aside>
 
-      {notice && (
+      {notice ? (
         <div
           className={cn(
             "pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg border px-3 py-2 text-[12px] shadow-lg backdrop-blur-sm",
             notice.kind === "success"
-              ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-200"
-              : "border-red-500/30 bg-red-500/15 text-red-200"
+              ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200"
+              : "border-red-500/30 bg-red-500/15 text-red-700 dark:text-red-200"
           )}
         >
           <span className="inline-flex items-center gap-1.5">
-            {notice.kind === "success" ? (
-              <Sparkles className="h-3.5 w-3.5" />
-            ) : (
-              <AlertTriangle className="h-3.5 w-3.5" />
-            )}
+            {notice.kind === "success" ? <Sparkles className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
             {notice.text}
           </span>
         </div>
-      )}
+      ) : null}
 
-      {(saving || publishing) && (
+      {(saving || publishing) ? (
         <div className="pointer-events-none absolute right-4 top-4 z-30 inline-flex items-center gap-1.5 rounded-md border border-foreground/[0.12] bg-card/90 px-2 py-1 text-[11px] text-foreground/80">
           <InlineSpinner size="sm" />
           {saving ? "Saving graph..." : "Publishing snapshot..."}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

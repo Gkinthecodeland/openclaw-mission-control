@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   Bot,
@@ -843,6 +844,7 @@ function OcStatMini({
 const POLL_INTERVAL = 8000;
 
 export function DashboardView() {
+  const router = useRouter();
   const [live, setLive] = useState<LiveData | null>(null);
   const [system, setSystem] = useState<SystemData | null>(null);
   const [lastRefresh, setLastRefresh] = useState(0);
@@ -857,7 +859,7 @@ export function DashboardView() {
 
   const fetchLive = useCallback(async () => {
     try {
-      const res = await fetch("/api/live");
+      const res = await fetch("/api/live", { cache: "no-store" });
       const data = await res.json();
       setLive(data);
       setLastRefresh(Date.now());
@@ -882,10 +884,21 @@ export function DashboardView() {
     []
   );
 
+  const openCronJob = useCallback(
+    (jobId: string) => {
+      if (!jobId) return;
+      const params = new URLSearchParams();
+      params.set("section", "cron");
+      params.set("job", jobId);
+      router.push(`/?${params.toString()}`);
+    },
+    [router]
+  );
+
   useEffect(() => {
     queueMicrotask(() => fetchLive());
     // Also fetch system data once (channels, devices, skills)
-    fetch("/api/system")
+    fetch("/api/system", { cache: "no-store" })
       .then((r) => r.json())
       .then(setSystem)
       .catch(() => {});
@@ -1432,9 +1445,11 @@ export function DashboardView() {
             </h2>
             <div className="space-y-1.5">
               {live.cronRuns.slice(0, 6).map((run, i) => (
-                <div
+                <button
+                  type="button"
                   key={`${run.jobId}-${run.ts}-${i}`}
-                  className="rounded-lg border border-foreground/[0.04] bg-card/70 px-4 py-2.5"
+                  onClick={() => openCronJob(run.jobId)}
+                  className="w-full rounded-lg border border-foreground/[0.04] bg-card/70 px-4 py-2.5 text-left transition-colors hover:border-violet-500/25 hover:bg-violet-500/[0.04]"
                 >
                   <div className="flex items-center gap-2">
                     {run.status === "ok" ? (
@@ -1459,7 +1474,7 @@ export function DashboardView() {
                   {run.error && (
                     <p className="mt-1 text-[11px] text-red-400">{run.error}</p>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           </div>
