@@ -113,8 +113,8 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         const showBadge = item.section === "chat" && chatUnread > 0;
         const isDisabled = item.comingSoon;
         const linkClass = cn(
-          "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
-          item.isSubItem && "ml-6 py-1 text-xs",
+          "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+          item.isSubItem && "ml-6 py-1 text-[11px]",
           isDisabled
             ? "cursor-not-allowed opacity-60 text-muted-foreground dark:text-zinc-500"
             : isActive

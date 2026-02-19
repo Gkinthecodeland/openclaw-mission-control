@@ -683,7 +683,7 @@ function GatewayDiagnosticsPanel({
       <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-mc-sub font-semibold text-foreground/90">Gateway Diagnostics</p>
+            <p className="text-xs text-foreground/90">Gateway Diagnostics</p>
             <p className="text-mc-caption text-muted-foreground/65">
               Live snapshot from <code>openclaw gateway status --json</code> and{" "}
               <code>openclaw doctor --non-interactive</code>.
@@ -701,40 +701,40 @@ function GatewayDiagnosticsPanel({
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <div className="rounded-lg border border-red-500/20 bg-red-500/[0.04] px-3 py-2">
+          <div className="rounded-lg border border-red-500/20 bg-red-500/[0.04] px-2.5 py-1.5">
             <p className="text-mc-caption uppercase tracking-wide text-red-300/80">Errors</p>
-            <p className="mt-1 text-mc-heading font-semibold text-red-200">{summary.error}</p>
+            <p className="mt-0.5 text-mc-body font-semibold text-red-200">{summary.error}</p>
           </div>
-          <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2">
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-2.5 py-1.5">
             <p className="text-mc-caption uppercase tracking-wide text-amber-300/80">Warnings</p>
-            <p className="mt-1 text-mc-heading font-semibold text-amber-200">{summary.warning}</p>
+            <p className="mt-0.5 text-mc-body font-semibold text-amber-200">{summary.warning}</p>
           </div>
-          <div className="rounded-lg border border-blue-500/20 bg-blue-500/[0.04] px-3 py-2">
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/[0.04] px-2.5 py-1.5">
             <p className="text-mc-caption uppercase tracking-wide text-blue-300/80">Signals</p>
-            <p className="mt-1 text-mc-heading font-semibold text-blue-200">{summary.info}</p>
+            <p className="mt-0.5 text-mc-body font-semibold text-blue-200">{summary.info}</p>
           </div>
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
-            <p className="text-mc-caption text-muted-foreground/60">Runtime</p>
-            <p className="mt-1 text-mc-caption font-medium text-foreground/85">{runtimeStatus}</p>
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-2.5 py-1.5">
+            <p className="text-mc-micro text-muted-foreground/60">Runtime</p>
+            <p className="mt-0.5 text-mc-caption font-medium text-foreground/85">{runtimeStatus}</p>
           </div>
-          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
-            <p className="text-mc-caption text-muted-foreground/60">Bind</p>
-            <p className="mt-1 text-mc-caption font-medium text-foreground/85">{bind}</p>
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-2.5 py-1.5">
+            <p className="text-mc-micro text-muted-foreground/60">Bind</p>
+            <p className="mt-0.5 text-mc-caption font-medium text-foreground/85">{bind}</p>
           </div>
-          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
-            <p className="text-mc-caption text-muted-foreground/60">Port</p>
-            <p className="mt-1 text-mc-caption font-medium text-foreground/85">{portLabel}</p>
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-2.5 py-1.5">
+            <p className="text-mc-micro text-muted-foreground/60">Port</p>
+            <p className="mt-0.5 text-mc-caption font-medium text-foreground/85">{portLabel}</p>
           </div>
-          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
-            <p className="text-mc-caption text-muted-foreground/60">RPC</p>
-            <p className="mt-1 text-mc-caption font-medium text-foreground/85">{rpcLabel}</p>
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-2.5 py-1.5">
+            <p className="text-mc-micro text-muted-foreground/60">RPC</p>
+            <p className="mt-0.5 text-mc-caption font-medium text-foreground/85">{rpcLabel}</p>
           </div>
-          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-3 py-2">
-            <p className="text-mc-caption text-muted-foreground/60">Doctor</p>
-            <p className="mt-1 text-mc-caption font-medium text-foreground/85">
+          <div className="rounded-lg border border-foreground/[0.08] bg-background/40 px-2.5 py-1.5">
+            <p className="text-mc-micro text-muted-foreground/60">Doctor</p>
+            <p className="mt-0.5 text-mc-caption font-medium text-foreground/85">
               {data?.doctor?.ok ? "ok" : `exit ${data?.doctor?.exitCode ?? "?"}`}
             </p>
           </div>
@@ -757,37 +757,37 @@ function GatewayDiagnosticsPanel({
       {data && (
         <>
           <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-3">
-            <h3 className="mb-2 text-mc-body-sm font-semibold uppercase tracking-wider text-muted-foreground/70">
+            <h3 className="mb-1.5 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground/70">
               Alerts & Recommendations
             </h3>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {data.highlights.slice(0, 14).map((item, idx) => {
                 const cfg =
                   item.severity === "error"
                     ? {
-                        icon: AlertCircle,
-                        row: "border-red-500/20 bg-red-500/[0.04] text-red-200",
-                        chip: "bg-red-500/15 text-red-300",
-                      }
+                      icon: AlertCircle,
+                      row: "border-red-500/20 bg-red-500/[0.04] text-red-200",
+                      chip: "bg-red-500/15 text-red-300",
+                    }
                     : item.severity === "warning"
                       ? {
-                          icon: AlertTriangle,
-                          row: "border-amber-500/20 bg-amber-500/[0.04] text-amber-100",
-                          chip: "bg-amber-500/15 text-amber-300",
-                        }
+                        icon: AlertTriangle,
+                        row: "border-amber-500/20 bg-amber-500/[0.04] text-amber-100",
+                        chip: "bg-amber-500/15 text-amber-300",
+                      }
                       : {
-                          icon: Info,
-                          row: "border-blue-500/20 bg-blue-500/[0.04] text-blue-100",
-                          chip: "bg-blue-500/15 text-blue-300",
-                        };
+                        icon: Info,
+                        row: "border-blue-500/20 bg-blue-500/[0.04] text-blue-100",
+                        chip: "bg-blue-500/15 text-blue-300",
+                      };
                 const Icon = cfg.icon;
                 return (
                   <div
                     key={`${item.source}-${idx}-${item.text}`}
-                    className={cn("flex items-start gap-2 rounded-lg border px-2.5 py-2", cfg.row)}
+                    className={cn("flex items-start gap-2 rounded-lg border px-2 py-1.5", cfg.row)}
                   >
-                    <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <div className="min-w-0 flex-1 text-mc-body-sm leading-5">{item.text}</div>
+                    <Icon className="mt-0.5 h-3 w-3 shrink-0" />
+                    <div className="min-w-0 flex-1 text-mc-caption leading-snug">{item.text}</div>
                     <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-mc-micro uppercase tracking-wide", cfg.chip)}>
                       {item.source === "doctor" ? "doctor" : "status"}
                     </span>
@@ -798,10 +798,10 @@ function GatewayDiagnosticsPanel({
           </div>
 
           <div className="rounded-xl border border-foreground/[0.06] bg-card/90 p-3">
-            <h3 className="mb-2 text-mc-body-sm font-semibold uppercase tracking-wider text-muted-foreground/70">
+            <h3 className="mb-1.5 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground/70">
               Doctor Output
             </h3>
-            <div className="max-h-[320px] overflow-y-auto rounded-lg border border-foreground/[0.08] bg-background/40 p-2 font-mono text-mc-caption leading-5 text-muted-foreground/85">
+            <div className="max-h-[320px] overflow-y-auto rounded-lg border border-foreground/[0.08] bg-background/40 p-2 font-mono text-mc-caption leading-snug text-muted-foreground/85">
               {(data.doctor.lines || []).slice(0, 120).map((line, idx) => (
                 <div key={`${idx}-${line}`} className="truncate">
                   {line}
@@ -901,7 +901,7 @@ export function DashboardView() {
     fetch("/api/system", { cache: "no-store" })
       .then((r) => r.json())
       .then(setSystem)
-      .catch(() => {});
+      .catch(() => { });
 
     const startLivePolling = () => {
       if (pollRef.current) return;
@@ -1060,28 +1060,28 @@ export function DashboardView() {
   return (
     <SectionLayout>
       {/* ── Gateway status bar ────────────────────── */}
-      <div className="shrink-0 border-b border-foreground/[0.06] bg-card/80 px-4 py-2.5 md:px-6">
+      <div className="shrink-0 border-b border-foreground/[0.06] bg-card/80 px-4 py-2 md:px-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex items-center gap-1.5">
               <div
                 className={cn(
-                  "h-2.5 w-2.5 rounded-full",
+                  "h-2 w-2 rounded-full",
                   isOnline ? "bg-emerald-500" : "bg-red-500"
                 )}
               />
               {isOnline && (
-                <div className="absolute left-0 h-2.5 w-2.5 animate-ping rounded-full bg-emerald-500/50" />
+                <div className="absolute left-0 h-2 w-2 animate-ping rounded-full bg-emerald-500/50" />
               )}
-              <span className="text-mc-body font-medium text-foreground/90">
+              <span className="text-mc-caption font-medium text-foreground/90">
                 Gateway {isOnline ? "Online" : "Offline"}
               </span>
             </div>
-            <span className="text-mc-body-sm text-muted-foreground/60">
+            <span className="text-mc-caption text-muted-foreground/60">
               v{gw.version} &bull; port {gw.port} &bull; {gw.latencyMs}ms
             </span>
           </div>
-          <span className="text-mc-caption text-muted-foreground/60">
+          <span className="text-mc-micro text-muted-foreground/60">
             Refreshed {Math.floor((now - lastRefresh) / 1000)}s ago &bull; auto-refresh 5s
           </span>
         </div>
@@ -1089,12 +1089,12 @@ export function DashboardView() {
 
       <SectionBody width="content" padding="regular" innerClassName="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex rounded-xl border border-foreground/[0.08] bg-card/70 p-1">
+          <div className="inline-flex rounded-lg border border-foreground/[0.08] bg-card/70 p-0.5">
             <button
               type="button"
               onClick={() => setDashboardTab("overview")}
               className={cn(
-                "rounded-lg px-3 py-1.5 text-mc-body-sm font-medium transition-colors",
+                "rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
                 dashboardTab === "overview"
                   ? "bg-violet-500/20 text-violet-200"
                   : "text-muted-foreground/70 hover:text-foreground/80"
@@ -1106,7 +1106,7 @@ export function DashboardView() {
               type="button"
               onClick={() => setDashboardTab("gateway")}
               className={cn(
-                "rounded-lg px-3 py-1.5 text-mc-body-sm font-medium transition-colors",
+                "rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
                 dashboardTab === "gateway"
                   ? "bg-blue-500/20 text-blue-200"
                   : "text-muted-foreground/70 hover:text-foreground/80"
@@ -1130,409 +1130,409 @@ export function DashboardView() {
         </div>
 
         <div className={cn("space-y-5", dashboardTab !== "overview" && "hidden")}>
-        {/* ── Stat cards ─────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <StatCard
-            icon={Bot}
-            value={live.agents.length}
-            label="Agents"
-            color="bg-violet-500/15 text-violet-400"
-          />
-          <StatCard
-            icon={Activity}
-            value={formatTokens(live.agents.reduce((s, a) => s + a.totalTokens, 0))}
-            label="Tokens Used"
-            color="bg-blue-500/15 text-blue-400"
-          />
-          <StatCard
-            icon={Clock}
-            value={`${live.cron.stats.ok}/${live.cron.stats.total}`}
-            label="Cron OK"
-            color={
-              live.cron.stats.error > 0
-                ? "bg-amber-500/15 text-amber-400"
-                : "bg-emerald-500/15 text-emerald-400"
-            }
-            alert={live.cron.stats.error > 0 ? `${live.cron.stats.error} error` : undefined}
-            alertHref={live.cron.stats.error > 0 ? "/?section=cron&show=errors" : undefined}
-            onClick={live.cron.stats.error > 0 ? () => window.location.href = "/?section=cron&show=errors" : undefined}
-          />
-          <StatCard
-            icon={Smartphone}
-            value={system?.stats.totalDevices || 0}
-            label="Devices"
-            color="bg-cyan-500/15 text-cyan-400"
-          />
-          <StatCard
-            icon={Wrench}
-            value={system?.stats.totalSkills || 0}
-            label="Skills"
-            color="bg-pink-500/15 text-pink-400"
-          />
-        </div>
-
-        {/* ── Top Issues Now ─────────────────────────── */}
-        {issues.length > 0 && (
-          <div>
-            <h2 className="mb-2.5 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
-              <Shield className="h-3.5 w-3.5" />
-              Top Issues
-              <span className="ml-1 rounded-full bg-foreground/[0.06] px-1.5 py-0.5 text-mc-caption font-medium">
-                {issues.length}
-              </span>
-            </h2>
-            <div className="space-y-2">
-              {issues.slice(0, 5).map((issue) => {
-                const severityCfg = {
-                  critical: {
-                    border: "border-red-500/20",
-                    bg: "bg-red-500/[0.04]",
-                    icon: AlertCircle,
-                    iconColor: "text-red-400",
-                    badge: "bg-red-500/15 text-red-400",
-                    badgeLabel: "Critical",
-                  },
-                  warning: {
-                    border: "border-amber-500/20",
-                    bg: "bg-amber-500/[0.03]",
-                    icon: AlertTriangle,
-                    iconColor: "text-amber-400",
-                    badge: "bg-amber-500/15 text-amber-400",
-                    badgeLabel: "Warning",
-                  },
-                  info: {
-                    border: "border-blue-500/15",
-                    bg: "bg-blue-500/[0.02]",
-                    icon: Info,
-                    iconColor: "text-blue-400",
-                    badge: "bg-blue-500/10 text-blue-400",
-                    badgeLabel: "Info",
-                  },
-                }[issue.severity];
-                const SevIcon = severityCfg.icon;
-                return (
-                  <div
-                    key={issue.id}
-                    className={cn(
-                      "flex items-start gap-3 rounded-xl border p-3.5",
-                      severityCfg.border,
-                      severityCfg.bg
-                    )}
-                  >
-                    <SevIcon className={cn("mt-0.5 h-4 w-4 shrink-0", severityCfg.iconColor)} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-mc-caption font-medium text-foreground/80">
-                          {issue.title}
-                        </p>
-                        <span className={cn("rounded-full px-1.5 py-0.5 text-[0.5rem] font-medium", severityCfg.badge)}>
-                          {severityCfg.badgeLabel}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-mc-body-sm text-muted-foreground/70 line-clamp-2">
-                        {issue.detail}
-                      </p>
-                    </div>
-                    {issue.fixLabel && issue.fixHref && (
-                      <a
-                        href={issue.fixHref}
-                        className="flex shrink-0 items-center gap-1 rounded-lg border border-foreground/[0.08] bg-card px-2.5 py-1.5 text-mc-body-sm font-medium text-foreground/70 transition-colors hover:bg-muted/80 hover:text-foreground"
-                      >
-                        {issue.fixLabel}
-                        <ArrowRight className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+          {/* ── Stat cards ─────────────────────────────── */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <StatCard
+              icon={Bot}
+              value={live.agents.length}
+              label="Agents"
+              color="bg-violet-500/15 text-violet-400"
+            />
+            <StatCard
+              icon={Activity}
+              value={formatTokens(live.agents.reduce((s, a) => s + a.totalTokens, 0))}
+              label="Tokens Used"
+              color="bg-blue-500/15 text-blue-400"
+            />
+            <StatCard
+              icon={Clock}
+              value={`${live.cron.stats.ok}/${live.cron.stats.total}`}
+              label="Cron OK"
+              color={
+                live.cron.stats.error > 0
+                  ? "bg-amber-500/15 text-amber-400"
+                  : "bg-emerald-500/15 text-emerald-400"
+              }
+              alert={live.cron.stats.error > 0 ? `${live.cron.stats.error} error` : undefined}
+              alertHref={live.cron.stats.error > 0 ? "/?section=cron&show=errors" : undefined}
+              onClick={live.cron.stats.error > 0 ? () => window.location.href = "/?section=cron&show=errors" : undefined}
+            />
+            <StatCard
+              icon={Smartphone}
+              value={system?.stats.totalDevices || 0}
+              label="Devices"
+              color="bg-cyan-500/15 text-cyan-400"
+            />
+            <StatCard
+              icon={Wrench}
+              value={system?.stats.totalSkills || 0}
+              label="Skills"
+              color="bg-pink-500/15 text-pink-400"
+            />
           </div>
-        )}
 
-        {/* ── Getting Started (newbie rails) ────────── */}
-        {isFreshSetup && issues.length === 0 && (
-          <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/15">
-                <Rocket className="h-5 w-5 text-violet-400" />
-              </div>
-              <div>
-                <h3 className="text-mc-sub font-semibold text-foreground/90">
-                  Welcome to Mission Control
-                </h3>
-                <p className="mt-1 text-mc-caption text-muted-foreground/70">
-                  Your OpenClaw agent is running. Here are some things to try:
-                </p>
-                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {[
-                    { label: "Chat with your agent", href: "/?section=chat", desc: "Send a message and see it respond" },
-                    { label: "Create a cron job", href: "/?section=cron", desc: "Schedule tasks like daily briefs" },
-                    { label: "Connect a channel", href: "/?section=agents", desc: "Link Telegram, WhatsApp, etc." },
-                    { label: "Explore skills", href: "/?section=skills", desc: "See what your agent can do" },
-                  ].map((item) => (
-                    <a
-                      key={item.href}
-                      href={item.href}
-                      className="flex items-center gap-2.5 rounded-lg border border-foreground/[0.06] bg-card/80 px-3 py-2.5 transition-colors hover:border-violet-500/20 hover:bg-violet-500/[0.04]"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-mc-caption font-medium text-foreground/80">{item.label}</p>
-                        <p className="text-mc-caption text-muted-foreground/60">{item.desc}</p>
-                      </div>
-                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Main grid: Agents + Cron ──────────────── */}
-        <div className="grid gap-5 lg:grid-cols-2">
-          {/* Agents */}
-          <div>
-            <h2 className="mb-3 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
-              <Bot className="h-3.5 w-3.5" /> Agents
-            </h2>
-            <div className="space-y-2.5">
-              {live.agents.map((agent) => (
-                <div
-                  key={agent.id}
-                  className="rounded-xl border border-foreground/[0.06] bg-card/90 p-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 text-base">
-                      {agent.id === "main" ? "🦞" : "💀"}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-mc-sub font-semibold text-foreground capitalize">
-                        {agent.id}
-                      </p>
-                      <div className="flex items-center gap-3 text-mc-body-sm text-muted-foreground">
-                        <span>{agent.sessionCount} session{agent.sessionCount !== 1 ? "s" : ""}</span>
-                        <span>{formatTokens(agent.totalTokens)} tokens</span>
-                        <span>Active {formatAgo(agent.lastActivity)}</span>
-                      </div>
-                    </div>
+          {/* ── Top Issues Now ─────────────────────────── */}
+          {issues.length > 0 && (
+            <div>
+              <h2 className="mb-2.5 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                <Shield className="h-3.5 w-3.5" />
+                Top Issues
+                <span className="ml-1 rounded-full bg-foreground/[0.06] px-1.5 py-0.5 text-mc-caption font-medium">
+                  {issues.length}
+                </span>
+              </h2>
+              <div className="space-y-2">
+                {issues.slice(0, 5).map((issue) => {
+                  const severityCfg = {
+                    critical: {
+                      border: "border-red-500/20",
+                      bg: "bg-red-500/[0.04]",
+                      icon: AlertCircle,
+                      iconColor: "text-red-400",
+                      badge: "bg-red-500/15 text-red-400",
+                      badgeLabel: "Critical",
+                    },
+                    warning: {
+                      border: "border-amber-500/20",
+                      bg: "bg-amber-500/[0.03]",
+                      icon: AlertTriangle,
+                      iconColor: "text-amber-400",
+                      badge: "bg-amber-500/15 text-amber-400",
+                      badgeLabel: "Warning",
+                    },
+                    info: {
+                      border: "border-blue-500/15",
+                      bg: "bg-blue-500/[0.02]",
+                      icon: Info,
+                      iconColor: "text-blue-400",
+                      badge: "bg-blue-500/10 text-blue-400",
+                      badgeLabel: "Info",
+                    },
+                  }[issue.severity];
+                  const SevIcon = severityCfg.icon;
+                  return (
                     <div
+                      key={issue.id}
                       className={cn(
-                        "h-2 w-2 rounded-full",
-                        now - agent.lastActivity < 300000
-                          ? "bg-emerald-500"
-                          : "bg-zinc-600"
+                        "flex items-start gap-3 rounded-xl border p-3.5",
+                        severityCfg.border,
+                        severityCfg.bg
                       )}
-                    />
-                  </div>
-                  {/* Token usage bar */}
-                  <div className="mt-3">
-                    <div className="flex justify-between text-mc-caption text-muted-foreground/60">
-                      <span>Token usage</span>
-                      <span>{formatTokens(agent.totalTokens)}</span>
-                    </div>
-                    <div className="mt-1 h-1.5 rounded-full bg-muted">
-                      <div
-                        className="h-1.5 rounded-full bg-violet-500/60 transition-all duration-1000"
-                        style={{
-                          width: `${Math.min(100, (agent.totalTokens / 200000) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Models */}
-            {system?.models && system.models.length > 0 && (
-              <div className="mt-4">
-                <h3 className="mb-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  Model Aliases
-                </h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {system.models.map((m) => (
-                    <span
-                      key={m.id}
-                      className="rounded-md border border-foreground/[0.04] bg-card/80 px-2 py-1 text-mc-caption text-muted-foreground"
                     >
-                      {m.alias && (
-                        <span className="mr-1 text-violet-400">/{m.alias}</span>
+                      <SevIcon className={cn("mt-0.5 h-4 w-4 shrink-0", severityCfg.iconColor)} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-mc-caption font-medium text-foreground/80">
+                            {issue.title}
+                          </p>
+                          <span className={cn("rounded-full px-1.5 py-0.5 text-[0.5rem] font-medium", severityCfg.badge)}>
+                            {severityCfg.badgeLabel}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-mc-body-sm text-muted-foreground/70 line-clamp-2">
+                          {issue.detail}
+                        </p>
+                      </div>
+                      {issue.fixLabel && issue.fixHref && (
+                        <a
+                          href={issue.fixHref}
+                          className="flex shrink-0 items-center gap-1 rounded-lg border border-foreground/[0.08] bg-card px-2.5 py-1.5 text-mc-body-sm font-medium text-foreground/70 transition-colors hover:bg-muted/80 hover:text-foreground"
+                        >
+                          {issue.fixLabel}
+                          <ArrowRight className="h-3 w-3" />
+                        </a>
                       )}
-                      {m.id.split("/").pop()}
-                    </span>
-                  ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Getting Started (newbie rails) ────────── */}
+          {isFreshSetup && issues.length === 0 && (
+            <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/15">
+                  <Rocket className="h-5 w-5 text-violet-400" />
+                </div>
+                <div>
+                  <h3 className="text-mc-sub font-semibold text-foreground/90">
+                    Welcome to Mission Control
+                  </h3>
+                  <p className="mt-1 text-mc-caption text-muted-foreground/70">
+                    Your OpenClaw agent is running. Here are some things to try:
+                  </p>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                      { label: "Chat with your agent", href: "/?section=chat", desc: "Send a message and see it respond" },
+                      { label: "Create a cron job", href: "/?section=cron", desc: "Schedule tasks like daily briefs" },
+                      { label: "Connect a channel", href: "/?section=agents", desc: "Link Telegram, WhatsApp, etc." },
+                      { label: "Explore skills", href: "/?section=skills", desc: "See what your agent can do" },
+                    ].map((item) => (
+                      <a
+                        key={item.href}
+                        href={item.href}
+                        className="flex items-center gap-2.5 rounded-lg border border-foreground/[0.06] bg-card/80 px-3 py-2.5 transition-colors hover:border-violet-500/20 hover:bg-violet-500/[0.04]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-mc-caption font-medium text-foreground/80">{item.label}</p>
+                          <p className="text-mc-caption text-muted-foreground/60">{item.desc}</p>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+                      </a>
+                    ))}
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Cron countdowns */}
-          <div>
-            <h2 className="mb-3 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
-              <Clock className="h-3.5 w-3.5" /> Cron Schedules
-            </h2>
-            <div className="space-y-2.5">
-              {live.cron.jobs.map((job) => {
-                const progress = cronProgress(job);
-                const countdown = formatCountdown(job.nextRunAtMs);
-                return (
+          {/* ── Main grid: Agents + Cron ──────────────── */}
+          <div className="grid gap-5 lg:grid-cols-2">
+            {/* Agents */}
+            <div>
+              <h2 className="mb-3 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                <Bot className="h-3.5 w-3.5" /> Agents
+              </h2>
+              <div className="space-y-2.5">
+                {live.agents.map((agent) => (
                   <div
-                    key={job.id}
+                    key={agent.id}
                     className="rounded-xl border border-foreground/[0.06] bg-card/90 p-4"
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 text-base">
+                        {agent.id === "main" ? "🦞" : "💀"}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-mc-sub font-semibold text-foreground capitalize">
+                          {agent.id}
+                        </p>
+                        <div className="flex items-center gap-3 text-mc-body-sm text-muted-foreground">
+                          <span>{agent.sessionCount} session{agent.sessionCount !== 1 ? "s" : ""}</span>
+                          <span>{formatTokens(agent.totalTokens)} tokens</span>
+                          <span>Active {formatAgo(agent.lastActivity)}</span>
+                        </div>
+                      </div>
                       <div
                         className={cn(
-                          "h-2.5 w-2.5 shrink-0 rounded-full",
-                          job.lastStatus === "ok"
+                          "h-2 w-2 rounded-full",
+                          now - agent.lastActivity < 300000
                             ? "bg-emerald-500"
-                            : job.lastStatus === "error"
-                              ? "bg-red-500"
-                              : "bg-zinc-500"
+                            : "bg-zinc-600"
                         )}
                       />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-mc-body font-medium text-foreground/90">
-                          {job.name}
-                        </p>
-                        <p className="text-mc-caption text-muted-foreground/60">
-                          {job.scheduleDisplay}
-                        </p>
+                    </div>
+                    {/* Token usage bar */}
+                    <div className="mt-3">
+                      <div className="flex justify-between text-mc-caption text-muted-foreground/60">
+                        <span>Token usage</span>
+                        <span>{formatTokens(agent.totalTokens)}</span>
                       </div>
-                      <div className="text-right">
-                        <p className="text-mc-body font-mono font-medium text-foreground/70">
-                          {countdown}
-                        </p>
-                        <p className="text-mc-caption text-muted-foreground/60">
-                          ran {formatAgo(job.lastRunAtMs || 0)} ({formatDuration(job.lastDurationMs)})
-                        </p>
+                      <div className="mt-1 h-1.5 rounded-full bg-muted">
+                        <div
+                          className="h-1.5 rounded-full bg-violet-500/60 transition-all duration-1000"
+                          style={{
+                            width: `${Math.min(100, (agent.totalTokens / 200000) * 100)}%`,
+                          }}
+                        />
                       </div>
                     </div>
-                    {/* Progress bar */}
-                    <div className="mt-2.5 h-1.5 rounded-full bg-muted">
-                      <div
-                        className={cn(
-                          "h-1.5 rounded-full transition-all duration-1000",
-                          job.lastStatus === "error"
-                            ? "bg-red-500/60"
-                            : "bg-emerald-500/50"
-                        )}
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                    {/* Error message */}
-                    {job.lastError && (
-                      <p className="mt-2 flex items-center gap-1 text-mc-caption text-red-400">
-                        <AlertCircle className="h-3 w-3" />
-                        {job.lastError}
-                      </p>
-                    )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+                ))}
+              </div>
 
-        {/* ── System Stats (SSE – no polling) ────── */}
-        <SystemStatsPanel stats={sysStats} connected={sseConnected} />
-
-        {/* ── Recent cron run results ─────────────── */}
-        {live.cronRuns.length > 0 && (
-          <div>
-            <h2 className="mb-3 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
-              <Zap className="h-3.5 w-3.5" /> Recent Cron Results
-            </h2>
-            <div className="space-y-1.5">
-              {live.cronRuns.slice(0, 6).map((run, i) => (
-                <button
-                  type="button"
-                  key={`${run.jobId}-${run.ts}-${i}`}
-                  onClick={() => openCronJob(run.jobId)}
-                  className="w-full rounded-lg border border-foreground/[0.04] bg-card/70 px-4 py-2.5 text-left transition-colors hover:border-violet-500/25 hover:bg-violet-500/[0.04]"
-                >
-                  <div className="flex items-center gap-2">
-                    {run.status === "ok" ? (
-                      <CheckCircle className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                    ) : (
-                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
-                    )}
-                    <span className="text-mc-body-sm text-muted-foreground">
-                      {formatAgo(run.ts)}
-                    </span>
-                    {run.durationMs && (
-                      <span className="text-mc-caption text-muted-foreground/60">
-                        {formatDuration(run.durationMs)}
+              {/* Models */}
+              {system?.models && system.models.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="mb-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    Model Aliases
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {system.models.map((m) => (
+                      <span
+                        key={m.id}
+                        className="rounded-md border border-foreground/[0.04] bg-card/80 px-2 py-1 text-mc-caption text-muted-foreground"
+                      >
+                        {m.alias && (
+                          <span className="mr-1 text-violet-400">/{m.alias}</span>
+                        )}
+                        {m.id.split("/").pop()}
                       </span>
-                    )}
+                    ))}
                   </div>
-                  {run.summary && (
-                    <p className="mt-1 line-clamp-2 text-mc-body-sm leading-5 text-muted-foreground">
-                      {run.summary.replace(/[*#|_]/g, "").substring(0, 200)}
-                    </p>
-                  )}
-                  {run.error && (
-                    <p className="mt-1 text-mc-body-sm text-red-400">{run.error}</p>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Live activity log ───────────────────── */}
-        <div>
-          <h2 className="mb-3 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
-            <Radio className="h-3.5 w-3.5" /> Gateway Log
-          </h2>
-          <div className="rounded-xl border border-foreground/[0.06] bg-background/60 p-1">
-            <div className="max-h-[320px] overflow-y-auto font-mono text-mc-body-sm leading-5">
-              {live.logEntries.map((entry, i) => {
-                const isError =
-                  entry.message.toLowerCase().includes("error") ||
-                  entry.message.toLowerCase().includes("fail");
-                const isWs = entry.source === "ws";
-                const isCron = entry.source.includes("cron");
-                const time = entry.time
-                  ? new Date(entry.time).toLocaleTimeString()
-                  : "";
-                return (
-                  <div
-                    key={i}
-                    className={cn(
-                      "flex gap-2 rounded px-2 py-0.5",
-                      isError
-                        ? "bg-red-500/5 text-red-400"
-                        : "hover:bg-foreground/[0.02]"
-                    )}
-                  >
-                    <span className="shrink-0 text-muted-foreground/60">{time}</span>
-                    <span
-                      className={cn(
-                        "shrink-0 w-24 truncate",
-                        isCron
-                          ? "text-amber-500"
-                          : isWs
-                            ? "text-blue-500"
-                            : "text-muted-foreground"
-                      )}
-                    >
-                      [{entry.source}]
-                    </span>
-                    <span className="min-w-0 truncate text-muted-foreground">
-                      {entry.message}
-                    </span>
-                  </div>
-                );
-              })}
-              {live.logEntries.length === 0 && (
-                <p className="px-2 py-4 text-center text-muted-foreground/60">
-                  No recent log entries
-                </p>
+                </div>
               )}
             </div>
+
+            {/* Cron countdowns */}
+            <div>
+              <h2 className="mb-3 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" /> Cron Schedules
+              </h2>
+              <div className="space-y-2.5">
+                {live.cron.jobs.map((job) => {
+                  const progress = cronProgress(job);
+                  const countdown = formatCountdown(job.nextRunAtMs);
+                  return (
+                    <div
+                      key={job.id}
+                      className="rounded-xl border border-foreground/[0.06] bg-card/90 p-4"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={cn(
+                            "h-2.5 w-2.5 shrink-0 rounded-full",
+                            job.lastStatus === "ok"
+                              ? "bg-emerald-500"
+                              : job.lastStatus === "error"
+                                ? "bg-red-500"
+                                : "bg-zinc-500"
+                          )}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-mc-body font-medium text-foreground/90">
+                            {job.name}
+                          </p>
+                          <p className="text-mc-caption text-muted-foreground/60">
+                            {job.scheduleDisplay}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-mc-body font-mono font-medium text-foreground/70">
+                            {countdown}
+                          </p>
+                          <p className="text-mc-caption text-muted-foreground/60">
+                            ran {formatAgo(job.lastRunAtMs || 0)} ({formatDuration(job.lastDurationMs)})
+                          </p>
+                        </div>
+                      </div>
+                      {/* Progress bar */}
+                      <div className="mt-2.5 h-1.5 rounded-full bg-muted">
+                        <div
+                          className={cn(
+                            "h-1.5 rounded-full transition-all duration-1000",
+                            job.lastStatus === "error"
+                              ? "bg-red-500/60"
+                              : "bg-emerald-500/50"
+                          )}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      {/* Error message */}
+                      {job.lastError && (
+                        <p className="mt-2 flex items-center gap-1 text-mc-caption text-red-400">
+                          <AlertCircle className="h-3 w-3" />
+                          {job.lastError}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
+
+          {/* ── System Stats (SSE – no polling) ────── */}
+          <SystemStatsPanel stats={sysStats} connected={sseConnected} />
+
+          {/* ── Recent cron run results ─────────────── */}
+          {live.cronRuns.length > 0 && (
+            <div>
+              <h2 className="mb-3 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                <Zap className="h-3.5 w-3.5" /> Recent Cron Results
+              </h2>
+              <div className="space-y-1.5">
+                {live.cronRuns.slice(0, 6).map((run, i) => (
+                  <button
+                    type="button"
+                    key={`${run.jobId}-${run.ts}-${i}`}
+                    onClick={() => openCronJob(run.jobId)}
+                    className="w-full rounded-lg border border-foreground/[0.04] bg-card/70 px-4 py-2.5 text-left transition-colors hover:border-violet-500/25 hover:bg-violet-500/[0.04]"
+                  >
+                    <div className="flex items-center gap-2">
+                      {run.status === "ok" ? (
+                        <CheckCircle className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                      )}
+                      <span className="text-mc-body-sm text-muted-foreground">
+                        {formatAgo(run.ts)}
+                      </span>
+                      {run.durationMs && (
+                        <span className="text-mc-caption text-muted-foreground/60">
+                          {formatDuration(run.durationMs)}
+                        </span>
+                      )}
+                    </div>
+                    {run.summary && (
+                      <p className="mt-1 line-clamp-2 text-mc-body-sm leading-5 text-muted-foreground">
+                        {run.summary.replace(/[*#|_]/g, "").substring(0, 200)}
+                      </p>
+                    )}
+                    {run.error && (
+                      <p className="mt-1 text-mc-body-sm text-red-400">{run.error}</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Live activity log ───────────────────── */}
+          <div>
+            <h2 className="mb-3 flex items-center gap-2 text-mc-caption font-semibold uppercase tracking-wider text-muted-foreground">
+              <Radio className="h-3.5 w-3.5" /> Gateway Log
+            </h2>
+            <div className="rounded-xl border border-foreground/[0.06] bg-background/60 p-1">
+              <div className="max-h-[320px] overflow-y-auto font-mono text-mc-body-sm leading-5">
+                {live.logEntries.map((entry, i) => {
+                  const isError =
+                    entry.message.toLowerCase().includes("error") ||
+                    entry.message.toLowerCase().includes("fail");
+                  const isWs = entry.source === "ws";
+                  const isCron = entry.source.includes("cron");
+                  const time = entry.time
+                    ? new Date(entry.time).toLocaleTimeString()
+                    : "";
+                  return (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex gap-2 rounded px-2 py-0.5",
+                        isError
+                          ? "bg-red-500/5 text-red-400"
+                          : "hover:bg-foreground/[0.02]"
+                      )}
+                    >
+                      <span className="shrink-0 text-muted-foreground/60">{time}</span>
+                      <span
+                        className={cn(
+                          "shrink-0 w-24 truncate",
+                          isCron
+                            ? "text-amber-500"
+                            : isWs
+                              ? "text-blue-500"
+                              : "text-muted-foreground"
+                        )}
+                      >
+                        [{entry.source}]
+                      </span>
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {entry.message}
+                      </span>
+                    </div>
+                  );
+                })}
+                {live.logEntries.length === 0 && (
+                  <p className="px-2 py-4 text-center text-muted-foreground/60">
+                    No recent log entries
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {dashboardTab === "gateway" && (
