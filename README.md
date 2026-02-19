@@ -136,67 +136,56 @@ Everything runs locally — Mission Control is a **self-hosted AI dashboard**. N
 ## Screenshots / 截图
 
 ### Dashboard / 仪表盘
-![Dashboard](promo-dashboard.png)
 *Real-time overview of your agents, gateway status, and system metrics*
 
 *实时概览你的智能体、网关状态和系统指标*
 
 ### Agents Org Chart / 智能体组织图
-![Agents](promo-agents.png)
 *Interactive hierarchy view with channels, workspaces, and runtime context*
 
 *可交互层级视图，包含通道、工作空间和运行态上下文*
 
 ### Subagents Mission Control / 子智能体控制
-![Subagents](promo-subagents.png)
 *Spawn/list/kill subagents and run control commands from one place*
 
 *在一个界面中创建/查看/终止子智能体并运行控制命令*
 
 ### Cron Jobs / 定时任务
-![Cron Jobs](promo-cron.png)
 *Manage and monitor scheduled tasks*
 
 *管理和监控定时任务*
 
 ### Models / 模型管理与认证
-![Models](promo-models.png)
 *Unified model runtime/config controls plus provider auth inventory*
 
 *统一模型运行态/配置控制，并提供认证清单*
 
 ### Accounts & Keys / 账户与密钥
-![Accounts](promo-accounts.png)
 *Integration credentials, env key editing, and discovered secret sources*
 
 *集成凭据、环境密钥编辑和已发现密钥来源*
 
 ### Tailscale / 网络暴露管理
-![Tailscale](promo-tailscale.png)
 *Integrated Tailscale status, exposure controls, and tunnel actions*
 
 *集成 Tailscale 状态、暴露控制与隧道操作*
 
 ### Browser Relay / 浏览器中继
-![Browser Relay](promo-browser.png)
 *Debug extension relay connectivity and runtime health instantly*
 
 *快速排查扩展中继连接与运行状态*
 
 ### Tasks / 任务看板
-![Tasks](promo-tasks.png)
 *Kanban board synchronized with your workspace*
 
 *与工作空间同步的看板*
 
 ### Sessions / 会话
-![Sessions](promo-sessions.png)
 *Chat history and agent interactions*
 
 *对话历史和智能体交互记录*
 
 ### Gateway Diagnostics / 网关诊断
-![Gateway Diagnostics](promo-system.png)
 *Doctor/status checks, config/runtime drift visibility, and recovery actions*
 
 *Doctor/status 检查、配置与运行态漂移可视化，以及恢复操作*
@@ -207,7 +196,6 @@ Everything runs locally — Mission Control is a **self-hosted AI dashboard**. N
 *编辑长期记忆和每日日志*
 
 ### Documents / 文档
-![Documents](promo-docs.png)
 *Browse workspace documentation*
 
 *浏览工作空间文档*
