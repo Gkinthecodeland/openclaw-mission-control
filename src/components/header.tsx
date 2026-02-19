@@ -546,12 +546,12 @@ function GatewayStatusBadge({
         <div className="absolute left-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-sm">
           {/* Header */}
           <div className={cn("flex items-center gap-2.5 px-3.5 py-3 border-b border-foreground/[0.06]", cfg.bg)}>
-            <Icon className={cn("h-4 w-4", cfg.text, status === "loading" && "animate-spin")} />
+            <Icon className={cn("h-3.5 w-3.5", cfg.text, status === "loading" && "animate-spin")} />
             <div>
-              <p className={cn("text-sm font-semibold", cfg.text)}>
+              <p className={cn("text-xs font-semibold", cfg.text)}>
                 Gateway {cfg.label}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[0.65rem] text-muted-foreground">
                 {status === "offline"
                   ? "Cannot reach gateway process"
                   : status === "degraded"

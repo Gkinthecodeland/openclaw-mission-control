@@ -21,7 +21,6 @@ import {
   Globe,
   Loader2,
   X,
-  Ear,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
@@ -532,8 +531,8 @@ function TtsTestPanel({
 
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
-      <div className="flex items-center gap-2 text-mc-body font-semibold text-foreground/90">
-        <Headphones className="h-4 w-4 text-violet-400" />
+      <div className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
+        <Headphones className="h-3.5 w-3.5 text-violet-400" />
         Voice Sample Lab
       </div>
 
@@ -544,13 +543,13 @@ function TtsTestPanel({
             type="button"
             onClick={() => setText(preset)}
             className={cn(
-              "rounded-md border px-2.5 py-1 text-mc-body-sm transition-colors",
+              "rounded-md border px-2 py-0.5 text-[0.65rem] leading-tight transition-colors",
               text === preset
                 ? "border-violet-500/35 bg-violet-500/15 text-violet-300"
                 : "border-foreground/[0.08] bg-muted text-muted-foreground hover:text-foreground/70"
             )}
           >
-            {preset.slice(0, 28)}...
+            {preset.length > 40 ? `${preset.slice(0, 40)}…` : preset}
           </button>
         ))}
       </div>
@@ -641,19 +640,71 @@ function TtsTestPanel({
 
 /* ── Talk Mode Section ───────────────────────────── */
 
-function TalkModeSection({ config }: { config: TalkConfig }) {
-  const hasConfig = config && Object.keys(config).length > 0;
+function TalkModeSection({
+  config,
+  talkSectionExists,
+  onEnableTalk,
+  enabling,
+  onTestTalk,
+  testingTalk,
+}: {
+  config: TalkConfig;
+  /** True when the talk section exists in config (even if empty), so we show as enabled after "Enable Talk Mode" */
+  talkSectionExists?: boolean;
+  onEnableTalk?: () => Promise<void>;
+  enabling?: boolean;
+  onTestTalk?: (message: string) => Promise<void>;
+  testingTalk?: boolean;
+}) {
+  const [testMessage, setTestMessage] = useState("");
+  const [listening, setListening] = useState(false);
+  const hasConfig =
+    (config && Object.keys(config).length > 0) || talkSectionExists === true;
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition =
+      typeof window !== "undefined" &&
+      (window as unknown as { SpeechRecognition?: new () => SpeechRecognition; webkitSpeechRecognition?: new () => SpeechRecognition }).SpeechRecognition;
+    const WebkitSpeechRecognition =
+      typeof window !== "undefined" &&
+      (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognition }).webkitSpeechRecognition;
+    const Recognition = SpeechRecognition || WebkitSpeechRecognition;
+    if (!Recognition) {
+      return;
+    }
+    const rec = new Recognition();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+    setListening(true);
+    rec.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results?.[0]?.[0]?.transcript;
+      if (transcript) setTestMessage((prev) => (prev ? `${prev} ${transcript}` : transcript).trim());
+      setListening(false);
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => setListening(false);
+    rec.start();
+  }, []);
 
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
-      <div className="flex items-center gap-2 text-mc-body font-semibold text-foreground/90">
-        <Mic className="h-4 w-4 text-emerald-400" />
+      <div className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
+        <Mic className="h-3.5 w-3.5 text-emerald-400" />
         Talk Mode
-        <span className="text-mc-body-sm text-muted-foreground font-normal">(macOS / iOS / Android)</span>
+        <span className="text-xs text-muted-foreground font-normal">(macOS / iOS / Android)</span>
       </div>
-      <p className="text-mc-caption text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Continuous voice conversation loop: Listen → Transcribe → Respond → Speak.
-        Uses ElevenLabs for real-time streaming playback.
+        Uses ElevenLabs for real-time streaming playback.{" "}
+        <a
+          href="https://docs.openclaw.ai/nodes/talk#talk-mode"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-emerald-400 hover:underline"
+        >
+          Docs
+        </a>
       </p>
 
       {hasConfig ? (
@@ -682,16 +733,95 @@ function TalkModeSection({ config }: { config: TalkConfig }) {
               </div>
             </div>
           )}
+
+          {/* Test Talk in browser */}
+          {onTestTalk && (
+            <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
+              <p className="text-mc-body-sm font-medium text-foreground/80">Test in browser</p>
+              <p className="text-xs text-muted-foreground">
+                Send a message to the agent and hear the reply in your Talk voice.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && void onTestTalk(testMessage)}
+                  placeholder="Say something to the agent…"
+                  className="flex-1 min-w-0 rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  disabled={testingTalk}
+                />
+                <div className="flex gap-2">
+                  {typeof window !== "undefined" &&
+                    ("SpeechRecognition" in window || "webkitSpeechRecognition" in window) && (
+                    <button
+                      type="button"
+                      onClick={startListening}
+                      disabled={testingTalk || listening}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                        listening
+                          ? "border-amber-500/40 bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                          : "border-foreground/15 bg-muted/50 text-foreground/80 hover:bg-muted"
+                      )}
+                      title="Use microphone"
+                    >
+                      <Mic className={cn("h-4 w-4", listening && "animate-pulse")} />
+                      {listening ? "Listening…" : "Mic"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void onTestTalk(testMessage)}
+                    disabled={testingTalk || !testMessage.trim()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-500/25 disabled:opacity-50"
+                  >
+                    {testingTalk ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Sending…
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="h-4 w-4" />
+                        Send & hear reply
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-foreground/[0.08] bg-muted/50 px-4 py-6 text-center">
           <Mic className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
-          <p className="text-mc-caption text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Talk Mode is not configured yet.
           </p>
-          <p className="text-mc-body-sm text-muted-foreground/60 mt-1">
-            Add a <code className="rounded bg-foreground/[0.06] px-1 py-0.5 text-mc-caption">talk</code> section to openclaw.json to enable.
+          <p className="text-xs text-muted-foreground/60 mt-1">
+            Add a <code className="rounded bg-foreground/[0.06] px-1 py-0.5 text-xs">talk</code> section to enable voice conversation. Set <strong className="text-foreground/70">voiceId</strong> and <strong className="text-foreground/70">apiKey</strong> in Config → Raw or after enabling.
           </p>
+          {onEnableTalk && (
+            <button
+              type="button"
+              onClick={() => void onEnableTalk()}
+              disabled={enabling}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-500/25 disabled:opacity-50"
+            >
+              {enabling ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Enabling…
+                </>
+              ) : (
+                <>
+                  <Mic className="h-4 w-4" />
+                  Enable Talk Mode
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 
@@ -713,118 +843,6 @@ function TalkModeSection({ config }: { config: TalkConfig }) {
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ── Audio Understanding Section ─────────────────── */
-
-function AudioUnderstandingSection({ config }: { config: AudioConfig }) {
-  const isEnabled = config.enabled !== false;
-  const models = config.models || [];
-
-  return (
-    <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-mc-body font-semibold text-foreground/90">
-          <Ear className="h-4 w-4 text-sky-400" />
-          Audio Understanding
-          <span className="text-mc-body-sm text-muted-foreground font-normal">(Inbound Transcription)</span>
-        </div>
-        <span
-          className={cn(
-            "rounded-full px-2 py-0.5 text-mc-caption font-semibold uppercase tracking-wider",
-            isEnabled
-              ? "bg-emerald-500/20 text-emerald-400"
-              : "bg-zinc-500/20 text-muted-foreground"
-          )}
-        >
-          {isEnabled ? "Active" : "Disabled"}
-        </span>
-      </div>
-
-      <p className="text-mc-caption text-muted-foreground">
-        Transcribes incoming voice messages and audio files using configured providers.
-        Auto-detects available services when no explicit configuration is set.
-      </p>
-
-      {models.length > 0 ? (
-        <div>
-          <p className="text-mc-body-sm font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
-            Transcription Pipeline
-          </p>
-          <div className="space-y-1.5">
-            {models.map((m, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 rounded-lg border border-foreground/[0.06] bg-muted/50 px-3 py-2"
-              >
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-500/15 text-mc-body-sm font-bold text-sky-400">
-                  {i + 1}
-                </span>
-                <div className="flex-1">
-                  {m.type === "cli" ? (
-                    <span className="text-mc-caption text-foreground/70">
-                      CLI: <code className="rounded bg-foreground/[0.06] px-1 text-mc-body-sm">{m.command}</code>
-                    </span>
-                  ) : (
-                    <span className="text-mc-caption text-foreground/70">
-                      {m.provider || "auto"}/{m.model || "default"}
-                    </span>
-                  )}
-                  {m.timeoutSeconds && (
-                    <span className="ml-2 text-mc-caption text-muted-foreground/60">
-                      timeout: {m.timeoutSeconds}s
-                    </span>
-                  )}
-                </div>
-                {m.capabilities && (
-                  <div className="flex gap-1">
-                    {m.capabilities.map((c) => (
-                      <span
-                        key={c}
-                        className="rounded-md border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-mc-micro text-sky-400"
-                      >
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dashed border-sky-500/10 bg-sky-500/[0.03] px-4 py-3">
-          <div className="flex items-start gap-2">
-            <Zap className="h-4 w-4 text-sky-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-mc-caption font-medium text-sky-300">Auto-Detection Active</p>
-              <p className="text-mc-body-sm text-muted-foreground mt-0.5">
-                OpenClaw auto-detects transcription providers in order: local CLIs (sherpa-onnx, whisper-cli, whisper)
-                → Gemini CLI → Provider APIs (OpenAI → Groq → Deepgram → Google).
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Max bytes */}
-      {config.maxBytes && (
-        <ConfigField label="Max Audio Size" value={formatBytes(config.maxBytes)} />
-      )}
-
-      {/* Scope rules */}
-      {config.scope && (
-        <div className="mt-1">
-          <p className="text-mc-body-sm font-medium uppercase tracking-wider text-muted-foreground mb-1">
-            Scope Rules
-          </p>
-          <pre className="rounded-lg bg-muted p-2 text-mc-body-sm text-muted-foreground overflow-auto">
-            {JSON.stringify(config.scope, null, 2)}
-          </pre>
-        </div>
-      )}
     </div>
   );
 }
@@ -872,24 +890,24 @@ function TtsSettingsPanel({
 
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-4">
-      <div className="flex items-center gap-2 text-mc-body font-semibold text-foreground/90">
-        <Settings2 className="h-4 w-4 text-muted-foreground" />
+      <div className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
+        <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
         TTS Settings
       </div>
 
       {/* Fallback chain */}
       <div>
-        <p className="text-mc-body-sm font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
           Provider Fallback Chain
         </p>
         <div className="flex items-center gap-2">
-          <span className="rounded-md border border-violet-500/30 bg-violet-500/15 px-2 py-1 text-mc-caption font-medium text-violet-300">
+          <span className="rounded-md border border-violet-500/30 bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-300">
             {status.provider}
           </span>
           {status.fallbackProviders?.map((fp) => (
             <div key={fp} className="flex items-center gap-2">
-              <span className="text-mc-caption text-muted-foreground/60">→</span>
-              <span className="rounded-md border border-foreground/[0.08] bg-foreground/[0.03] px-2 py-1 text-mc-caption text-muted-foreground">
+              <span className="text-xs text-muted-foreground/60">→</span>
+              <span className="rounded-md border border-foreground/[0.08] bg-foreground/[0.03] px-2 py-0.5 text-xs text-muted-foreground">
                 {fp}
               </span>
             </div>
@@ -899,7 +917,7 @@ function TtsSettingsPanel({
 
       {/* API Key status */}
       <div>
-        <p className="text-mc-body-sm font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
           API Keys
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -911,16 +929,16 @@ function TtsSettingsPanel({
             <div
               key={k.name}
               className={cn(
-                "flex items-center gap-2 rounded-lg border px-3 py-2 text-mc-caption",
+                "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs",
                 k.has
                   ? "border-emerald-500/20 bg-emerald-500/[0.05] text-emerald-400"
                   : "border-foreground/[0.06] bg-foreground/[0.02] text-muted-foreground/60"
               )}
             >
               {k.has ? (
-                <Check className="h-3.5 w-3.5" />
+                <Check className="h-3 w-3" />
               ) : (
-                <X className="h-3.5 w-3.5" />
+                <X className="h-3 w-3" />
               )}
               {k.name}
             </div>
@@ -931,7 +949,7 @@ function TtsSettingsPanel({
       {/* Summary settings */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-mc-body-sm font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Auto-Summarize Long Replies
           </p>
           <button
@@ -960,23 +978,33 @@ function TtsSettingsPanel({
         </div>
         {summarize && (
           <div className="flex items-center gap-2">
-            <span className="text-mc-body-sm text-muted-foreground">Threshold:</span>
+            <span className="text-xs text-muted-foreground">Threshold:</span>
             <input
               type="number"
               value={summaryThreshold}
               onChange={(e) => setSummaryThreshold(e.target.value)}
-              className="w-24 rounded-md border border-foreground/[0.08] bg-muted px-2 py-1 text-mc-caption text-foreground/70 outline-none"
+              onBlur={() => {
+                const val = parseInt(summaryThreshold, 10) || 1500;
+                if (val > 0 && val <= 100000) {
+                  onUpdateConfig("tts", {
+                    auto: status.auto,
+                    summarize,
+                    maxTextLength: val,
+                  });
+                }
+              }}
+              className="w-24 rounded-md border border-foreground/[0.08] bg-muted px-2 py-1 text-xs text-foreground/70 outline-none"
               placeholder="1500"
             />
-            <span className="text-mc-body-sm text-muted-foreground/60">chars</span>
+            <span className="text-xs text-muted-foreground/60">chars</span>
           </div>
         )}
       </div>
 
       {/* Output format info */}
       <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2.5">
-        <p className="text-mc-body-sm font-medium text-muted-foreground mb-1">Output Formats</p>
-        <div className="space-y-1 text-mc-body-sm text-muted-foreground">
+        <p className="text-xs font-medium text-muted-foreground mb-1">Output Formats</p>
+        <div className="space-y-1 text-xs text-muted-foreground">
           <p><span className="text-muted-foreground">Telegram:</span> Opus voice note (48kHz/64kbps)</p>
           <p><span className="text-muted-foreground">Other channels:</span> MP3 (44.1kHz/128kbps)</p>
           <p><span className="text-muted-foreground">Edge TTS:</span> audio-24khz-48kbitrate-mono-mp3</p>
@@ -992,6 +1020,10 @@ export function AudioView() {
   const [data, setData] = useState<AudioFullState | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [talkEnabling, setTalkEnabling] = useState(false);
+  const [testingTalk, setTestingTalk] = useState(false);
+  const [slashCommandsOpen, setSlashCommandsOpen] = useState(false);
+  const [gatewayRpcOpen, setGatewayRpcOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [testResult, setTestResult] = useState<{
@@ -1052,10 +1084,12 @@ export function AudioView() {
         const json = await res.json();
         if (json.ok) {
           setToast({
-            message: mode === "off" ? "Auto-TTS turned off" : `Auto-TTS set to "${mode}"`,
+            message: mode === "off" ? "Auto-TTS turned off" : `Auto-TTS set to "${mode}". Refreshing after restart…`,
             type: "success",
           });
           requestRestart("TTS auto-mode was changed.");
+          // Optimistic update already set status.auto; delay refetch so restarted gateway is up
+          await new Promise((r) => setTimeout(r, 2500));
           await fetchData();
         } else {
           setToast({ message: json.error || "Failed to update", type: "error" });
@@ -1171,6 +1205,39 @@ export function AudioView() {
     [data]
   );
 
+  const testTalkInBrowser = useCallback(
+    async (userMessage: string) => {
+      const msg = userMessage.trim();
+      if (!msg) return;
+      const talkResolved = data?.config?.talk?.resolved as { voiceId?: string } | undefined;
+      const voiceId = talkResolved?.voiceId;
+      setTestingTalk(true);
+      setTestResult(null);
+      try {
+        const chatRes = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: msg }],
+            agentId: "main",
+          }),
+        });
+        const reply = await chatRes.text();
+        const replyTrimmed = reply?.trim();
+        if (!replyTrimmed) {
+          setToast({ message: "No reply from agent", type: "error" });
+          return;
+        }
+        await testTts(replyTrimmed, "elevenlabs", voiceId || undefined);
+      } catch (err) {
+        setToast({ message: err instanceof Error ? err.message : "Talk test failed", type: "error" });
+      } finally {
+        setTestingTalk(false);
+      }
+    },
+    [data?.config?.talk?.resolved, testTts]
+  );
+
   const updateConfig = useCallback(
     async (section: string, config: Record<string, unknown>) => {
       setActionLoading(true);
@@ -1200,6 +1267,50 @@ export function AudioView() {
     [fetchData]
   );
 
+  const enableTalkMode = useCallback(async () => {
+    setTalkEnabling(true);
+    try {
+      const res = await fetch("/api/audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update-config", section: "talk", config: {} }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setToast({
+          message: "Talk Mode enabled. Refreshing after gateway restart…",
+          type: "success",
+        });
+        requestRestart("Talk Mode was enabled.");
+        // Show as enabled immediately (parsed talk section will exist after patch)
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            config: {
+              ...prev.config,
+              talk: {
+                ...prev.config.talk,
+                parsed: {},
+              },
+            },
+          };
+        });
+        // Refetch after a delay so the restarted gateway is up and we get fresh config
+        await new Promise((r) => setTimeout(r, 2500));
+        await fetchData();
+      } else {
+        setToast({ message: json.error || "Failed to enable Talk Mode", type: "error" });
+        await fetchData();
+      }
+    } catch (err) {
+      setToast({ message: String(err), type: "error" });
+      await fetchData();
+    } finally {
+      setTalkEnabling(false);
+    }
+  }, [fetchData]);
+
   // Auto-mode is now handled by setAutoMode directly
 
   /* ── Render ────────────── */
@@ -1227,12 +1338,13 @@ export function AudioView() {
     <SectionLayout>
       <SectionHeader
         title={
-          <span className="flex items-center gap-2">
-            <Volume2 className="h-5 w-5 text-violet-400" />
+          <span className="flex items-center gap-2 text-sm">
+            <Volume2 className="h-4 w-4 text-violet-400" />
             Audio & Voice
           </span>
         }
         description="Text-to-speech, Talk Mode, and audio understanding configuration"
+        descriptionClassName="text-sm text-muted-foreground"
         actions={
           <button
             onClick={fetchData}
@@ -1244,87 +1356,100 @@ export function AudioView() {
       />
 
       <SectionBody width="content" padding="regular" innerClassName="space-y-6">
-        {/* Auto-TTS explanation + mode selector */}
-        <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-5 space-y-4">
-          <div>
-            <div className="flex items-center justify-between">
-              <h2 className="text-mc-sub font-semibold text-foreground/90 flex items-center gap-2">
-                <Waves className="h-4 w-4 text-violet-400" />
-                Auto-TTS
-              </h2>
-              <span
-                className={cn(
-                  "rounded-full px-2.5 py-0.5 text-mc-body-sm font-semibold",
-                  status.auto !== "off"
-                    ? "bg-emerald-500/15 text-emerald-400"
-                    : "bg-foreground/[0.06] text-muted-foreground"
-                )}
-              >
-                {status.auto === "off" ? "Off" : status.auto}
-              </span>
+        {/* Top: recap of current config (read-only) */}
+        <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.03] p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Current configuration
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="flex items-center gap-2">
+              <Waves className="h-3.5 w-3.5 text-violet-400 shrink-0" />
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/80">Auto-TTS</p>
+                <p className="text-xs font-medium text-foreground/90">{status.auto === "off" ? "Off" : status.auto}</p>
+              </div>
             </div>
-            <p className="text-mc-caption text-muted-foreground mt-1">
-              Controls whether agent replies are automatically spoken aloud.
-              {status.auto === "off"
-                ? " Currently off — you can still generate speech on-demand below or via /tts audio in chat."
-                : status.auto === "always"
-                  ? " All agent replies will be spoken."
-                  : status.auto === "inbound"
-                    ? " Agent will reply with voice when you send a voice message."
-                    : " Only messages tagged with /tts will be spoken."}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {AUTO_MODES.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => setAutoMode(m.value)}
-                disabled={actionLoading}
-                className={cn(
-                  "rounded-lg border px-3 py-2.5 text-left transition-all",
-                  status.auto === m.value
-                    ? "border-violet-500/30 bg-violet-500/10"
-                    : "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]"
-                )}
-              >
-                <p
-                  className={cn(
-                    "text-mc-caption font-medium",
-                    status.auto === m.value ? "text-violet-300" : "text-foreground/70"
-                  )}
-                >
-                  {m.label}
+            <div className="flex items-center gap-2">
+              <Speaker className="h-3.5 w-3.5 text-violet-400 shrink-0" />
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/80">Provider</p>
+                <p className="text-xs font-medium text-foreground/90">{providersData.active || status.provider || "none"}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Mic className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/80">Talk Mode</p>
+                <p className="text-xs font-medium text-foreground/90">
+                  {((configData.talk.parsed != null && typeof configData.talk.parsed === "object") || (configData.talk.resolved && Object.keys(configData.talk.resolved).length > 0))
+                    ? "Configured"
+                    : "Not configured"}
                 </p>
-                <p className="text-mc-caption text-muted-foreground/60 mt-0.5">{m.desc}</p>
-              </button>
-            ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Globe className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/80">Providers</p>
+                <p className="text-xs font-medium text-foreground/90">
+                  {providersData.providers.filter((p) => p.configured).length} configured
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Quick status row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <StatusCard
-            label="Active Provider"
-            value={providersData.active || status.provider || "none"}
-            icon={Speaker}
-            color="text-violet-400"
-          />
-          <StatusCard
-            label="Configured"
-            value={`${providersData.providers.filter((p) => p.configured).length} provider${providersData.providers.filter((p) => p.configured).length !== 1 ? "s" : ""}`}
-            icon={Globe}
-            color="text-sky-400"
-          />
-          <StatusCard
-            label="On-Demand TTS"
-            value="Always available"
-            icon={Headphones}
-            color="text-emerald-400"
-          />
-        </div>
+        {/* Below: edit, test, modify */}
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+          Settings & testing
+        </p>
 
-        {/* Providers */}
+        {/* Auto-TTS mode selector */}
+        <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-5 space-y-4">
+              <div>
+                <h2 className="text-mc-sub font-semibold text-foreground/90 flex items-center gap-2">
+                  <Waves className="h-4 w-4 text-violet-400" />
+                  Auto-TTS
+                </h2>
+                <p className="text-mc-caption text-muted-foreground mt-1">
+                  The agent always sends text. This setting controls whether that text is read aloud to you (TTS).
+                  {status.auto === "off"
+                    ? " Off = you only see text unless you request speech (e.g. Voice Sample Lab below or /tts audio in chat)."
+                    : status.auto === "always"
+                      ? " All replies are spoken to you."
+                      : status.auto === "inbound"
+                        ? " Replies are spoken when you sent a voice message."
+                        : " Only replies to messages tagged with /tts are spoken."}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {AUTO_MODES.map((m) => (
+                  <button
+                    key={m.value}
+                    onClick={() => setAutoMode(m.value)}
+                    disabled={actionLoading}
+                    className={cn(
+                      "rounded-lg border px-3 py-2.5 text-left transition-all",
+                      status.auto === m.value
+                        ? "border-violet-500/30 bg-violet-500/10"
+                        : "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]"
+                    )}
+                  >
+                    <p
+                      className={cn(
+                        "text-xs font-medium",
+                        status.auto === m.value ? "text-violet-300" : "text-foreground/70"
+                      )}
+                    >
+                      {m.label}
+                    </p>
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">{m.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+        {/* TTS Providers */}
         <div>
           <h2 className="text-mc-sub font-semibold text-foreground/90 mb-3 flex items-center gap-2">
             <Speaker className="h-4 w-4 text-violet-400" />
@@ -1370,61 +1495,91 @@ export function AudioView() {
         />
 
         {/* Talk Mode */}
-        <TalkModeSection config={configData.talk.resolved || {}} />
-
-        {/* Audio Understanding */}
-        <AudioUnderstandingSection
-          config={configData.audioUnderstanding.resolved || {}}
+        <TalkModeSection
+          config={configData.talk.resolved || {}}
+          talkSectionExists={
+            configData.talk.parsed != null && typeof configData.talk.parsed === "object"
+          }
+          onEnableTalk={enableTalkMode}
+          enabling={talkEnabling}
+          onTestTalk={testTalkInBrowser}
+          testingTalk={testingTalk}
         />
 
-        {/* Slash commands reference */}
-        <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
-          <div className="flex items-center gap-2 text-mc-body font-semibold text-foreground/90">
-            <Zap className="h-4 w-4 text-amber-400" />
-            Slash Commands
-          </div>
-          <p className="text-mc-caption text-muted-foreground">
-            Control TTS from any channel using slash commands:
-          </p>
-          <div className="rounded-lg bg-muted p-3 font-mono text-mc-caption text-muted-foreground space-y-1">
-            <p><span className="text-violet-400">/tts</span> off &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Disable TTS</span></p>
-            <p><span className="text-violet-400">/tts</span> always &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Speak all replies</span></p>
-            <p><span className="text-violet-400">/tts</span> inbound &nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Reply to voice with voice</span></p>
-            <p><span className="text-violet-400">/tts</span> tagged &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Only /tts tagged messages</span></p>
-            <p><span className="text-violet-400">/tts</span> status &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Show current state</span></p>
-            <p><span className="text-violet-400">/tts</span> provider openai <span className="text-muted-foreground/60"># Switch provider</span></p>
-            <p><span className="text-violet-400">/tts</span> limit 2000 &nbsp;<span className="text-muted-foreground/60"># Summary threshold</span></p>
-            <p><span className="text-violet-400">/tts</span> audio Hello! &nbsp;<span className="text-muted-foreground/60"># One-off TTS</span></p>
-          </div>
-          <p className="text-mc-body-sm text-muted-foreground/60">
-            Note: Discord uses <code className="rounded bg-foreground/[0.06] px-1 text-mc-caption">/voice</code> instead
-            (because <code className="rounded bg-foreground/[0.06] px-1 text-mc-caption">/tts</code> is a built-in Discord command).
-          </p>
+        {/* Slash commands reference (accordion, closed by default) */}
+        <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setSlashCommandsOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-2 p-4 text-left hover:bg-foreground/[0.03] transition-colors"
+          >
+            <div className="flex items-center gap-2 text-mc-body font-semibold text-foreground/90">
+              <Zap className="h-4 w-4 text-amber-400" />
+              Slash Commands
+            </div>
+            <ChevronDown
+              className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", slashCommandsOpen && "rotate-180")}
+            />
+          </button>
+          {slashCommandsOpen && (
+            <div className="border-t border-foreground/[0.06] p-4 pt-3 space-y-3">
+              <p className="text-mc-caption text-muted-foreground">
+                Control TTS from any channel using slash commands:
+              </p>
+              <div className="rounded-lg bg-muted p-3 font-mono text-mc-caption text-muted-foreground space-y-1">
+                <p><span className="text-violet-400">/tts</span> off &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Disable TTS</span></p>
+                <p><span className="text-violet-400">/tts</span> always &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Speak all replies</span></p>
+                <p><span className="text-violet-400">/tts</span> inbound &nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Reply to voice with voice</span></p>
+                <p><span className="text-violet-400">/tts</span> tagged &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Only /tts tagged messages</span></p>
+                <p><span className="text-violet-400">/tts</span> status &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-muted-foreground/60"># Show current state</span></p>
+                <p><span className="text-violet-400">/tts</span> provider openai <span className="text-muted-foreground/60"># Switch provider</span></p>
+                <p><span className="text-violet-400">/tts</span> limit 2000 &nbsp;<span className="text-muted-foreground/60"># Summary threshold</span></p>
+                <p><span className="text-violet-400">/tts</span> audio Hello! &nbsp;<span className="text-muted-foreground/60"># One-off TTS</span></p>
+              </div>
+              <p className="text-mc-body-sm text-muted-foreground/60">
+                Note: Discord uses <code className="rounded bg-foreground/[0.06] px-1 text-mc-caption">/voice</code> instead
+                (because <code className="rounded bg-foreground/[0.06] px-1 text-mc-caption">/tts</code> is a built-in Discord command).
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Gateway RPC reference */}
-        <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
-          <div className="flex items-center gap-2 text-mc-body font-semibold text-foreground/90">
-            <Radio className="h-4 w-4 text-sky-400" />
-            Gateway RPC Methods
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {[
-              "tts.status",
-              "tts.enable",
-              "tts.disable",
-              "tts.convert",
-              "tts.setProvider",
-              "tts.providers",
-            ].map((m) => (
-              <div
-                key={m}
-                className="rounded-lg border border-foreground/[0.06] bg-muted/50 px-3 py-2 font-mono text-mc-body-sm text-sky-400"
-              >
-                {m}
+        {/* Gateway RPC reference (accordion, closed by default) */}
+        <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setGatewayRpcOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-2 p-4 text-left hover:bg-foreground/[0.03] transition-colors"
+          >
+            <div className="flex items-center gap-2 text-mc-body font-semibold text-foreground/90">
+              <Radio className="h-4 w-4 text-sky-400" />
+              Gateway RPC Methods
+            </div>
+            <ChevronDown
+              className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", gatewayRpcOpen && "rotate-180")}
+            />
+          </button>
+          {gatewayRpcOpen && (
+            <div className="border-t border-foreground/[0.06] p-4 pt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {[
+                  "tts.status",
+                  "tts.enable",
+                  "tts.disable",
+                  "tts.convert",
+                  "tts.setProvider",
+                  "tts.providers",
+                ].map((m) => (
+                  <div
+                    key={m}
+                    className="rounded-lg border border-foreground/[0.06] bg-muted/50 px-3 py-2 font-mono text-mc-body-sm text-sky-400"
+                  >
+                    {m}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       </SectionBody>
 

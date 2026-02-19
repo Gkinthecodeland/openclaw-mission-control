@@ -122,13 +122,14 @@ export async function GET(request: NextRequest) {
       console.warn("Config schema unavailable, serving config without schema:", err);
     }
 
+    // Gateway config.get returns { parsed, resolved, hash }. parsed = openclaw.json shape (top-level: agents, gateway, channels, tools, etc.).
     const parsed = (configData.parsed || {}) as Record<string, unknown>;
     const resolved = (configData.resolved || {}) as Record<string, unknown>;
     const redacted = redactSensitive(resolved) as Record<string, unknown>;
 
     return NextResponse.json({
       config: redacted,
-      rawConfig: parsed,
+      rawConfig: parsed, // same structure as ~/.openclaw/openclaw.json for form + raw editor
       resolvedConfig: resolved,
       baseHash: configData.hash || "",
       schema: schemaData?.schema || {},
