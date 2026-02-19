@@ -45,20 +45,20 @@ export function AppSidebar() {
               key={item.label}
               href={"/?section=" + item.section}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-mc-body font-medium transition-colors",
                 section === item.section
                   ? "bg-violet-600/20 text-violet-300"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground/90"
               )}
             >
-              <Icon className="h-5 w-5 shrink-0" />
+              <Icon className="h-3.5 w-3.5 shrink-0" />
               {item.label}
             </Link>
           );
         })}
       </nav>
       <div className="border-t border-foreground/10 p-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-2xl font-bold text-violet-400">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-sm font-bold text-violet-400">
           N
         </div>
       </div>

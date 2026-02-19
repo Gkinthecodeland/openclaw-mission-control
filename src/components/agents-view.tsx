@@ -177,11 +177,11 @@ function GatewayNode({ data }: NodeProps) {
       <Handle type="source" position={Position.Right} className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Bottom} id="sub" className="!bg-transparent !border-0 !w-0 !h-0" />
       <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-violet-500/40 bg-gradient-to-br from-violet-900/80 to-violet-950/90 shadow-lg shadow-violet-500/20">
-        <span className="text-3xl">🦞</span>
+        <span className="text-xl">🦞</span>
       </div>
       <div className="mt-2 text-center">
-        <p className="text-[12px] font-bold text-foreground">Gateway</p>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-mc-caption font-bold text-foreground">Gateway</p>
+        <p className="text-mc-caption text-muted-foreground">
           {d.agentCount} agent{d.agentCount !== 1 ? "s" : ""}
           {d.owner ? ` · ${d.owner}` : ""}
         </p>
@@ -219,7 +219,7 @@ function AgentNodeComponent({ data }: NodeProps) {
       <div className="flex items-center gap-2">
         <div
           className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-sm font-bold text-white",
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-mc-body font-bold text-white",
             AGENT_GRADIENTS[idx % AGENT_GRADIENTS.length]
           )}
         >
@@ -227,19 +227,19 @@ function AgentNodeComponent({ data }: NodeProps) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="truncate text-[12px] font-semibold text-foreground">
+            <span className="truncate text-mc-caption font-semibold text-foreground">
               {agent.name}
             </span>
             <span className={cn("h-2 w-2 rounded-full", sc.dot)} />
           </div>
-          <p className="truncate text-[10px] text-muted-foreground">
+          <p className="truncate text-mc-caption text-muted-foreground">
             {shortModel(agent.model)}
           </p>
         </div>
       </div>
 
       {/* Badges */}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-mc-caption">
         {agent.isDefault && (
           <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-violet-300 font-medium">
             ◇ Default
@@ -253,7 +253,7 @@ function AgentNodeComponent({ data }: NodeProps) {
       </div>
 
       {/* Stats row */}
-      <div className="mt-2 flex items-center gap-3 border-t border-foreground/[0.04] pt-2 text-[10px]">
+      <div className="mt-2 flex items-center gap-3 border-t border-foreground/[0.04] pt-2 text-mc-caption">
         <span className="text-muted-foreground">Sessions <strong className="text-foreground/70">{agent.sessionCount}</strong></span>
         <span className="text-muted-foreground">Tokens <strong className="text-foreground/70">{formatTokens(agent.totalTokens)}</strong></span>
         <span className={cn("ml-auto font-medium", sc.text)}>
@@ -295,14 +295,14 @@ function RuntimeSubagentNodeComponent({ data }: NodeProps) {
       />
       <div className="flex items-center gap-1.5">
         <Sparkles className={cn("h-3.5 w-3.5", d.status === "running" ? "text-cyan-300" : "text-zinc-300")} />
-        <p className="text-[11px] font-semibold text-foreground/90">
+        <p className="text-mc-body-sm font-semibold text-foreground/90">
           subagent #{d.shortId}
         </p>
       </div>
-      <p className="mt-1 truncate text-[10px] text-muted-foreground">
+      <p className="mt-1 truncate text-mc-caption text-muted-foreground">
         {shortModel(d.model)}
       </p>
-      <p className="mt-1 text-[10px] text-muted-foreground">
+      <p className="mt-1 text-mc-caption text-muted-foreground">
         {d.status} · {formatTokens(d.totalTokens)} · {formatAgo(d.lastActive)}
       </p>
     </div>
@@ -315,13 +315,13 @@ function ChannelNodeComponent({ data }: NodeProps) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-sky-500/20 bg-sky-950/50 px-3 py-2 min-w-[120px]">
       <Handle type="source" position={Position.Right} className="!bg-sky-500 !border-sky-400 !w-2 !h-2" />
-      <span className="text-lg">{channelIcon(d.channel)}</span>
+      <span className="text-sm">{channelIcon(d.channel)}</span>
       <div>
-        <p className="text-[11px] font-semibold text-sky-200 capitalize">
+        <p className="text-mc-body-sm font-semibold text-sky-200 capitalize">
           {d.channel}
         </p>
         {d.accountIds.length > 0 && (
-          <p className="text-[9px] text-sky-400/60">
+          <p className="text-mc-micro text-sky-400/60">
             {d.accountIds.join(", ")}
           </p>
         )}
@@ -352,10 +352,10 @@ function WorkspaceNodeComponent({ data }: NodeProps) {
       <Handle type="target" position={Position.Left} className="!bg-amber-500 !border-amber-400 !w-2 !h-2" />
       <FolderOpen className="h-4 w-4 text-amber-400 shrink-0" />
       <div>
-        <p className="text-[11px] font-semibold text-amber-200">
+        <p className="text-mc-body-sm font-semibold text-amber-200">
           {shortPath(d.path)}
         </p>
-        <p className="text-[9px] text-amber-400/60">
+        <p className="text-mc-micro text-amber-400/60">
           {d.agentNames.join(", ")}
         </p>
       </div>
@@ -747,7 +747,7 @@ function AgentDetail({
       <div className="flex items-center gap-4">
         <div
           className={cn(
-            "flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br text-2xl font-bold text-white shadow-lg",
+            "flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br text-lg font-bold text-white shadow-lg",
             AGENT_GRADIENTS[idx % AGENT_GRADIENTS.length]
           )}
         >
@@ -755,18 +755,18 @@ function AgentDetail({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-foreground">{agent.name}</h2>
+            <h2 className="text-mc-heading font-bold text-foreground">{agent.name}</h2>
             <span className={cn("h-2.5 w-2.5 rounded-full", sc.dot)} />
-            <span className={cn("text-[11px] font-medium", sc.text)}>
+            <span className={cn("text-mc-body-sm font-medium", sc.text)}>
               {agent.status === "active" ? "Active" : agent.status === "idle" ? "Idle" : "Unknown"}
             </span>
             {agent.isDefault && (
-              <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-400">
+              <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-mc-caption font-medium text-violet-400">
                 <Shield className="mr-0.5 inline h-2.5 w-2.5" /> Default
               </span>
             )}
           </div>
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-mc-caption text-muted-foreground">
             ID: <code className="text-muted-foreground">{agent.id}</code> ·{" "}
             {formatAgo(agent.lastActive)}
           </p>
@@ -801,19 +801,19 @@ function AgentDetail({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* Model Stack */}
         <div className="rounded-lg border border-foreground/[0.06] bg-card/80 p-3 space-y-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+          <div className="flex items-center gap-1.5 text-mc-body-sm font-semibold text-foreground/70">
             <Layers className="h-3.5 w-3.5 text-violet-400" /> Model Stack
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
-              <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-bold text-violet-400">PRIMARY</span>
-              <code className="text-[11px] text-foreground/70">{shortModel(agent.model)}</code>
+              <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-mc-micro font-bold text-violet-400">PRIMARY</span>
+              <code className="text-mc-body-sm text-foreground/70">{shortModel(agent.model)}</code>
             </div>
             {agent.fallbackModels.map((fm, i) => (
               <div key={fm} className="flex items-center gap-1.5 pl-1">
-                <span className="text-[9px] text-muted-foreground/60">#{i + 1}</span>
+                <span className="text-mc-micro text-muted-foreground/60">#{i + 1}</span>
                 <ArrowRight className="h-2.5 w-2.5 text-muted-foreground/40" />
-                <code className="text-[11px] text-muted-foreground">{shortModel(fm)}</code>
+                <code className="text-mc-body-sm text-muted-foreground">{shortModel(fm)}</code>
               </div>
             ))}
           </div>
@@ -821,17 +821,17 @@ function AgentDetail({
 
         {/* Channels */}
         <div className="rounded-lg border border-foreground/[0.06] bg-card/80 p-3 space-y-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+          <div className="flex items-center gap-1.5 text-mc-body-sm font-semibold text-foreground/70">
             <Globe className="h-3.5 w-3.5 text-blue-400" /> Channels & Bindings
           </div>
           {agent.bindings.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground/60">No bindings</p>
+            <p className="text-mc-body-sm text-muted-foreground/60">No bindings</p>
           ) : (
             <div className="space-y-1">
               {agent.bindings.map((b, i) => (
                 <div key={i} className="flex items-center gap-1.5 rounded bg-foreground/[0.03] px-2 py-1">
                   <span className="text-sm">{channelIcon(b.split(" ")[0])}</span>
-                  <code className="text-[10px] text-foreground/70">{b}</code>
+                  <code className="text-mc-caption text-foreground/70">{b}</code>
                 </div>
               ))}
             </div>
@@ -840,32 +840,32 @@ function AgentDetail({
 
         {/* Workspace */}
         <div className="rounded-lg border border-foreground/[0.06] bg-card/80 p-3 space-y-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+          <div className="flex items-center gap-1.5 text-mc-body-sm font-semibold text-foreground/70">
             <FolderOpen className="h-3.5 w-3.5 text-amber-400" /> Workspace
           </div>
           <div className="flex items-center gap-1.5">
-            <code className="flex-1 truncate text-[10px] text-muted-foreground">{agent.workspace}</code>
+            <code className="flex-1 truncate text-mc-caption text-muted-foreground">{agent.workspace}</code>
             <CopyBtn text={agent.workspace} />
           </div>
-          <p className="text-[10px] text-muted-foreground/60">
+          <p className="text-mc-caption text-muted-foreground/60">
             Agent dir: <code className="text-muted-foreground">{agent.agentDir}</code>
           </p>
         </div>
 
         {/* Relationships */}
         <div className="rounded-lg border border-foreground/[0.06] bg-card/80 p-3 space-y-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+          <div className="flex items-center gap-1.5 text-mc-body-sm font-semibold text-foreground/70">
             <Network className="h-3.5 w-3.5 text-cyan-400" /> Relationships
           </div>
           {parentAgents.length === 0 && childAgents.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground/60">No sub-agent relationships</p>
+            <p className="text-mc-body-sm text-muted-foreground/60">No sub-agent relationships</p>
           ) : (
             <div className="space-y-1.5">
               {parentAgents.length > 0 && (
                 <div>
-                  <p className="text-[9px] uppercase tracking-wider text-muted-foreground/60 mb-0.5">Reports to</p>
+                  <p className="text-mc-micro uppercase tracking-wider text-muted-foreground/60 mb-0.5">Reports to</p>
                   {parentAgents.map((p) => (
-                    <span key={p.id} className="inline-flex items-center gap-1 rounded bg-foreground/[0.03] px-2 py-0.5 text-[10px] text-foreground/70 mr-1">
+                    <span key={p.id} className="inline-flex items-center gap-1 rounded bg-foreground/[0.03] px-2 py-0.5 text-mc-caption text-foreground/70 mr-1">
                       {p.emoji} {p.name}
                     </span>
                   ))}
@@ -873,9 +873,9 @@ function AgentDetail({
               )}
               {childAgents.length > 0 && (
                 <div>
-                  <p className="text-[9px] uppercase tracking-wider text-muted-foreground/60 mb-0.5">Delegates to</p>
+                  <p className="text-mc-micro uppercase tracking-wider text-muted-foreground/60 mb-0.5">Delegates to</p>
                   {childAgents.map((c) => (
-                    <span key={c.id} className="inline-flex items-center gap-1 rounded bg-foreground/[0.03] px-2 py-0.5 text-[10px] text-foreground/70 mr-1">
+                    <span key={c.id} className="inline-flex items-center gap-1 rounded bg-foreground/[0.03] px-2 py-0.5 text-mc-caption text-foreground/70 mr-1">
                       {c.emoji} {c.name}
                     </span>
                   ))}
@@ -895,7 +895,7 @@ function AgentDetail({
             className="flex w-full items-center gap-1.5 px-3 py-2 text-left"
           >
             <Bot className="h-3.5 w-3.5 text-pink-400" />
-            <span className="flex-1 text-[11px] font-semibold text-foreground/70">
+            <span className="flex-1 text-mc-body-sm font-semibold text-foreground/70">
               Identity
             </span>
             {showIdentity ? (
@@ -906,7 +906,7 @@ function AgentDetail({
           </button>
           {showIdentity && (
             <div className="border-t border-foreground/[0.04] px-3 py-2">
-              <pre className="whitespace-pre-wrap text-[10px] leading-relaxed text-muted-foreground">
+              <pre className="whitespace-pre-wrap text-mc-caption leading-relaxed text-muted-foreground">
                 {agent.identitySnippet}
               </pre>
             </div>
@@ -930,8 +930,8 @@ function MiniStat({
     <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.06] bg-card/80 px-3 py-2">
       {icon}
       <div>
-        <p className="text-[9px] text-muted-foreground/60">{label}</p>
-        <p className="text-[12px] font-semibold text-foreground/90">{value}</p>
+        <p className="text-mc-micro text-muted-foreground/60">{label}</p>
+        <p className="text-mc-caption font-semibold text-foreground/90">{value}</p>
       </div>
     </div>
   );
@@ -977,8 +977,8 @@ function SummaryBar({ agents }: { agents: Agent[] }) {
             {s.icon}
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground/60">{s.label}</p>
-            <p className="text-sm font-bold text-foreground/90">{s.value}</p>
+            <p className="text-mc-caption text-muted-foreground/60">{s.label}</p>
+            <p className="text-mc-body font-bold text-foreground/90">{s.value}</p>
           </div>
         </div>
       ))}
@@ -1028,24 +1028,24 @@ function GridView({
             <div className="flex items-start gap-3">
               <div
                 className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br text-lg text-white",
+                  "flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br text-mc-heading text-white",
                   AGENT_GRADIENTS[idx % AGENT_GRADIENTS.length]
                 )}
               >
                 {agent.emoji}
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="truncate text-[13px] font-semibold text-foreground">{agent.name}</h3>
-                <p className="truncate text-[10px] text-muted-foreground">{shortModel(agent.model)}</p>
+                <h3 className="truncate text-mc-body font-semibold text-foreground">{agent.name}</h3>
+                <p className="truncate text-mc-caption text-muted-foreground">{shortModel(agent.model)}</p>
                 {agent.isDefault && (
-                  <span className="mt-1 inline-block rounded-full bg-violet-500/15 px-2 py-0.5 text-[9px] font-medium text-violet-400">Default</span>
+                  <span className="mt-1 inline-block rounded-full bg-violet-500/15 px-2 py-0.5 text-mc-micro font-medium text-violet-400">Default</span>
                 )}
               </div>
             </div>
             {agent.channels.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {agent.channels.map((ch) => (
-                  <span key={ch} className="rounded border border-foreground/[0.06] bg-foreground/[0.03] px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                  <span key={ch} className="rounded border border-foreground/[0.06] bg-foreground/[0.03] px-1.5 py-0.5 text-mc-micro text-muted-foreground">
                     {channelIcon(ch)} {ch}
                   </span>
                 ))}
@@ -1053,16 +1053,16 @@ function GridView({
             )}
             <div className="mt-2 grid grid-cols-3 gap-1.5 text-center">
               <div className="rounded bg-foreground/[0.03] py-1">
-                <p className="text-[9px] text-muted-foreground/60">Sess.</p>
-                <p className="text-[11px] font-semibold text-foreground/70">{agent.sessionCount}</p>
+                <p className="text-mc-micro text-muted-foreground/60">Sess.</p>
+                <p className="text-mc-body-sm font-semibold text-foreground/70">{agent.sessionCount}</p>
               </div>
               <div className="rounded bg-foreground/[0.03] py-1">
-                <p className="text-[9px] text-muted-foreground/60">Tokens</p>
-                <p className="text-[11px] font-semibold text-foreground/70">{formatTokens(agent.totalTokens)}</p>
+                <p className="text-mc-micro text-muted-foreground/60">Tokens</p>
+                <p className="text-mc-body-sm font-semibold text-foreground/70">{formatTokens(agent.totalTokens)}</p>
               </div>
               <div className="rounded bg-foreground/[0.03] py-1">
-                <p className="text-[9px] text-muted-foreground/60">Active</p>
-                <p className={cn("text-[11px] font-semibold", sc.text)}>{formatAgo(agent.lastActive)}</p>
+                <p className="text-mc-micro text-muted-foreground/60">Active</p>
+                <p className={cn("text-mc-body-sm font-semibold", sc.text)}>{formatAgo(agent.lastActive)}</p>
               </div>
             </div>
           </button>
@@ -1422,7 +1422,7 @@ function ModelPicker({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-[12px] text-muted-foreground/50">
+      <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-mc-caption text-muted-foreground/50">
         <InlineSpinner size="sm" />
         Loading available models...
       </div>
@@ -1437,7 +1437,7 @@ function ModelPicker({
         onClick={() => setOpen(!open)}
         disabled={disabled}
         className={cn(
-          "flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-[13px] transition-colors",
+          "flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-mc-body transition-colors",
           open
             ? "border-violet-500/30 bg-foreground/[0.03]"
             : "border-foreground/[0.08] bg-foreground/[0.02] hover:border-foreground/[0.15]",
@@ -1456,7 +1456,7 @@ function ModelPicker({
 
       {/* ── Success toast ── */}
       {saveSuccess && (
-        <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1.5 text-[11px] text-emerald-400 animate-in fade-in slide-in-from-top-1">
+        <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1.5 text-mc-body-sm text-emerald-400 animate-in fade-in slide-in-from-top-1">
           <CheckCircle className="h-3 w-3 shrink-0" />
           {PROVIDER_META[saveSuccess]?.label || saveSuccess} connected! Models are now available.
         </div>
@@ -1474,7 +1474,7 @@ function ModelPicker({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search models..."
-              className="flex-1 bg-transparent text-[12px] text-foreground/90 placeholder:text-muted-foreground/40 outline-none"
+              className="flex-1 bg-transparent text-mc-caption text-foreground/90 placeholder:text-muted-foreground/40 outline-none"
             />
             {search && (
               <button type="button" onClick={() => setSearch("")} className="text-muted-foreground/40 hover:text-foreground/60">
@@ -1490,20 +1490,20 @@ function ModelPicker({
                 type="button"
                 onClick={() => { onChange(""); setOpen(false); }}
                 className={cn(
-                  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] transition-colors hover:bg-violet-500/[0.06]",
+                  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-mc-caption transition-colors hover:bg-violet-500/[0.06]",
                   !value && "bg-violet-500/[0.08] text-violet-400"
                 )}
               >
                 <Star className="h-3.5 w-3.5 text-amber-400" />
                 <span className="font-medium">Use default</span>
-                <span className="text-[10px] text-muted-foreground/50">({defaultModel.split("/").pop()})</span>
+                <span className="text-mc-caption text-muted-foreground/50">({defaultModel.split("/").pop()})</span>
               </button>
             )}
 
             {/* Recommended section */}
             {!search && (
               <>
-                <div className="px-3 pt-2.5 pb-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40">
+                <div className="px-3 pt-2.5 pb-1 text-mc-micro font-bold uppercase tracking-wider text-muted-foreground/40">
                   Recommended
                 </div>
                 {RECOMMENDED_MODELS.map((key) => {
@@ -1528,22 +1528,22 @@ function ModelPicker({
                         setOpen(false);
                       }}
                       className={cn(
-                        "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] transition-colors",
+                        "flex w-full items-center gap-2.5 px-3 py-2 text-left text-mc-caption transition-colors",
                         value === key ? "bg-violet-500/[0.08] text-violet-400" : "hover:bg-foreground/[0.03]",
                         !isAvailable && "opacity-60"
                       )}
                     >
-                      <span className="text-[11px]">{meta?.icon || "🤖"}</span>
+                      <span className="text-mc-body-sm">{meta?.icon || "🤖"}</span>
                       <span className="flex-1 font-medium">{m.name || key.split("/").pop()}</span>
                       {isAvailable ? (
                         <ShieldCheck className="h-3 w-3 text-emerald-500" />
                       ) : needsKey ? (
-                        <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400">
+                        <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-mc-micro font-semibold text-amber-400">
                           <Key className="h-2.5 w-2.5" />
                           Needs key
                         </span>
                       ) : (
-                        <span className="rounded-full bg-zinc-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-zinc-400">
+                        <span className="rounded-full bg-zinc-500/10 px-1.5 py-0.5 text-mc-micro font-semibold text-zinc-400">
                           Unavailable
                         </span>
                       )}
@@ -1563,12 +1563,12 @@ function ModelPicker({
               return (
                 <div key={provider}>
                   <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
-                    <span className="text-[10px]">{meta?.icon || "🤖"}</span>
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40">
+                    <span className="text-mc-caption">{meta?.icon || "🤖"}</span>
+                    <span className="text-mc-micro font-bold uppercase tracking-wider text-muted-foreground/40">
                       {meta?.label || provider}
                     </span>
                     {isAuthed && <ShieldCheck className="h-2.5 w-2.5 text-emerald-500" />}
-                    <span className="text-[9px] text-muted-foreground/30">{items.length}</span>
+                    <span className="text-mc-micro text-muted-foreground/30">{items.length}</span>
                   </div>
                   {items.map((m) => (
                     <button
@@ -1576,7 +1576,7 @@ function ModelPicker({
                       type="button"
                       onClick={() => { onChange(m.key); setOpen(false); }}
                       className={cn(
-                        "flex w-full items-center gap-2.5 px-3 py-1.5 pl-7 text-left text-[12px] transition-colors",
+                        "flex w-full items-center gap-2.5 px-3 py-1.5 pl-7 text-left text-mc-caption transition-colors",
                         value === m.key
                           ? "bg-violet-500/[0.08] text-violet-400"
                           : "text-foreground/80 hover:bg-foreground/[0.03]"
@@ -1584,7 +1584,7 @@ function ModelPicker({
                     >
                       <span className="flex-1 truncate">{m.name || m.key.split("/").pop()}</span>
                       {m.local && (
-                        <span className="rounded-full bg-lime-500/10 px-1.5 py-0.5 text-[9px] font-medium text-lime-400">LOCAL</span>
+                        <span className="rounded-full bg-lime-500/10 px-1.5 py-0.5 text-mc-micro font-medium text-lime-400">LOCAL</span>
                       )}
                       {RECOMMENDED_MODELS.includes(m.key) && (
                         <Star className="h-2.5 w-2.5 text-amber-400" />
@@ -1596,7 +1596,7 @@ function ModelPicker({
             })}
 
             {Object.keys(filteredGroups).length === 0 && search && (
-              <div className="px-3 py-6 text-center text-[12px] text-muted-foreground/50">
+              <div className="px-3 py-6 text-center text-mc-caption text-muted-foreground/50">
                 No models match &ldquo;{search}&rdquo;
               </div>
             )}
@@ -1605,7 +1605,7 @@ function ModelPicker({
             {!search && unauthProviders.length > 0 && (
               <>
                 <div className="mx-3 my-1.5 h-px bg-foreground/[0.05]" />
-                <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/40">
+                <div className="px-3 pt-2 pb-1 text-mc-micro font-bold uppercase tracking-wider text-muted-foreground/40">
                   Connect a new provider
                 </div>
                 <div className="px-3 pb-2 grid grid-cols-2 gap-1.5">
@@ -1616,7 +1616,7 @@ function ModelPicker({
                         key={p}
                         type="button"
                         onClick={() => setAddingProvider(p)}
-                        className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-2 py-1.5 text-[10px] text-muted-foreground/70 transition-colors hover:border-violet-500/20 hover:text-foreground/80"
+                        className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-2 py-1.5 text-mc-caption text-muted-foreground/70 transition-colors hover:border-violet-500/20 hover:text-foreground/80"
                       >
                         <span>{meta?.icon || "🤖"}</span>
                         <span className="truncate font-medium">{meta?.label || p}</span>
@@ -1634,7 +1634,7 @@ function ModelPicker({
             <div className="border-t border-foreground/[0.08] bg-foreground/[0.02] px-3 py-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-sm">{PROVIDER_META[addingProvider]?.icon || "🤖"}</span>
-                <span className="text-[12px] font-semibold text-foreground/80">
+                <span className="text-mc-caption font-semibold text-foreground/80">
                   Connect {PROVIDER_META[addingProvider]?.label || addingProvider}
                 </span>
                 <button
@@ -1653,7 +1653,7 @@ function ModelPicker({
                     onChange={(e) => setApiKey(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSaveKey(); } }}
                     placeholder={PROVIDER_META[addingProvider]?.keyHint || "Paste API key..."}
-                    className="w-full rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 pr-8 text-[11px] font-mono text-foreground/90 placeholder:text-muted-foreground/30 focus:border-violet-500/30 focus:outline-none"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 pr-8 text-mc-body-sm font-mono text-foreground/90 placeholder:text-muted-foreground/30 focus:border-violet-500/30 focus:outline-none"
                     autoFocus
                   />
                   <button
@@ -1668,12 +1668,12 @@ function ModelPicker({
                   type="button"
                   onClick={handleSaveKey}
                   disabled={!apiKey.trim() || savingKey}
-                  className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                  className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-mc-body-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
                 >
                   {savingKey ? <Loader2 className="h-3 w-3 animate-spin" /> : "Connect"}
                 </button>
               </div>
-              <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
+              <div className="mt-1.5 flex items-center gap-1.5 text-mc-caption text-muted-foreground/50">
                 <Key className="h-2.5 w-2.5" />
                 <span>Stored securely in OpenClaw. Never leaves your machine.</span>
                 {PROVIDER_META[addingProvider]?.keyUrl && (
@@ -1692,7 +1692,7 @@ function ModelPicker({
 
           {/* Footer summary */}
           <div className="border-t border-foreground/[0.06] bg-foreground/[0.01] px-3 py-1.5">
-            <p className="text-[10px] text-muted-foreground/40">
+            <p className="text-mc-caption text-muted-foreground/40">
               {availableModels.length} models ready from {Object.keys(groupedAvailable).length} providers
               {unauthProviders.length > 0 && ` · ${unauthProviders.length} more providers available`}
             </p>
@@ -1702,7 +1702,7 @@ function ModelPicker({
 
       {/* Status text */}
       {!open && availableModels.length === 0 && (
-        <p className="mt-1.5 text-[10px] text-amber-400">
+        <p className="mt-1.5 text-mc-caption text-amber-400">
           No authenticated models found. Click above to connect a provider.
         </p>
       )}
@@ -1832,7 +1832,7 @@ function ChannelBindingPicker({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 py-2 text-[11px] text-muted-foreground/50">
+      <div className="flex items-center gap-2 py-2 text-mc-body-sm text-muted-foreground/50">
         <InlineSpinner size="sm" />
         Checking available channels...
       </div>
@@ -1849,7 +1849,7 @@ function ChannelBindingPicker({
             const chInfo = channels.find((c) => c.channel === chKey);
             const status = chInfo ? getStatus(chInfo) : null;
             return (
-              <span key={b} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/[0.06] px-2.5 py-1 text-[11px] text-violet-400">
+              <span key={b} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/[0.06] px-2.5 py-1 text-mc-body-sm text-violet-400">
                 <span>{chInfo?.icon || "📡"}</span>
                 <span className="font-medium">{b}</span>
                 {status && (
@@ -1874,7 +1874,7 @@ function ChannelBindingPicker({
 
       {/* Success toast */}
       {setupSuccess && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1.5 text-[11px] text-emerald-400 animate-in fade-in slide-in-from-top-1">
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1.5 text-mc-body-sm text-emerald-400 animate-in fade-in slide-in-from-top-1">
           <CheckCircle className="h-3 w-3 shrink-0" />
           {channels.find((c) => c.channel === setupSuccess)?.label || setupSuccess} connected! You can now bind it.
         </div>
@@ -1886,7 +1886,7 @@ function ChannelBindingPicker({
           {/* Ready channels */}
           {readyChannels.length > 0 && (
             <>
-              <p className="mb-1.5 text-[10px] text-muted-foreground/60">
+              <p className="mb-1.5 text-mc-caption text-muted-foreground/60">
                 Connected channels — click to bind:
               </p>
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
@@ -1903,17 +1903,17 @@ function ChannelBindingPicker({
                       }}
                       disabled={disabled || alreadyBound}
                       className={cn(
-                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-[11px] transition-colors",
+                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-mc-body-sm transition-colors",
                         alreadyBound
                           ? "border-violet-500/20 bg-violet-500/[0.05] text-violet-400 opacity-60 cursor-not-allowed"
                           : "border-foreground/[0.06] bg-foreground/[0.02] text-foreground/70 hover:border-violet-500/20 hover:bg-violet-500/[0.05] hover:text-violet-400 disabled:opacity-40"
                       )}
                     >
-                      <span className="text-base">{ch.icon}</span>
+                      <span className="text-mc-heading">{ch.icon}</span>
                       <div className="flex-1 min-w-0">
                         <span className="font-medium block truncate">{ch.label}</span>
                         <span className={cn(
-                          "text-[9px]",
+                          "text-mc-micro",
                           status.color === "emerald" ? "text-emerald-400" : "text-amber-400"
                         )}>
                           {alreadyBound ? "Bound" : status.text}
@@ -1930,7 +1930,7 @@ function ChannelBindingPicker({
           {setupChannels.length > 0 && (
             <>
               <div className={cn(readyChannels.length > 0 && "mt-3")}>
-                <p className="mb-1.5 text-[10px] text-muted-foreground/40">
+                <p className="mb-1.5 text-mc-caption text-muted-foreground/40">
                   More channels — needs one-time setup:
                 </p>
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
@@ -1940,12 +1940,12 @@ function ChannelBindingPicker({
                       type="button"
                       onClick={() => { setSelectedChannel(ch); setSetupMode(true); }}
                       disabled={disabled}
-                      className="flex items-center gap-2 rounded-lg border border-dashed border-foreground/[0.06] bg-transparent px-3 py-2 text-left text-[11px] text-muted-foreground/50 transition-colors hover:border-foreground/[0.12] hover:text-foreground/60 disabled:opacity-40"
+                      className="flex items-center gap-2 rounded-lg border border-dashed border-foreground/[0.06] bg-transparent px-3 py-2 text-left text-mc-body-sm text-muted-foreground/50 transition-colors hover:border-foreground/[0.12] hover:text-foreground/60 disabled:opacity-40"
                     >
-                      <span className="text-base opacity-60">{ch.icon}</span>
+                      <span className="text-mc-body opacity-60">{ch.icon}</span>
                       <div className="flex-1 min-w-0">
                         <span className="font-medium block truncate">{ch.label}</span>
-                        <span className="text-[9px] text-muted-foreground/30">Set up</span>
+                        <span className="text-mc-micro text-muted-foreground/30">Set up</span>
                       </div>
                       <Plus className="h-2.5 w-2.5 text-muted-foreground/30" />
                     </button>
@@ -1956,7 +1956,7 @@ function ChannelBindingPicker({
           )}
 
           {channels.length === 0 && (
-            <p className="py-3 text-center text-[11px] text-muted-foreground/40">
+            <p className="py-3 text-center text-mc-body-sm text-muted-foreground/40">
               Could not fetch channels. Is the Gateway running?
             </p>
           )}
@@ -1966,10 +1966,10 @@ function ChannelBindingPicker({
         <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.03] p-3">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-base">{selectedChannel.icon}</span>
-              <span className="text-[12px] font-semibold text-foreground/80">{selectedChannel.label}</span>
+              <span className="text-mc-heading">{selectedChannel.icon}</span>
+              <span className="text-mc-caption font-semibold text-foreground/80">{selectedChannel.label}</span>
               {getStatus(selectedChannel).ready && (
-                <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400">
+                <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-mc-micro font-medium text-emerald-400">
                   <ShieldCheck className="h-2.5 w-2.5" /> Connected
                 </span>
               )}
@@ -1993,7 +1993,7 @@ function ChannelBindingPicker({
                   onChange={(e) => setAccountId(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleBindChannel(selectedChannel); } }}
                   placeholder="Account ID (optional — leave empty for all)"
-                  className="flex-1 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
+                  className="flex-1 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-mc-caption text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
                   autoFocus
                   disabled={disabled}
                 />
@@ -2001,12 +2001,12 @@ function ChannelBindingPicker({
                   type="button"
                   onClick={() => handleBindChannel(selectedChannel)}
                   disabled={disabled}
-                  className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                  className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-mc-body-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
                 >
                   Bind
                 </button>
               </div>
-              <p className="mt-1.5 text-[10px] text-muted-foreground/50">
+              <p className="mt-1.5 text-mc-caption text-muted-foreground/50">
                 Leave empty to route all {selectedChannel.label} messages to this agent.
                 {selectedChannel.accounts.length > 1 && (
                   <> Accounts: {selectedChannel.accounts.join(", ")}</>
@@ -2016,7 +2016,7 @@ function ChannelBindingPicker({
           ) : (
             /* Channel needs setup */
             <div>
-              <p className="mb-2 text-[11px] text-foreground/60">
+              <p className="mb-2 text-mc-body-sm text-foreground/60">
                 {selectedChannel.setupHint}
               </p>
 
@@ -2024,7 +2024,7 @@ function ChannelBindingPicker({
               {selectedChannel.setupType === "token" && (
                 <div className="space-y-2">
                   <div>
-                    <label className="mb-1 block text-[10px] font-medium text-muted-foreground/60">
+                    <label className="mb-1 block text-mc-caption font-medium text-muted-foreground/60">
                       {selectedChannel.tokenLabel || "Token"}
                     </label>
                     <input
@@ -2033,14 +2033,14 @@ function ChannelBindingPicker({
                       onChange={(e) => setTokenInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && tokenInput.trim()) { e.preventDefault(); handleSetupToken(); } }}
                       placeholder={selectedChannel.tokenPlaceholder || "Paste token here..."}
-                      className="w-full rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-[11px] font-mono text-foreground/90 placeholder:text-muted-foreground/30 focus:border-violet-500/30 focus:outline-none"
+                      className="w-full rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-mc-body-sm font-mono text-foreground/90 placeholder:text-muted-foreground/30 focus:border-violet-500/30 focus:outline-none"
                       autoFocus
                       disabled={saving}
                     />
                   </div>
                   {selectedChannel.channel === "slack" && (
                     <div>
-                      <label className="mb-1 block text-[10px] font-medium text-muted-foreground/60">
+                      <label className="mb-1 block text-mc-caption font-medium text-muted-foreground/60">
                         App Token (Socket Mode)
                       </label>
                       <input
@@ -2048,7 +2048,7 @@ function ChannelBindingPicker({
                         value={appTokenInput}
                         onChange={(e) => setAppTokenInput(e.target.value)}
                         placeholder="xapp-..."
-                        className="w-full rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-[11px] font-mono text-foreground/90 placeholder:text-muted-foreground/30 focus:border-violet-500/30 focus:outline-none"
+                        className="w-full rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-mc-body-sm font-mono text-foreground/90 placeholder:text-muted-foreground/30 focus:border-violet-500/30 focus:outline-none"
                         disabled={saving}
                       />
                     </div>
@@ -2058,7 +2058,7 @@ function ChannelBindingPicker({
                       type="button"
                       onClick={handleSetupToken}
                       disabled={!tokenInput.trim() || saving}
-                      className="rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+                      className="rounded-lg bg-violet-600 px-3 py-2 text-mc-body-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
                     >
                       {saving ? (
                         <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Connecting...</span>
@@ -2070,12 +2070,12 @@ function ChannelBindingPicker({
                       href={selectedChannel.docsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] text-violet-400 hover:text-violet-300 flex items-center gap-0.5"
+                      className="text-mc-caption text-violet-400 hover:text-violet-300 flex items-center gap-0.5"
                     >
                       Setup guide <ExternalLink className="h-2.5 w-2.5" />
                     </a>
                   </div>
-                  <p className="text-[10px] text-muted-foreground/40">
+                  <p className="text-mc-caption text-muted-foreground/40">
                     Token is stored securely in OpenClaw credentials. Never leaves your machine.
                   </p>
                 </div>
@@ -2085,18 +2085,18 @@ function ChannelBindingPicker({
               {selectedChannel.setupType === "qr" && (
                 <div className="space-y-2">
                   <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2">
-                    <p className="text-[11px] font-medium text-amber-400 mb-1">Interactive setup required</p>
-                    <p className="text-[10px] text-muted-foreground/60">
+                    <p className="text-mc-body-sm font-medium text-amber-400 mb-1">Interactive setup required</p>
+                    <p className="text-mc-caption text-muted-foreground/60">
                       {selectedChannel.label} requires scanning a QR code. Open the Terminal and run:
                     </p>
-                    <code className="mt-1.5 block rounded bg-black/30 px-2 py-1.5 text-[10px] font-mono text-emerald-400">
+                    <code className="mt-1.5 block rounded bg-black/30 px-2 py-1.5 text-mc-caption font-mono text-emerald-400">
                       {selectedChannel.setupCommand}
                     </code>
                   </div>
                   <div className="flex items-center gap-2">
                     <Link
                       href="/?section=terminal"
-                      className="rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-violet-500 inline-flex items-center gap-1.5"
+                      className="rounded-lg bg-violet-600 px-3 py-2 text-mc-body-sm font-medium text-white transition-colors hover:bg-violet-500 inline-flex items-center gap-1.5"
                     >
                       Open Terminal
                     </Link>
@@ -2104,7 +2104,7 @@ function ChannelBindingPicker({
                       href={selectedChannel.docsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] text-violet-400 hover:text-violet-300 flex items-center gap-0.5"
+                      className="text-mc-caption text-violet-400 hover:text-violet-300 flex items-center gap-0.5"
                     >
                       Setup guide <ExternalLink className="h-2.5 w-2.5" />
                     </a>
@@ -2116,17 +2116,17 @@ function ChannelBindingPicker({
               {selectedChannel.setupType === "cli" && (
                 <div className="space-y-2">
                   <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2">
-                    <p className="text-[10px] text-muted-foreground/60 mb-1">
+                    <p className="text-mc-caption text-muted-foreground/60 mb-1">
                       Run this command in the Terminal:
                     </p>
-                    <code className="block rounded bg-black/30 px-2 py-1.5 text-[10px] font-mono text-emerald-400">
+                    <code className="block rounded bg-black/30 px-2 py-1.5 text-mc-caption font-mono text-emerald-400">
                       {selectedChannel.setupCommand}
                     </code>
                   </div>
                   <div className="flex items-center gap-2">
                     <Link
                       href="/?section=terminal"
-                      className="rounded-lg bg-violet-600 px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-violet-500 inline-flex items-center gap-1.5"
+                      className="rounded-lg bg-violet-600 px-3 py-2 text-mc-body-sm font-medium text-white transition-colors hover:bg-violet-500 inline-flex items-center gap-1.5"
                     >
                       Open Terminal
                     </Link>
@@ -2134,7 +2134,7 @@ function ChannelBindingPicker({
                       href={selectedChannel.docsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] text-violet-400 hover:text-violet-300 flex items-center gap-0.5"
+                      className="text-mc-caption text-violet-400 hover:text-violet-300 flex items-center gap-0.5"
                     >
                       Docs <ExternalLink className="h-2.5 w-2.5" />
                     </a>
@@ -2143,7 +2143,7 @@ function ChannelBindingPicker({
               )}
 
               {selectedChannel.configHint && (
-                <p className="mt-1 text-[10px] text-muted-foreground/40 italic">
+                <p className="mt-1 text-mc-caption text-muted-foreground/40 italic">
                   {selectedChannel.configHint}
                 </p>
               )}
@@ -2248,8 +2248,8 @@ function AddAgentModal({
               <Sparkles className="h-4 w-4 text-violet-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Create New Agent</h2>
-              <p className="text-[10px] text-muted-foreground">Isolated workspace, sessions & auth</p>
+              <h2 className="text-mc-sub font-semibold text-foreground">Create New Agent</h2>
+              <p className="text-mc-caption text-muted-foreground">Isolated workspace, sessions & auth</p>
             </div>
           </div>
           <button type="button" onClick={onClose} disabled={busy} className="rounded p-1 text-muted-foreground/60 hover:text-foreground/70 disabled:opacity-40">
@@ -2261,7 +2261,7 @@ function AddAgentModal({
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
           {/* ── 1. Name (required) ── */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold text-foreground/70">
+            <label className="mb-1.5 block text-mc-body-sm font-semibold text-foreground/70">
               Agent Name <span className="text-red-400">*</span>
             </label>
             <input
@@ -2270,17 +2270,17 @@ function AddAgentModal({
               value={name}
               onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
               placeholder="e.g. work, research, creative"
-              className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-[13px] text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
+              className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-mc-body text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
               disabled={busy}
             />
-            <p className="mt-1 text-[10px] text-muted-foreground/50">
+            <p className="mt-1 text-mc-caption text-muted-foreground/50">
               Unique ID used throughout OpenClaw — auto-formatted to lowercase
             </p>
           </div>
 
           {/* ── 2. Model (picker) ── */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold text-foreground/70">
+            <label className="mb-1.5 block text-mc-body-sm font-semibold text-foreground/70">
               Model
             </label>
             <ModelPicker
@@ -2293,9 +2293,9 @@ function AddAgentModal({
 
           {/* ── 3. Channel Bindings (live) ── */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold text-foreground/70">
+            <label className="mb-1.5 block text-mc-body-sm font-semibold text-foreground/70">
               Channel Bindings
-              <span className="ml-1 text-[10px] font-normal text-muted-foreground/40">optional</span>
+              <span className="ml-1 text-mc-caption font-normal text-muted-foreground/40">optional</span>
             </label>
             <ChannelBindingPicker
               bindings={bindings}
@@ -2311,14 +2311,14 @@ function AddAgentModal({
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50 transition-colors hover:text-foreground/60"
+              className="flex items-center gap-1.5 text-mc-body-sm text-muted-foreground/50 transition-colors hover:text-foreground/60"
             >
               <ChevronDown className={cn("h-3 w-3 transition-transform", showAdvanced && "rotate-180")} />
               Advanced options
             </button>
             {showAdvanced && (
               <div className="mt-2.5">
-                <label className="mb-1 block text-[10px] font-medium text-muted-foreground/60">
+                <label className="mb-1 block text-mc-caption font-medium text-muted-foreground/60">
                   Custom Workspace Path
                 </label>
                 <input
@@ -2326,10 +2326,10 @@ function AddAgentModal({
                   value={workspace}
                   onChange={(e) => setWorkspace(e.target.value)}
                   placeholder={`~/.openclaw/workspace-${name || "<name>"}`}
-                  className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[12px] font-mono text-foreground/80 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-mc-caption font-mono text-foreground/80 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
                   disabled={busy}
                 />
-                <p className="mt-1 text-[10px] text-muted-foreground/40">
+                <p className="mt-1 text-mc-caption text-muted-foreground/40">
                   Defaults to <code>~/.openclaw/workspace-{name || "<name>"}</code>
                 </p>
               </div>
@@ -2338,7 +2338,7 @@ function AddAgentModal({
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2 text-[12px] text-red-400">
+            <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2 text-mc-caption text-red-400">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               {error}
             </div>
@@ -2346,7 +2346,7 @@ function AddAgentModal({
 
           {/* Success */}
           {success && (
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-3 py-2 text-[12px] text-emerald-400">
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-3 py-2 text-mc-caption text-emerald-400">
               <CheckCircle className="h-3.5 w-3.5 shrink-0" />
               Agent &ldquo;{name}&rdquo; created successfully!
             </div>
@@ -2359,7 +2359,7 @@ function AddAgentModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="rounded-lg border border-foreground/[0.08] px-4 py-2 text-[12px] text-muted-foreground transition-colors hover:bg-foreground/[0.05] disabled:opacity-40"
+            className="rounded-lg border border-foreground/[0.08] px-4 py-2 text-mc-caption text-muted-foreground transition-colors hover:bg-foreground/[0.05] disabled:opacity-40"
           >
             Cancel
           </button>
@@ -2367,7 +2367,7 @@ function AddAgentModal({
             type="button"
             onClick={handleCreate}
             disabled={busy || !name.trim() || success}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-[12px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-mc-caption font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
           >
             {busy ? (
               <>
@@ -2571,7 +2571,7 @@ function EditAgentModal({
           <div className="flex items-center gap-3">
             <div
               className={cn(
-                "flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br text-lg font-bold text-white shadow",
+                "flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br text-sm font-bold text-white shadow",
                 AGENT_GRADIENTS[idx % AGENT_GRADIENTS.length]
               )}
             >
@@ -2579,11 +2579,11 @@ function EditAgentModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-foreground">
+                <h2 className="text-mc-sub font-bold text-foreground">
                   {agent.name}
                 </h2>
                 <span className={cn("h-2 w-2 rounded-full", sc.dot)} />
-                <span className={cn("text-[10px] font-medium", sc.text)}>
+                <span className={cn("text-mc-caption font-medium", sc.text)}>
                   {agent.status === "active"
                     ? "Active"
                     : agent.status === "idle"
@@ -2591,12 +2591,12 @@ function EditAgentModal({
                       : "Unknown"}
                 </span>
                 {agent.isDefault && (
-                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[9px] font-medium text-violet-400">
+                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-mc-micro font-medium text-violet-400">
                     Default
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-mc-caption text-muted-foreground">
                 {agent.id} · {formatAgo(agent.lastActive)} ·{" "}
                 {agent.sessionCount} sessions · {formatTokens(agent.totalTokens)}{" "}
                 tokens
@@ -2617,11 +2617,11 @@ function EditAgentModal({
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
           {/* 1. Primary Model */}
           <div>
-            <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+            <label className="mb-1.5 flex items-center gap-1.5 text-mc-body-sm font-semibold text-foreground/70">
               <Cpu className="h-3 w-3 text-violet-400" /> Primary Model
             </label>
             {modelsLoading ? (
-              <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-[12px] text-muted-foreground/50">
+              <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-mc-caption text-muted-foreground/50">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Loading models…
               </div>
@@ -2630,7 +2630,7 @@ function EditAgentModal({
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 disabled={busy}
-                className="w-full appearance-none rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-[13px] text-foreground/90 focus:border-violet-500/30 focus:outline-none disabled:opacity-40"
+                className="w-full appearance-none rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-mc-body text-foreground/90 focus:border-violet-500/30 focus:outline-none disabled:opacity-40"
               >
                 <option value="">
                   Use default ({shortModel(defaultModel)})
@@ -2645,7 +2645,7 @@ function EditAgentModal({
               </select>
             )}
             {!modelsLoading && models.length > 0 && (
-              <p className="mt-1 text-[10px] text-muted-foreground/50">
+              <p className="mt-1 text-mc-caption text-muted-foreground/50">
                 {models.length} authenticated models.{" "}
                 <Link
                   href="/?section=models"
@@ -2659,18 +2659,18 @@ function EditAgentModal({
 
           {/* 2. Fallback Models (multi-select checkboxes) */}
           <div>
-            <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+            <label className="mb-1.5 flex items-center gap-1.5 text-mc-body-sm font-semibold text-foreground/70">
               <Layers className="h-3 w-3 text-violet-400" /> Fallback Models
-              <span className="text-[10px] font-normal text-muted-foreground/40">
+              <span className="text-mc-caption font-normal text-muted-foreground/40">
                 — priority order
               </span>
             </label>
             {modelsLoading ? (
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/50">
+              <div className="flex items-center gap-2 text-mc-body-sm text-muted-foreground/50">
                 <Loader2 className="h-3 w-3 animate-spin" /> Loading…
               </div>
             ) : models.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground/50">
+              <p className="text-mc-body-sm text-muted-foreground/50">
                 No authenticated models available
               </p>
             ) : (
@@ -2686,7 +2686,7 @@ function EditAgentModal({
                       <label
                         key={m.key}
                         className={cn(
-                          "flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors",
+                          "flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-mc-body-sm transition-colors",
                           checked
                             ? "bg-violet-500/[0.08] text-violet-300"
                             : "text-muted-foreground hover:bg-foreground/[0.03]"
@@ -2701,7 +2701,7 @@ function EditAgentModal({
                         />
                         <div
                           className={cn(
-                            "flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[9px] font-bold",
+                            "flex h-4 w-4 shrink-0 items-center justify-center rounded border text-mc-micro font-bold",
                             checked
                               ? "border-violet-500/50 bg-violet-500/20 text-violet-300"
                               : "border-foreground/[0.1] bg-foreground/[0.02]"
@@ -2712,7 +2712,7 @@ function EditAgentModal({
                         <span className="flex-1 truncate">
                           {m.name || shortModel(m.key)}
                         </span>
-                        <span className="text-[9px] text-muted-foreground/40">
+                        <span className="text-mc-micro text-muted-foreground/40">
                           {m.key.split("/")[0]}
                         </span>
                       </label>
@@ -2721,7 +2721,7 @@ function EditAgentModal({
               </div>
             )}
             {fallbacks.length > 0 && (
-              <p className="mt-1 text-[10px] text-muted-foreground/50">
+              <p className="mt-1 text-mc-caption text-muted-foreground/50">
                 {fallbacks.length} fallback{fallbacks.length !== 1 && "s"}{" "}
                 selected — numbered in priority order
               </p>
@@ -2731,13 +2731,13 @@ function EditAgentModal({
           {/* 3. Delegation targets (multi-select) */}
           {otherAgents.length > 0 && (
             <div>
-              <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+              <label className="mb-1.5 flex items-center gap-1.5 text-mc-body-sm font-semibold text-foreground/70">
                 <Network className="h-3 w-3 text-cyan-400" /> Delegation Targets
-                <span className="text-[10px] font-normal text-muted-foreground/40">
+                <span className="text-mc-caption font-normal text-muted-foreground/40">
                   — select agents this one can hand work to
                 </span>
               </label>
-              <p className="mb-1.5 text-[10px] text-muted-foreground/50">
+              <p className="mb-1.5 text-mc-caption text-muted-foreground/50">
                 Checked = this agent is allowed to delegate tasks to that agent.
               </p>
               <div className="space-y-0.5 rounded-lg border border-foreground/[0.06] p-1.5">
@@ -2747,7 +2747,7 @@ function EditAgentModal({
                     <label
                       key={a.id}
                       className={cn(
-                        "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[11px] transition-colors",
+                        "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-mc-body-sm transition-colors",
                         checked
                           ? "bg-cyan-500/[0.08] text-cyan-300"
                           : "text-muted-foreground hover:bg-foreground/[0.03]"
@@ -2776,7 +2776,7 @@ function EditAgentModal({
                       <span className="flex-1 truncate font-medium">
                         {a.name}
                       </span>
-                      <span className="text-[9px] text-muted-foreground/40">
+                      <span className="text-mc-micro text-muted-foreground/40">
                         {shortModel(a.model)}
                       </span>
                     </label>
@@ -2788,7 +2788,7 @@ function EditAgentModal({
 
           {/* 4. Channel Bindings */}
           <div>
-            <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+            <label className="mb-1.5 flex items-center gap-1.5 text-mc-body-sm font-semibold text-foreground/70">
               <Globe className="h-3 w-3 text-blue-400" /> Channel Bindings
             </label>
             <ChannelBindingPicker
@@ -2802,17 +2802,17 @@ function EditAgentModal({
 
           {/* Workspace (read-only) */}
           <div className="rounded-lg border border-foreground/[0.04] bg-foreground/[0.02] px-3 py-2.5">
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+            <div className="flex items-center gap-1.5 text-mc-caption text-muted-foreground/60">
               <FolderOpen className="h-3 w-3 text-amber-400/60" /> Workspace
             </div>
-            <code className="mt-0.5 block truncate text-[11px] text-foreground/60">
+            <code className="mt-0.5 block truncate text-mc-body-sm text-foreground/60">
               {agent.workspace}
             </code>
           </div>
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2 text-[12px] text-red-400">
+            <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2 text-mc-caption text-red-400">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               {error}
             </div>
@@ -2820,7 +2820,7 @@ function EditAgentModal({
 
           {/* Success */}
           {success && (
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-3 py-2 text-[12px] text-emerald-400">
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-3 py-2 text-mc-caption text-emerald-400">
               <CheckCircle className="h-3.5 w-3.5 shrink-0" />
               Settings saved! Restarting gateway to apply…
             </div>
@@ -2833,7 +2833,7 @@ function EditAgentModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="rounded-lg border border-foreground/[0.08] px-4 py-2 text-[12px] text-muted-foreground transition-colors hover:bg-foreground/[0.05] disabled:opacity-40"
+            className="rounded-lg border border-foreground/[0.08] px-4 py-2 text-mc-caption text-muted-foreground transition-colors hover:bg-foreground/[0.05] disabled:opacity-40"
           >
             Cancel
           </button>
@@ -2841,7 +2841,7 @@ function EditAgentModal({
             type="button"
             onClick={handleSave}
             disabled={busy || success}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-[12px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-mc-caption font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
           >
             {busy ? (
               <>
@@ -2946,11 +2946,11 @@ function WorkspaceFilesModal({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <FolderOpen className="h-4 w-4 text-amber-400" />
-              <h2 className="text-sm font-semibold text-foreground">
+              <h2 className="text-mc-sub font-semibold text-foreground">
                 Workspace Files
               </h2>
             </div>
-            <p className="mt-1 truncate text-[10px] text-muted-foreground">
+            <p className="mt-1 truncate text-mc-caption text-muted-foreground">
               <code>{workspacePath}</code>
             </p>
           </div>
@@ -2964,16 +2964,16 @@ function WorkspaceFilesModal({
         </div>
 
         <div className="shrink-0 space-y-3 border-b border-foreground/[0.06] px-5 py-3">
-          <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-mc-body text-muted-foreground">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filter files by path..."
-              className="flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/50"
+              className="flex-1 bg-transparent text-mc-caption outline-none placeholder:text-muted-foreground/50"
             />
           </div>
-          <p className="text-[10px] text-muted-foreground/70">
+          <p className="text-mc-caption text-muted-foreground/70">
             {loading
               ? "Scanning workspace..."
               : `${filteredFiles.length} file${filteredFiles.length !== 1 ? "s" : ""}${
@@ -2985,16 +2985,16 @@ function WorkspaceFilesModal({
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {loading ? (
-            <div className="flex items-center gap-2 text-[12px] text-muted-foreground/70">
+            <div className="flex items-center gap-2 text-mc-caption text-muted-foreground/70">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Loading workspace files...
             </div>
           ) : error ? (
-            <div className="rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2 text-[12px] text-red-400">
+            <div className="rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2 text-mc-caption text-red-400">
               {error}
             </div>
           ) : filteredFiles.length === 0 ? (
-            <p className="text-[12px] text-muted-foreground/60">
+            <p className="text-mc-caption text-muted-foreground/60">
               No files match this filter.
             </p>
           ) : (
@@ -3004,10 +3004,10 @@ function WorkspaceFilesModal({
                   key={file.relativePath}
                   className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2"
                 >
-                  <p className="truncate text-[12px] font-medium text-foreground/80">
+                  <p className="truncate text-mc-caption font-medium text-foreground/80">
                     {file.relativePath}
                   </p>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                  <p className="mt-0.5 text-mc-caption text-muted-foreground/60">
                     {file.ext || "(no ext)"} · {formatBytes(file.size)} ·{" "}
                     {formatAgo(file.mtime)}
                   </p>
@@ -3021,7 +3021,7 @@ function WorkspaceFilesModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-foreground/[0.08] px-4 py-2 text-[12px] text-muted-foreground transition-colors hover:bg-foreground/[0.05]"
+            className="rounded-lg border border-foreground/[0.08] px-4 py-2 text-mc-caption text-muted-foreground transition-colors hover:bg-foreground/[0.05]"
           >
             Close
           </button>
@@ -3031,7 +3031,7 @@ function WorkspaceFilesModal({
               onOpenDocs(workspacePath);
               onClose();
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-[12px] font-medium text-white transition-colors hover:bg-violet-500"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-mc-caption font-medium text-white transition-colors hover:bg-violet-500"
           >
             Open in Docs
             <ExternalLink className="h-3 w-3" />
@@ -3179,8 +3179,8 @@ export function AgentsView() {
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
         <AlertCircle className="h-8 w-8 text-red-400" />
         <p className="text-sm">Failed to load agents</p>
-        <p className="text-xs text-muted-foreground/60">{error}</p>
-        <button type="button" onClick={fetchAgents} className="rounded-lg bg-foreground/5 px-3 py-1.5 text-xs text-foreground/70 hover:bg-foreground/10">
+        <p className="text-mc-caption text-muted-foreground/60">{error}</p>
+        <button type="button" onClick={fetchAgents} className="rounded-lg bg-foreground/5 px-3 py-1.5 text-mc-caption text-foreground/70 hover:bg-foreground/10">
           Retry
         </button>
       </div>
@@ -3206,7 +3206,7 @@ export function AgentsView() {
                 type="button"
                 onClick={() => switchTab("agents")}
                 className={cn(
-                  "rounded-l-lg px-3 py-1.5 text-[11px] font-medium transition",
+                  "rounded-l-lg px-3 py-1.5 text-mc-body-sm font-medium transition",
                   tab === "agents"
                     ? "bg-violet-500/15 text-violet-400"
                     : "text-muted-foreground hover:text-foreground/70"
@@ -3218,7 +3218,7 @@ export function AgentsView() {
                 type="button"
                 onClick={() => switchTab("subagents")}
                 className={cn(
-                  "border-l border-foreground/[0.06] rounded-r-lg px-3 py-1.5 text-[11px] font-medium transition",
+                  "border-l border-foreground/[0.06] rounded-r-lg px-3 py-1.5 text-mc-body-sm font-medium transition",
                   tab === "subagents"
                     ? "bg-violet-500/15 text-violet-400"
                     : "text-muted-foreground hover:text-foreground/70"
@@ -3235,7 +3235,7 @@ export function AgentsView() {
                     type="button"
                     onClick={() => setView("flow")}
                     className={cn(
-                      "rounded-l-lg px-3 py-1.5 text-[11px] font-medium transition",
+                      "rounded-l-lg px-3 py-1.5 text-mc-body-sm font-medium transition",
                       view === "flow"
                         ? "bg-violet-500/15 text-violet-400"
                         : "text-muted-foreground hover:text-foreground/70"
@@ -3247,7 +3247,7 @@ export function AgentsView() {
                     type="button"
                     onClick={() => setView("grid")}
                     className={cn(
-                      "border-l border-foreground/[0.06] rounded-r-lg px-3 py-1.5 text-[11px] font-medium transition",
+                      "border-l border-foreground/[0.06] rounded-r-lg px-3 py-1.5 text-mc-body-sm font-medium transition",
                       view === "grid"
                         ? "bg-violet-500/15 text-violet-400"
                         : "text-muted-foreground hover:text-foreground/70"
@@ -3259,7 +3259,7 @@ export function AgentsView() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-500/20"
+                  className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-1.5 text-mc-body-sm font-medium text-violet-400 transition-colors hover:bg-violet-500/20"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Add Agent</span>

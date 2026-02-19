@@ -235,12 +235,13 @@ export function BrowserRelayView() {
     <SectionLayout>
       <SectionHeader
         title={
-          <span className="inline-flex items-center gap-2">
-            <Globe className="h-5 w-5" />
+          <span className="inline-flex items-center gap-2 text-sm">
+            <Globe className="h-4 w-4" />
             Browser Relay
           </span>
         }
         description="Debug Chrome extension relay connectivity and run browser control actions."
+        descriptionClassName="text-sm text-muted-foreground"
         actions={
           <button
             type="button"
@@ -408,7 +409,7 @@ export function BrowserRelayView() {
           </div>
 
           {actionOutput && (
-            <pre className="mt-3 max-h-52 overflow-auto rounded-md border border-border bg-background p-2 text-[11px] text-muted-foreground">
+            <pre className="mt-3 max-h-52 overflow-auto rounded-md border border-border bg-background p-2 text-mc-body-sm text-muted-foreground">
               {actionOutput}
             </pre>
           )}

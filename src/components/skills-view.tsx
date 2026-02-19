@@ -8,7 +8,7 @@ import {
   AlertTriangle, X, Loader2, Check, Download,
   Settings2, Package, Cpu,
   FileText, Terminal, Globe, Wrench, ArrowLeft,
-  Info, CircleStop, Trash2, Play, Copy,
+  Info, CircleStop, Trash2, Play, Copy, Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
@@ -31,7 +31,10 @@ type ClawHubItem = {
   displayName?: string;
   summary?: string;
   version?: string;
+  /** Catalog latest version (for "installed" view); in "all" view, version is the catalog latest */
+  latestVersion?: string;
   score?: number;
+  developer?: string;
   downloads?: number;
   installsCurrent?: number;
   stars?: number;
@@ -178,7 +181,7 @@ function runtimeMessage(skill: Skill, availability: ReturnType<typeof getAvailab
 function ToastBar({ toast, onDone }: { toast: Toast; onDone: () => void }) {
   useEffect(() => { const t = setTimeout(onDone, 3500); return () => clearTimeout(t); }, [onDone]);
   return (
-    <div className={cn("fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border px-4 py-2.5 text-[13px] font-medium shadow-xl backdrop-blur-sm", toast.type === "success" ? "border-emerald-500/30 bg-emerald-950/80 text-emerald-300" : "border-red-500/30 bg-red-950/80 text-red-300")}>
+    <div className={cn("fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border px-4 py-2.5 text-mc-body font-medium shadow-xl backdrop-blur-sm", toast.type === "success" ? "border-emerald-500/30 bg-emerald-950/80 text-emerald-300" : "border-red-500/30 bg-red-950/80 text-red-300")}>
       <div className="flex items-center gap-2">{toast.type === "success" ? <Check className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{toast.msg}</div>
     </div>
   );
@@ -370,12 +373,12 @@ function InstallTerminal({
           </div>
           <div className="flex items-center gap-2">
             <Terminal className="h-3.5 w-3.5 text-white/40" />
-            <span className="text-[12px] font-medium text-white/60">
+            <span className="text-mc-caption font-medium text-white/60">
               {kind} install {pkg}
             </span>
           </div>
           {running && (
-            <span className="flex items-center gap-1.5 text-[10px] text-emerald-400">
+            <span className="flex items-center gap-1.5 text-mc-caption text-emerald-400">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -384,7 +387,7 @@ function InstallTerminal({
             </span>
           )}
           {!running && exitCode !== null && (
-            <span className={cn("text-[10px] font-medium", exitCode === 0 ? "text-emerald-400" : "text-red-400")}>
+            <span className={cn("text-mc-caption font-medium", exitCode === 0 ? "text-emerald-400" : "text-red-400")}>
               {exitCode === 0 ? "Done" : `Failed (${exitCode})`} — {formatElapsed(elapsed)}
             </span>
           )}
@@ -394,7 +397,7 @@ function InstallTerminal({
             <button
               type="button"
               onClick={handleAbort}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-red-400 transition hover:bg-red-500/10"
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-mc-caption text-red-400 transition hover:bg-red-500/10"
             >
               <CircleStop className="h-3 w-3" />
               Stop
@@ -413,7 +416,7 @@ function InstallTerminal({
       {/* Terminal body */}
       <div
         ref={scrollRef}
-        className="max-h-[350px] min-h-[200px] overflow-y-auto p-4 font-mono text-[12px] leading-5"
+        className="max-h-[350px] min-h-[200px] overflow-y-auto p-4 font-mono text-mc-caption leading-5"
       >
         {lines.map((line, i) => (
           <span
@@ -533,27 +536,27 @@ function SkillPlayground({ skillName }: { skillName: string }) {
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90">
+        <h3 className="flex items-center gap-2 text-mc-sub font-semibold text-foreground/90">
           <Terminal className="h-4 w-4 text-cyan-400" />
           Skill Playground
         </h3>
-        <span className="rounded border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-cyan-300">
+        <span className="rounded border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-mc-caption font-medium text-cyan-300">
           Browser test runner
         </span>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-mc-body-sm leading-relaxed text-muted-foreground">
         Runs this skill through OpenClaw with the slash command path. Use this to validate behavior without leaving Mission Control.
       </p>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[180px,1fr]">
         <label className="space-y-1">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/75">Agent</span>
+          <span className="text-mc-caption font-medium uppercase tracking-wide text-muted-foreground/75">Agent</span>
           <select
             value={agentId}
             onChange={(e) => setAgentId(e.target.value)}
             disabled={running}
-            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-2.5 py-2 text-[12px] text-foreground/90 outline-none transition-colors focus:border-cyan-500/40 disabled:opacity-50"
+            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-2.5 py-2 text-mc-caption text-foreground/90 outline-none transition-colors focus:border-cyan-500/40 disabled:opacity-50"
           >
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
@@ -564,27 +567,27 @@ function SkillPlayground({ skillName }: { skillName: string }) {
         </label>
 
         <label className="space-y-1">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/75">Input (optional)</span>
+          <span className="text-mc-caption font-medium uppercase tracking-wide text-muted-foreground/75">Input (optional)</span>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="example: list my currently playing songs"
             disabled={running}
-            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3 py-2 text-[12px] text-foreground/90 outline-none transition-colors focus:border-cyan-500/40 disabled:opacity-50"
+            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3 py-2 text-mc-caption text-foreground/90 outline-none transition-colors focus:border-cyan-500/40 disabled:opacity-50"
           />
         </label>
       </div>
 
       <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.015] p-2.5">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">Command preview</p>
+        <p className="text-mc-caption font-medium uppercase tracking-wide text-muted-foreground/70">Command preview</p>
         <div className="mt-1 flex items-start gap-2">
-          <code className="min-w-0 flex-1 break-all rounded bg-foreground/[0.04] px-2 py-1 text-[11px] text-foreground/80">
+          <code className="min-w-0 flex-1 break-all rounded bg-foreground/[0.04] px-2 py-1 text-mc-body-sm text-foreground/80">
             {commandPreview}
           </code>
           <button
             type="button"
             onClick={() => void copyCommand()}
-            className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-foreground/[0.03] px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.06]"
+            className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-foreground/[0.03] px-2 py-1 text-mc-caption text-muted-foreground transition-colors hover:bg-foreground/[0.06]"
           >
             <Copy className="h-3 w-3" />
             {copied ? "Copied" : "Copy"}
@@ -597,7 +600,7 @@ function SkillPlayground({ skillName }: { skillName: string }) {
           type="button"
           onClick={() => void runTest()}
           disabled={running}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-[12px] font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-mc-caption font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-60"
         >
           {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
           {running ? "Running..." : "Run Skill Test"}
@@ -605,21 +608,21 @@ function SkillPlayground({ skillName }: { skillName: string }) {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-[11px] text-red-300">
+        <div className="rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-mc-body-sm text-red-300">
           {error}
         </div>
       )}
 
       {result && (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground/80">
+          <div className="flex flex-wrap items-center gap-2 text-mc-caption text-muted-foreground/80">
             <span className="rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300">
               completed
             </span>
             <span>agent: {result.agentId}</span>
             <span>duration: {(result.durationMs / 1000).toFixed(1)}s</span>
           </div>
-          <pre className="max-h-[320px] overflow-auto rounded-lg border border-foreground/[0.08] bg-[#0b0f14] p-3 text-[11px] leading-relaxed text-cyan-100 whitespace-pre-wrap break-words">
+          <pre className="max-h-[320px] overflow-auto rounded-lg border border-foreground/[0.08] bg-[#0b0f14] p-3 text-mc-body-sm leading-relaxed text-cyan-100 whitespace-pre-wrap break-words">
             {result.output || "(no output)"}
           </pre>
         </div>
@@ -649,12 +652,12 @@ function SkillCard({ skill, onClick, onToggle, toggling }: { skill: Skill; onCli
       className={cn("w-full cursor-pointer rounded-xl border p-3.5 text-left transition-all hover:scale-[1.01]", skill.disabled ? "border-foreground/[0.04] bg-foreground/[0.01] opacity-60 hover:opacity-90" : availability.state === "ready" ? "border-foreground/[0.06] bg-foreground/[0.02] hover:border-foreground/[0.12]" : "border-foreground/[0.04] bg-foreground/[0.01] opacity-75 hover:opacity-100 hover:border-foreground/[0.08]")}
     >
       <div className="flex items-start gap-3">
-        <span className="text-xl leading-none mt-0.5">{skill.emoji || "\u26A1"}</span>
+        <span className="text-mc-title leading-none mt-0.5">{skill.emoji || "\u26A1"}</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className={cn("text-[13px] font-semibold", skill.disabled ? "text-foreground/50 line-through" : "text-foreground/90")}>{skill.name}</p>
+            <p className={cn("text-mc-sub font-semibold", skill.disabled ? "text-foreground/50 line-through" : "text-foreground/90")}>{skill.name}</p>
             {skill.disabled ? (
-              <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[8px] font-medium text-red-400/80">DISABLED</span>
+              <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-mc-micro font-medium text-red-400/80">DISABLED</span>
             ) : availability.state === "ready" ? (
               <CheckCircle className="h-3 w-3 shrink-0 text-emerald-500" />
             ) : availability.state === "blocked" ? (
@@ -662,13 +665,13 @@ function SkillCard({ skill, onClick, onToggle, toggling }: { skill: Skill; onCli
             ) : (
               <AlertTriangle className="h-3 w-3 shrink-0 text-amber-400/70" />
             )}
-            {skill.always && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[8px] text-amber-400">ALWAYS</span>}
+            {skill.always && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-mc-micro text-amber-400">ALWAYS</span>}
           </div>
-          <p className="mt-0.5 line-clamp-2 text-[11px] leading-[1.5] text-muted-foreground">{skill.description}</p>
+          <p className="mt-0.5 text-mc-body-sm leading-[1.5] text-muted-foreground break-words">{skill.description}</p>
           <div className="mt-2 flex items-center gap-2">
-            <span className={cn("rounded border px-1.5 py-0.5 text-[9px] font-medium", sourceColor(skill.source))}>{sourceLabel(skill.source, skill.bundled)}</span>
-            <span className={cn("rounded border px-1.5 py-0.5 text-[9px] font-medium", availability.badgeClass)}>{availability.label}</span>
-            {!skill.disabled && missing && <span className="text-[9px] text-muted-foreground/80">{missingTotal} requirement{missingTotal === 1 ? "" : "s"} missing</span>}
+            <span className={cn("rounded border px-1.5 py-0.5 text-mc-micro font-medium", sourceColor(skill.source))}>{sourceLabel(skill.source, skill.bundled)}</span>
+            <span className={cn("rounded border px-1.5 py-0.5 text-mc-micro font-medium", availability.badgeClass)}>{availability.label}</span>
+            {!skill.disabled && missing && <span className="text-mc-micro text-muted-foreground/80">{missingTotal} requirement{missingTotal === 1 ? "" : "s"} missing</span>}
           </div>
         </div>
         <div className="flex flex-col items-center gap-1 mt-0.5">
@@ -682,10 +685,10 @@ function SkillCard({ skill, onClick, onToggle, toggling }: { skill: Skill; onCli
               color={status.toggleColor}
             />
           )}
-          <span className={cn("text-[8px] font-medium", status.color)}>
+          <span className={cn("text-mc-micro font-medium", status.color)}>
             {status.label}
           </span>
-          <span className="text-[8px] text-muted-foreground/60">Config</span>
+          <span className="text-mc-micro text-muted-foreground/60">Config</span>
         </div>
       </div>
     </div>
@@ -726,7 +729,7 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
   }, [name, onAction]);
 
   if (loading) return <LoadingState label="Loading skill..." />;
-  if (!detail) return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">Skill not found</div>;
+  if (!detail) return <div className="flex flex-1 items-center justify-center text-mc-body text-muted-foreground/60">Skill not found</div>;
 
   const missing = hasMissing(detail.missing);
   const missingTotal = missingCount(detail.missing);
@@ -738,22 +741,22 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Back + header */}
       <div className="shrink-0 border-b border-foreground/[0.06] px-4 md:px-6 py-4">
-        <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground/70 mb-3"><ArrowLeft className="h-3.5 w-3.5" />Back to Skills</button>
+        <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-mc-caption text-muted-foreground hover:text-foreground/70 mb-3"><ArrowLeft className="h-3.5 w-3.5" />Back to Skills</button>
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-violet-500/10 text-3xl">{detail.emoji || "\u26A1"}</div>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-500/10 text-xl">{detail.emoji || "\u26A1"}</div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-[20px] font-semibold text-foreground">{detail.name}</h1>
-              {availability.state === "ready" ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300"><CheckCircle className="h-3 w-3" />Ready</span> : availability.state === "blocked" ? <span className="flex items-center gap-1 rounded-full bg-red-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-red-300"><XCircle className="h-3 w-3" />Blocked</span> : availability.state === "needs-setup" ? <span className="flex items-center gap-1 rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-amber-300"><AlertTriangle className="h-3 w-3" />Needs setup</span> : <span className="flex items-center gap-1 rounded-full bg-zinc-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-muted-foreground"><XCircle className="h-3 w-3" />Unavailable</span>}
-              {detail.disabled && <span className="rounded-full bg-red-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-red-400">Disabled</span>}
-              {detail.always && <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-amber-300">Always active</span>}
+              <h1 className="text-mc-title font-semibold text-foreground">{detail.name}</h1>
+              {availability.state === "ready" ? <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-mc-caption font-semibold text-emerald-300"><CheckCircle className="h-3 w-3" />Ready</span> : availability.state === "blocked" ? <span className="flex items-center gap-1 rounded-full bg-red-500/20 px-2.5 py-0.5 text-mc-caption font-semibold text-red-300"><XCircle className="h-3 w-3" />Blocked</span> : availability.state === "needs-setup" ? <span className="flex items-center gap-1 rounded-full bg-amber-500/20 px-2.5 py-0.5 text-mc-caption font-semibold text-amber-300"><AlertTriangle className="h-3 w-3" />Needs setup</span> : <span className="flex items-center gap-1 rounded-full bg-zinc-500/20 px-2.5 py-0.5 text-mc-caption font-semibold text-muted-foreground"><XCircle className="h-3 w-3" />Unavailable</span>}
+              {detail.disabled && <span className="rounded-full bg-red-500/20 px-2.5 py-0.5 text-mc-caption font-semibold text-red-400">Disabled</span>}
+              {detail.always && <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-mc-caption font-semibold text-amber-300">Always active</span>}
             </div>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{detail.description}</p>
-            <div className="mt-2 flex items-center gap-3 text-[11px]">
-              <span className={cn("rounded border px-1.5 py-0.5 text-[10px] font-medium", sourceColor(detail.source))}>{sourceLabel(detail.source, detail.bundled)}</span>
+            <p className="mt-1 text-mc-body leading-relaxed text-muted-foreground">{detail.description}</p>
+            <div className="mt-2 flex items-center gap-3 text-mc-body-sm">
+              <span className={cn("rounded border px-1.5 py-0.5 text-mc-caption font-medium", sourceColor(detail.source))}>{sourceLabel(detail.source, detail.bundled)}</span>
               {detail.homepage && <a href={detail.homepage} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-violet-400 hover:underline"><Globe className="h-3 w-3" />Homepage</a>}
             </div>
-            <p className="mt-2 text-[11px] text-muted-foreground/70">{sourceHint(detail.source)}</p>
+            <p className="mt-2 text-mc-body-sm text-muted-foreground/70">{sourceHint(detail.source)}</p>
           </div>
         </div>
       </div>
@@ -775,10 +778,10 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
                 />
               )}
               <div>
-                <p className={cn("text-[12px] font-medium", detail.disabled ? "text-muted-foreground" : "text-emerald-400")}>
+                <p className={cn("text-mc-caption font-medium", detail.disabled ? "text-muted-foreground" : "text-emerald-400")}>
                   {detail.disabled ? "Policy: Disabled" : "Policy: Enabled"}
                 </p>
-                <p className="text-[10px] text-muted-foreground/60">
+                <p className="text-mc-caption text-muted-foreground/60">
                   {detail.disabled
                     ? "skills.entries.<skill>.enabled = false"
                     : "skills.entries.<skill>.enabled = true"}
@@ -787,12 +790,12 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
             </div>
           </div>
           <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Runtime</p>
-            <p className={cn("mt-0.5 text-[12px] font-medium", availability.state === "ready" ? "text-emerald-400" : availability.state === "blocked" ? "text-red-400" : availability.state === "needs-setup" ? "text-amber-400" : "text-muted-foreground")}>{availability.label}</p>
-            <p className="mt-1 text-[10px] text-muted-foreground/65">{runtime}</p>
+            <p className="text-mc-caption uppercase tracking-wider text-muted-foreground/60">Runtime</p>
+            <p className={cn("mt-0.5 text-mc-caption font-medium", availability.state === "ready" ? "text-emerald-400" : availability.state === "blocked" ? "text-red-400" : availability.state === "needs-setup" ? "text-amber-400" : "text-muted-foreground")}>{availability.label}</p>
+            <p className="mt-1 text-mc-caption text-muted-foreground/65">{runtime}</p>
           </div>
           {detail.skillMd && (
-            <button onClick={() => setShowMd(!showMd)} className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-2 text-[12px] font-medium text-foreground/70 hover:bg-foreground/[0.1]">
+            <button onClick={() => setShowMd(!showMd)} className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-2 text-mc-caption font-medium text-foreground/70 hover:bg-foreground/[0.1]">
               <FileText className="h-3.5 w-3.5" />{showMd ? "Hide" : "View"} SKILL.md
             </button>
           )}
@@ -803,16 +806,16 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
         {/* Requirements section */}
         {hasReqs && (
           <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-3">
-            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90"><Package className="h-4 w-4 text-amber-400" />Requirements</h3>
+            <h3 className="flex items-center gap-2 text-mc-sub font-semibold text-foreground/90"><Package className="h-4 w-4 text-amber-400" />Requirements</h3>
             <div className="space-y-2">
               {detail.requirements.bins.length > 0 && (
                 <div className="flex items-start gap-3">
                   <Terminal className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-[11px] font-medium text-muted-foreground">CLI tools required</p>
+                    <p className="text-mc-body-sm font-medium text-muted-foreground">CLI tools required</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">{detail.requirements.bins.map((b) => {
                       const isMissing = detail.missing.bins.includes(b);
-                      return (<span key={b} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-mono", isMissing ? "border-red-500/20 bg-red-500/[0.06] text-red-400" : "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400")}>{isMissing ? <XCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{b}</span>);
+                      return (<span key={b} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1 text-mc-body-sm font-mono", isMissing ? "border-red-500/20 bg-red-500/[0.06] text-red-400" : "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400")}>{isMissing ? <XCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{b}</span>);
                     })}</div>
                   </div>
                 </div>
@@ -821,10 +824,10 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
                 <div className="flex items-start gap-3">
                   <Settings2 className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-[11px] font-medium text-muted-foreground">Environment variables</p>
+                    <p className="text-mc-body-sm font-medium text-muted-foreground">Environment variables</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">{detail.requirements.env.map((e) => {
                       const isMissing = detail.missing.env.includes(e);
-                      return (<span key={e} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-mono", isMissing ? "border-red-500/20 bg-red-500/[0.06] text-red-400" : "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400")}>{isMissing ? <XCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{e}</span>);
+                      return (<span key={e} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1 text-mc-body-sm font-mono", isMissing ? "border-red-500/20 bg-red-500/[0.06] text-red-400" : "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400")}>{isMissing ? <XCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{e}</span>);
                     })}</div>
                   </div>
                 </div>
@@ -833,10 +836,10 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
                 <div className="flex items-start gap-3">
                   <Wrench className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-[11px] font-medium text-muted-foreground">Config keys</p>
+                    <p className="text-mc-body-sm font-medium text-muted-foreground">Config keys</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">{detail.requirements.config.map((c) => {
                       const isMissing = detail.missing.config.includes(c);
-                      return (<span key={c} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px]", isMissing ? "border-red-500/20 bg-red-500/[0.06] text-red-400" : "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400")}>{isMissing ? <XCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{c}</span>);
+                      return (<span key={c} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1 text-mc-body-sm", isMissing ? "border-red-500/20 bg-red-500/[0.06] text-red-400" : "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400")}>{isMissing ? <XCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{c}</span>);
                     })}</div>
                   </div>
                 </div>
@@ -845,10 +848,10 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
                 <div className="flex items-start gap-3">
                   <Cpu className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-[11px] font-medium text-muted-foreground">Operating system</p>
+                    <p className="text-mc-body-sm font-medium text-muted-foreground">Operating system</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">{detail.requirements.os.map((o) => {
                       const isMissing = detail.missing.os.includes(o);
-                      return (<span key={o} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px]", isMissing ? "border-red-500/20 bg-red-500/[0.06] text-red-400" : "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400")}>{isMissing ? <XCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{o}</span>);
+                      return (<span key={o} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1 text-mc-body-sm", isMissing ? "border-red-500/20 bg-red-500/[0.06] text-red-400" : "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400")}>{isMissing ? <XCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}{o}</span>);
                     })}</div>
                   </div>
                 </div>
@@ -860,26 +863,26 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
         {/* Install options */}
         {missing && detail.install.length > 0 && (
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] p-4 space-y-3">
-            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-amber-300"><Download className="h-4 w-4" />Install Missing Dependencies</h3>
+            <h3 className="flex items-center gap-2 text-mc-sub font-semibold text-amber-300"><Download className="h-4 w-4" />Install Missing Dependencies</h3>
             <div className="space-y-2">{detail.install.map((inst) => {
               const supportedKinds = ["brew", "npm", "pip"];
               const canInstall = supportedKinds.includes(inst.kind) && inst.bins && inst.bins.length > 0;
               return (
                 <div key={inst.id} className="flex items-center justify-between rounded-lg border border-foreground/[0.06] bg-muted/50 px-4 py-3">
                   <div>
-                    <p className="text-[12px] font-medium text-foreground/90">{inst.label}</p>
-                    <p className="text-[10px] text-muted-foreground">Method: {inst.kind}{inst.bins ? " \u2022 Installs: " + inst.bins.join(", ") : ""}</p>
+                    <p className="text-mc-caption font-medium text-foreground/90">{inst.label}</p>
+                    <p className="text-mc-caption text-muted-foreground">Method: {inst.kind}{inst.bins ? " \u2022 Installs: " + inst.bins.join(", ") : ""}</p>
                   </div>
                   {canInstall ? (
                     <button
                       onClick={() => setInstallTerminal({ kind: inst.kind, pkg: inst.bins![0], label: inst.label })}
                       disabled={installTerminal !== null}
-                      className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                      className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-mc-body-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
                     >
                       <Terminal className="h-3 w-3" />Install
                     </button>
                   ) : (
-                    <span className="rounded bg-muted px-2 py-1 text-[10px] text-muted-foreground">Manual</span>
+                    <span className="rounded bg-muted px-2 py-1 text-mc-caption text-muted-foreground">Manual</span>
                   )}
                 </div>
               );
@@ -910,27 +913,27 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
         {/* All good */}
         {!missing && detail.eligible && (
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
-            <p className="flex items-center gap-2 text-[13px] font-medium text-emerald-300"><CheckCircle className="h-4 w-4" />All requirements met — this skill is active and available to your agents.</p>
+            <p className="flex items-center gap-2 text-mc-body font-medium text-emerald-300"><CheckCircle className="h-4 w-4" />All requirements met — this skill is active and available to your agents.</p>
           </div>
         )}
 
         {/* Skill config */}
         {detail.skillConfig && Object.keys(detail.skillConfig).length > 0 && (
           <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-2">
-            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90"><Settings2 className="h-4 w-4 text-muted-foreground" />Configuration</h3>
-            <p className="text-[11px] text-muted-foreground">Current tool config for <code className="rounded bg-foreground/[0.06] px-1 text-muted-foreground">tools.{detail.skillKey || detail.name}</code></p>
-            <pre className="rounded-lg bg-muted p-3 text-[11px] text-muted-foreground overflow-auto max-h-[300px]">{JSON.stringify(detail.skillConfig, null, 2)}</pre>
+            <h3 className="flex items-center gap-2 text-mc-sub font-semibold text-foreground/90"><Settings2 className="h-4 w-4 text-muted-foreground" />Configuration</h3>
+            <p className="text-mc-body-sm text-muted-foreground">Current tool config for <code className="rounded bg-foreground/[0.06] px-1 text-muted-foreground">tools.{detail.skillKey || detail.name}</code></p>
+            <pre className="rounded-lg bg-muted p-3 text-mc-body-sm text-muted-foreground overflow-auto max-h-[300px]">{JSON.stringify(detail.skillConfig, null, 2)}</pre>
           </div>
         )}
 
         {/* File info */}
         <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-2">
-          <h3 className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90"><Info className="h-4 w-4 text-muted-foreground" />Details</h3>
+          <h3 className="flex items-center gap-2 text-mc-sub font-semibold text-foreground/90"><Info className="h-4 w-4 text-muted-foreground" />Details</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Skill Key</p><p className="text-[12px] font-mono text-foreground/70 mt-0.5">{detail.skillKey || detail.name}</p></div>
-            <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Source</p><p className="text-[12px] text-foreground/70 mt-0.5">{detail.source}</p></div>
-            <div className="col-span-2 rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">File Path</p><p className="text-[11px] font-mono text-muted-foreground mt-0.5 break-all">{detail.filePath}</p></div>
-            <div className="col-span-2 rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Base Directory</p><p className="text-[11px] font-mono text-muted-foreground mt-0.5 break-all">{detail.baseDir}</p></div>
+            <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-mc-micro font-medium uppercase tracking-wider text-muted-foreground/60">Skill Key</p><p className="text-mc-caption font-mono text-foreground/70 mt-0.5">{detail.skillKey || detail.name}</p></div>
+            <div className="rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-mc-micro font-medium uppercase tracking-wider text-muted-foreground/60">Source</p><p className="text-mc-caption text-foreground/70 mt-0.5">{detail.source}</p></div>
+            <div className="col-span-2 rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-mc-micro font-medium uppercase tracking-wider text-muted-foreground/60">File Path</p><p className="text-mc-body-sm font-mono text-muted-foreground mt-0.5 break-all">{detail.filePath}</p></div>
+            <div className="col-span-2 rounded-lg border border-foreground/[0.04] bg-muted/50 px-3 py-2"><p className="text-mc-micro font-medium uppercase tracking-wider text-muted-foreground/60">Base Directory</p><p className="text-mc-body-sm font-mono text-muted-foreground mt-0.5 break-all">{detail.baseDir}</p></div>
           </div>
         </div>
 
@@ -938,10 +941,10 @@ function SkillDetailPanel({ name, onBack, onAction }: { name: string; onBack: ()
         {showMd && detail.skillMd && (
           <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90"><FileText className="h-4 w-4 text-muted-foreground" />SKILL.md</h3>
+              <h3 className="flex items-center gap-2 text-mc-sub font-semibold text-foreground/90"><FileText className="h-4 w-4 text-muted-foreground" />SKILL.md</h3>
               <button onClick={() => setShowMd(false)} className="rounded p-1 text-muted-foreground hover:text-foreground/70"><X className="h-3.5 w-3.5" /></button>
             </div>
-            <pre className="max-h-[500px] overflow-auto rounded-lg bg-muted p-4 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap break-words">{detail.skillMd}</pre>
+            <pre className="max-h-[500px] overflow-auto rounded-lg bg-muted p-4 text-mc-body-sm leading-relaxed text-muted-foreground whitespace-pre-wrap break-words">{detail.skillMd}</pre>
           </div>
         )}
       </div>
@@ -960,10 +963,37 @@ function ClawHubPanel({
   const [items, setItems] = useState<ClawHubItem[]>([]);
   const [installed, setInstalled] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<"trending" | "search">("trending");
+  const [viewFilter, setViewFilter] = useState<"all" | "installed">("all");
+  const [sortBy, setSortBy] = useState<"trending" | "stars" | "downloads" | "name">("trending");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"install" | "update" | "uninstall" | null>(null);
+
+  const displayedItems: ClawHubItem[] = viewFilter === "installed"
+    ? Object.entries(installed).map(([slug, version]) => {
+        const fromCatalog = items.find((i) => i.slug === slug);
+        return {
+          slug,
+          version,
+          latestVersion: fromCatalog?.version,
+          summary: fromCatalog?.summary ?? "",
+          displayName: fromCatalog?.displayName,
+          stars: fromCatalog?.stars,
+          downloads: fromCatalog?.downloads,
+        };
+      })
+    : items;
+
+  const sortedItems = useMemo(() => {
+    if (sortBy === "trending") return [...displayedItems];
+    return [...displayedItems].sort((a, b) => {
+      if (sortBy === "stars") return (b.stars ?? 0) - (a.stars ?? 0);
+      if (sortBy === "downloads") return (b.downloads ?? 0) - (a.downloads ?? 0);
+      if (sortBy === "name") return (a.displayName || a.slug).localeCompare(b.displayName || b.slug, undefined, { sensitivity: "base" });
+      return 0;
+    });
+  }, [displayedItems, sortBy]);
 
   const fetchInstalled = useCallback(async () => {
     try {
@@ -1001,11 +1031,14 @@ function ClawHubPanel({
         latestVersion?: { version?: string };
         stats?: { downloads?: number; installsCurrent?: number; stars?: number };
         updatedAt?: number;
+        developer?: string;
+        author?: string;
       }) => ({
         slug: String(item.slug || ""),
         displayName: item.displayName || undefined,
         summary: item.summary || "",
         version: item.latestVersion?.version || "latest",
+        developer: (item.developer ?? item.author) || undefined,
         downloads: item.stats?.downloads || 0,
         installsCurrent: item.stats?.installsCurrent || 0,
         stars: item.stats?.stars || 0,
@@ -1020,12 +1053,13 @@ function ClawHubPanel({
     setLoading(false);
   }, []);
 
-  const runSearch = useCallback(async () => {
-    if (!query.trim()) return;
+  const runSearch = useCallback(async (searchQuery?: string) => {
+    const q = (searchQuery ?? query).trim();
+    if (!q) return;
     setLoading(true);
     setMode("search");
     try {
-      const res = await fetch(`/api/skills/clawhub?action=search&q=${encodeURIComponent(query)}&limit=28`);
+      const res = await fetch(`/api/skills/clawhub?action=search&q=${encodeURIComponent(q)}&limit=28`);
       const data = await res.json();
       if (!res.ok || data?.error) {
         throw new Error(String(data?.error || `HTTP ${res.status}`));
@@ -1035,11 +1069,14 @@ function ClawHubPanel({
         version?: string;
         summary?: string;
         score?: number;
+        developer?: string;
+        author?: string;
       }) => ({
         slug: String(item.slug || ""),
         version: item.version || "latest",
         summary: item.summary || "",
         score: typeof item.score === "number" ? item.score : undefined,
+        developer: (item.developer ?? item.author) || undefined,
       })).filter((item: ClawHubItem) => item.slug);
       setItems(normalized);
       setError(null);
@@ -1050,18 +1087,25 @@ function ClawHubPanel({
     setLoading(false);
   }, [query]);
 
-  const installSkill = useCallback(async (slug: string, version?: string) => {
+  const installSkill = useCallback(async (slug: string, version?: string, force = false) => {
     setBusySlug(slug);
     setBusyAction("install");
     try {
       const res = await fetch("/api/skills/clawhub", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "install", slug, version }),
+        body: JSON.stringify({ action: "install", slug, version, force }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        onAction(`Error: ${data.error || "install failed"}`);
+        const errMsg = String(data?.error || "install failed");
+        const isSuspicious = /suspicious|Use --force/i.test(errMsg);
+        if (isSuspicious && !force && window.confirm("This skill is flagged as suspicious by VirusTotal (e.g. risky patterns). Install anyway? Review the skill code after installing.")) {
+          setBusySlug(null);
+          setBusyAction(null);
+          return void installSkill(slug, version, true);
+        }
+        onAction(`Error: ${errMsg}`);
       } else {
         onAction(`Installed ${slug}`);
         await fetchInstalled();
@@ -1132,113 +1176,118 @@ function ClawHubPanel({
     });
   }, [fetchExplore, fetchInstalled]);
 
-  return (
-    <div className="space-y-4">
-      <div className="mb-4 rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-4 py-3">
-        <p className="text-[12px] text-muted-foreground/85">
-          Bundled skills ship with OpenClaw. ClawHub installs workspace skills into <code className="rounded bg-foreground/[0.06] px-1">workspace/skills</code>.
-        </p>
-      </div>
+  // Search as you type (debounced); clear input -> show trending again
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setMode("trending");
+      void fetchExplore();
+      return;
+    }
+    setMode("search");
+    const t = setTimeout(() => {
+      void runSearch(trimmed);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query, runSearch, fetchExplore]);
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-muted/50 px-3 py-2">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-foreground/[0.06] bg-muted/40 px-2.5 py-1.5 min-w-[180px]">
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
           <input
-            placeholder="Search ClawHub skills..."
+            placeholder="Search skills..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void runSearch(); }}
-            className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/60 text-foreground/70"
+            className="flex-1 bg-transparent text-mc-caption outline-none placeholder:text-muted-foreground/50 text-foreground/80"
           />
         </div>
-        <button type="button" onClick={() => void runSearch()} className="rounded-lg border border-foreground/[0.08] px-3 py-2 text-[11px] text-muted-foreground hover:bg-muted/80">
-          Search
-        </button>
-        <button type="button" onClick={() => { setMode("trending"); void fetchExplore(); }} className="rounded-lg border border-foreground/[0.08] px-3 py-2 text-[11px] text-muted-foreground hover:bg-muted/80">
+        <button type="button" onClick={() => { setMode("trending"); void fetchExplore(); }} className={cn("rounded-md px-2.5 py-1.5 text-mc-body-sm font-medium transition-colors", mode === "trending" && !query ? "bg-foreground/[0.08] text-foreground/80" : "text-muted-foreground hover:bg-muted/60")}>
           Trending
         </button>
-      </div>
-
-      <div className="mb-3 flex items-center justify-between text-[11px] text-muted-foreground/70">
-        <p>{mode === "search" ? `Search results (${items.length})` : `Trending skills (${items.length})`}</p>
-        <p>{Object.keys(installed).length} installed via ClawHub</p>
+        <div className="flex rounded-md border border-foreground/[0.06] p-0.5">
+          <button type="button" onClick={() => setViewFilter("all")} className={cn("rounded px-2 py-1 text-mc-body-sm font-medium transition-colors", viewFilter === "all" ? "bg-foreground/[0.08] text-foreground/80" : "text-muted-foreground hover:text-foreground/70")}>
+            All
+          </button>
+          <button type="button" onClick={() => setViewFilter("installed")} className={cn("rounded px-2 py-1 text-mc-body-sm font-medium transition-colors", viewFilter === "installed" ? "bg-foreground/[0.08] text-foreground/80" : "text-muted-foreground hover:text-foreground/70")}>
+            Installed ({Object.keys(installed).length})
+          </button>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-mc-caption text-muted-foreground/60 shrink-0">Sort:</span>
+          <div className="flex rounded-md border border-foreground/[0.06] p-0.5">
+            {(["trending", "stars", "downloads", "name"] as const).map((s) => (
+              <button key={s} type="button" onClick={() => setSortBy(s)} className={cn("rounded px-2 py-1 text-mc-caption font-medium transition-colors", sortBy === s ? "bg-foreground/[0.08] text-foreground/80" : "text-muted-foreground hover:text-foreground/70")}>
+                {s === "trending" ? "Trending" : s === "stars" ? "Stars" : s === "downloads" ? "Downloads" : "Name"}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3 text-[12px] text-amber-700 dark:text-amber-200">
-          ClawHub is unavailable right now: {error}
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-mc-body-sm text-amber-700 dark:text-amber-200">
+          {error}
         </div>
       )}
 
       <div>
-        {loading ? (
-          <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-violet-400" /></div>
-        ) : items.length === 0 ? (
-          <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-4 py-8 text-center text-[12px] text-muted-foreground/70">
-            No skills found.
+        {loading && viewFilter === "all" ? (
+          <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" /></div>
+        ) : sortedItems.length === 0 ? (
+          <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-6 text-center text-mc-body-sm text-muted-foreground/70">
+            {viewFilter === "installed" ? "No ClawHub skills installed yet. Use Trending or search, then Install." : "No skills found."}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-            {items.map((item) => {
+            {sortedItems.map((item) => {
               const installedVersion = installed[item.slug];
               const isInstalled = Boolean(installedVersion);
+              const catalogVersion = item.latestVersion ?? item.version;
+              const hasUpdate = isInstalled && catalogVersion && catalogVersion !== installedVersion;
               const isBusy = busySlug === item.slug;
-              const installLabel =
-                isBusy && busyAction === "install"
-                  ? "Installing..."
-                  : isBusy && busyAction === "update"
-                    ? "Updating..."
-                    : isBusy && busyAction === "uninstall"
-                      ? "Deleting..."
-                      : isInstalled
-                        ? "Reinstall"
-                        : "Install";
+              const installLabel = isBusy && busyAction === "install" ? "Installing..." : isBusy && busyAction === "update" ? "Updating..." : isBusy && busyAction === "uninstall" ? "Deleting..." : isInstalled ? "Reinstall" : "Install";
               return (
-                <div key={item.slug} className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold text-foreground/90">{item.displayName || item.slug}</p>
-                      <p className="truncate text-[10px] text-muted-foreground/60">{item.slug}</p>
+                <div
+                  key={item.slug}
+                  className="rounded-xl border border-white/20 dark:border-white/10 p-2.5 shadow-sm backdrop-blur-md bg-white/70 dark:bg-white/[0.08]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-mc-caption font-medium text-foreground">{item.displayName || item.slug}</p>
+                      <p className="mt-0.5 text-mc-body-sm leading-snug text-foreground/80 dark:text-foreground/90 break-words">
+                        {item.summary || item.slug}
+                      </p>
                     </div>
-                    <span className={cn("rounded border px-1.5 py-0.5 text-[9px] font-medium", isInstalled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-foreground/[0.08] bg-muted/70 text-muted-foreground")}>
-                      {isInstalled ? `Installed ${installedVersion}` : `v${item.version || "latest"}`}
+                    <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-mc-micro font-medium", isInstalled ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-foreground/[0.06] text-muted-foreground")}>
+                      {isInstalled ? installedVersion : `v${item.version || "latest"}`}
                     </span>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-[11px] leading-[1.45] text-muted-foreground">{item.summary || "No summary available."}</p>
-                  <div className="mt-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
-                      {typeof item.score === "number" && <span>score {item.score.toFixed(3)}</span>}
-                      {typeof item.downloads === "number" && <span>{item.downloads} downloads</span>}
-                      {typeof item.stars === "number" && <span>{item.stars} stars</span>}
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {isInstalled && (
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => void uninstallSkill(item.slug)}
-                          className="inline-flex items-center gap-1 rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-[10px] text-red-300 hover:bg-red-500/20 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          Delete
-                        </button>
-                      )}
-                      {isInstalled && (
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    {viewFilter === "all" && typeof item.stars === "number" && (
+                      <span className="inline-flex items-center gap-1 text-mc-caption text-muted-foreground/70">
+                        <Star className="h-3 w-3 fill-amber-500/80 text-amber-500/80 shrink-0" />
+                        {item.stars}
+                      </span>
+                    )}
+                    <div className="flex flex-1 justify-end gap-1">
+                      {isInstalled && hasUpdate && (
                         <button
                           type="button"
                           disabled={isBusy}
                           onClick={() => void updateSkill(item.slug)}
-                          className="rounded-md border border-foreground/[0.08] px-2.5 py-1 text-[10px] text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
+                          className="rounded border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-mc-caption font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-500/25 dark:hover:bg-amber-500/20 disabled:opacity-50"
                         >
-                          {isBusy && busyAction === "update" ? "Updating..." : "Update"}
+                          {isBusy && busyAction === "update" ? "…" : "Update"}
                         </button>
                       )}
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() => void installSkill(item.slug, item.version)}
-                        className="rounded-md bg-violet-600 px-2.5 py-1 text-[10px] font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-                      >
+                      {isInstalled && (
+                        <button type="button" disabled={isBusy} onClick={() => void uninstallSkill(item.slug)} className="rounded border border-red-500/20 px-2 py-0.5 text-mc-caption text-red-500/90 hover:bg-red-500/10 disabled:opacity-50">
+                          Delete
+                        </button>
+                      )}
+                      <button type="button" disabled={isBusy} onClick={() => void installSkill(item.slug, item.version)} className="rounded bg-violet-600 px-2.5 py-0.5 text-mc-caption font-medium text-white hover:bg-violet-500 disabled:opacity-50">
                         {installLabel}
                       </button>
                     </div>
@@ -1425,81 +1474,67 @@ export function SkillsView({ initialSkillName = null }: { initialSkillName?: str
   return (
     <SectionLayout>
       <SectionHeader
+        className="py-2 md:py-3"
         title={
-          <span className="flex items-center gap-2 text-[18px]">
+          <span className="flex items-center gap-2 text-mc-heading">
             <Wrench className="h-5 w-5 text-violet-400" />
             Skills
           </span>
         }
-        description="Browse, install, and configure OpenClaw skills. Click any skill for details."
-        meta="Skills are grouped by origin (Bundled vs Workspace vs Shared Local). Configured state and runtime availability are shown separately."
+        description="Browse, install, and configure skills. Click any skill for details."
+        meta={null}
         actions={
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-lg border border-foreground/[0.08] bg-muted/50 p-1">
               <button
                 type="button"
                 onClick={() => switchTab("skills")}
-                className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors", tab === "skills" ? "bg-violet-500/15 text-violet-300" : "text-muted-foreground hover:text-foreground/80")}
+                className={cn("rounded-md px-2.5 py-1 text-mc-body-sm font-medium transition-colors", tab === "skills" ? "bg-violet-500/15 text-violet-300" : "text-muted-foreground hover:text-foreground/80")}
               >
                 Local Skills
               </button>
               <button
                 type="button"
                 onClick={() => switchTab("clawhub")}
-                className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors", tab === "clawhub" ? "bg-violet-500/15 text-violet-300" : "text-muted-foreground hover:text-foreground/80")}
+                className={cn("rounded-md px-2.5 py-1 text-mc-body-sm font-medium transition-colors", tab === "clawhub" ? "bg-violet-500/15 text-violet-300" : "text-muted-foreground hover:text-foreground/80")}
               >
                 ClawHub
               </button>
             </div>
-            <button type="button" onClick={fetchAll} className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/80"><RefreshCw className="h-3 w-3" />Refresh</button>
+            <button type="button" onClick={fetchAll} className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-mc-body-sm text-muted-foreground hover:bg-muted/80"><RefreshCw className="h-3 w-3" />Refresh</button>
           </div>
         }
       />
 
       {tab === "skills" && (
-        <SectionBody width="wide" padding="compact" innerClassName="space-y-3">
-          {/* Summary */}
+        <SectionBody width="wide" padding="compact" innerClassName="space-y-4">
+          {/* Summary + search in one scrollable area with the list */}
           {summary && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            <SumCard value={summary.total} label="Total" color="text-foreground/90" />
-            <SumCard value={summary.eligible} label="Ready" color="text-emerald-400" border="border-emerald-500/20" bg="bg-emerald-500/5" />
-            <SumCard value={bundledCount} label="Bundled" color="text-sky-400" border="border-sky-500/20" bg="bg-sky-500/5" />
-            <SumCard value={workspaceCount} label="Workspace" color="text-violet-400" border="border-violet-500/20" bg="bg-violet-500/5" />
-            <SumCard value={summary.missingRequirements} label="Missing Deps" color="text-amber-400" border="border-amber-500/20" bg="bg-amber-500/5" />
-            <SumCard value={summary.disabled} label="Disabled" color="text-red-400" border="border-red-500/20" bg="bg-red-500/5" />
-          </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              <SumCard value={summary.total} label="Total" color="text-foreground/80" />
+              <SumCard value={summary.eligible} label="Ready" color="text-emerald-600 dark:text-emerald-400" border="border-emerald-500/15" bg="bg-emerald-500/5" />
+              <SumCard value={workspaceCount} label="Workspace" color="text-violet-600 dark:text-violet-400" border="border-violet-500/15" bg="bg-violet-500/5" />
+              <SumCard value={summary.disabled} label="Disabled" color="text-muted-foreground" border="border-foreground/[0.06]" bg="bg-foreground/[0.02]" />
+            </div>
           )}
-
-          {/* Search + filter */}
-          <div className="flex flex-wrap items-center gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-muted/50 px-3 py-2">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground/60" />
-            <input placeholder="Search skills..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/60 text-foreground/70" />
-            {search && <button onClick={() => setSearch("")} className="text-muted-foreground/60 hover:text-muted-foreground"><X className="h-3.5 w-3.5" /></button>}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-foreground/[0.06] bg-muted/40 px-2.5 py-1.5 min-w-[180px]">
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+              <input placeholder="Search skills..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 bg-transparent text-mc-caption outline-none placeholder:text-muted-foreground/50 text-foreground/80" />
+              {search && <button onClick={() => setSearch("")} className="text-muted-foreground/50 hover:text-muted-foreground"><X className="h-3.5 w-3.5" /></button>}
+            </div>
+            <div className="flex gap-1">{(["all", "eligible", "unavailable", "bundled", "workspace"] as const).map((f) => (
+              <button key={f} type="button" onClick={() => setFilter(f)} className={cn("rounded-md px-2 py-1 text-mc-body-sm font-medium transition-colors", filter === f ? "bg-foreground/[0.08] text-foreground/80" : "text-muted-foreground hover:bg-muted/60")}>
+                {f === "all" ? "All" : f === "eligible" ? "Ready" : f === "unavailable" ? "Unavailable" : f === "bundled" ? "Bundled" : "Workspace"}
+              </button>
+            ))}</div>
           </div>
-          <div className="flex gap-1">{(["all", "eligible", "unavailable", "bundled", "workspace"] as const).map((f) => (
-            <button key={f} type="button" onClick={() => setFilter(f)} className={cn("rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors", filter === f ? "bg-violet-500/15 text-violet-300" : "text-muted-foreground hover:bg-muted/80 hover:text-muted-foreground")}>
-              {f === "all" ? "All" : f === "eligible" ? "Ready" : f === "unavailable" ? "Unavailable" : f === "bundled" ? "Bundled" : "Workspace"}
-            </button>
-          ))}</div>
-          </div>
-        </SectionBody>
-      )}
-
-      {tab === "skills" && <SectionBody width="wide" padding="compact" className="pt-0" innerClassName="space-y-5">
+          <div className="space-y-4">
           {grouped.map((section) => (
-            <section key={section.origin} className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.015] p-3.5">
-              <div className="flex flex-wrap items-end justify-between gap-3 border-b border-foreground/[0.05] pb-3">
-                <div>
-                  <h3 className="text-[13px] font-semibold text-foreground/90">{section.title} <span className="text-muted-foreground/60">({section.skills.length})</span></h3>
-                  <p className="mt-1 text-[11px] text-muted-foreground/75">{section.description}</p>
-                </div>
-                <div className="flex items-center gap-1.5 text-[10px]">
-                  <span className="rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300">{section.ready} ready</span>
-                  <span className="rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-amber-300">{section.needsSetup} needs setup</span>
-                  <span className="rounded border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 text-red-300">{section.disabled} configured off</span>
-                </div>
-              </div>
+            <section key={section.origin} className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3">
+              <h3 className="text-mc-caption font-medium text-foreground/80 border-b border-foreground/[0.05] pb-2">
+                {section.title} <span className="text-muted-foreground/60 font-normal">({section.skills.length})</span>
+              </h3>
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {section.skills.map((s) => (
                   <SkillCard
@@ -1513,14 +1548,16 @@ export function SkillsView({ initialSkillName = null }: { initialSkillName?: str
               </div>
             </section>
           ))}
-        {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <Search className="h-8 w-8 text-muted-foreground/40 mb-3" />
-            <p className="text-[13px] text-muted-foreground">No skills match your search</p>
-            <p className="text-[11px] text-muted-foreground/60 mt-1">Try different keywords or change the filter.</p>
+          {filtered.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Search className="h-8 w-8 text-muted-foreground/40 mb-3" />
+              <p className="text-mc-body text-muted-foreground">No skills match your search</p>
+              <p className="text-mc-body-sm text-muted-foreground/60 mt-1">Try different keywords or change the filter.</p>
+            </div>
+          )}
           </div>
-        )}
-      </SectionBody>}
+        </SectionBody>
+      )}
 
       {tab === "clawhub" && (
         <SectionBody width="wide" padding="compact" innerClassName="pb-6">
@@ -1539,9 +1576,9 @@ export function SkillsView({ initialSkillName = null }: { initialSkillName?: str
 
 function SumCard({ value, label, color, border, bg }: { value: number; label: string; color: string; border?: string; bg?: string }) {
   return (
-    <div className={cn("rounded-lg border px-3 py-2", border || "border-foreground/[0.06]", bg || "bg-foreground/[0.02]")}>
-      <p className={cn("text-lg font-semibold", color)}>{value}</p>
-      <p className="text-[10px] text-muted-foreground">{label}</p>
+    <div className={cn("rounded-lg border px-2.5 py-1.5", border || "border-foreground/[0.06]", bg || "bg-foreground/[0.02]")}>
+      <p className={cn("text-mc-sub font-semibold leading-tight", color)}>{value}</p>
+      <p className="text-mc-micro text-muted-foreground mt-0.5">{label}</p>
     </div>
   );
 }

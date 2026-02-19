@@ -22,6 +22,8 @@ type ExploreItem = {
     stars?: number;
   };
   updatedAt?: number;
+  developer?: string;
+  author?: string;
 };
 
 type ExplorePayload = {
@@ -34,6 +36,8 @@ type SearchItem = {
   version: string;
   summary: string;
   score?: number;
+  developer?: string;
+  author?: string;
 };
 
 type InstalledItem = {
@@ -236,15 +240,24 @@ export async function POST(request: NextRequest) {
 
     if (action === "install") {
       if (!slug) return NextResponse.json({ error: "slug required" }, { status: 400 });
+      const force = Boolean(body.force);
       const args = ["install", slug];
       if (version) args.push("--version", version);
+      if (force) args.push("--force");
       const { stdout, stderr } = await runClawHub(args, 120000);
       return NextResponse.json({ ok: true, action, slug, output: `${stdout}${stderr}`.trim() });
     }
 
     if (action === "update") {
-      const args = slug ? ["update", slug] : ["update", "--all"];
-      if (version && slug) args.push("--version", version);
+      if (!slug) {
+        const args = ["update", "--all"];
+        if (body.force) args.push("--force");
+        const { stdout, stderr } = await runClawHub(args, 120000);
+        return NextResponse.json({ ok: true, action, slug: null, output: `${stdout}${stderr}`.trim() });
+      }
+      const args = ["update", slug];
+      if (version) args.push("--version", version);
+      if (body.force) args.push("--force");
       const { stdout, stderr } = await runClawHub(args, 120000);
       return NextResponse.json({ ok: true, action, slug: slug || null, output: `${stdout}${stderr}`.trim() });
     }

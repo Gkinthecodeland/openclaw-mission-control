@@ -27,7 +27,7 @@ export default async function TasksPage() {
   return (
     <div className="p-6 h-full">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Tasks</h1>
+        <h1 className="text-mc-title font-semibold">Tasks</h1>
         <Badge variant="outline">{tasks.length} total</Badge>
       </div>
 
@@ -68,11 +68,11 @@ export default async function TasksPage() {
                         <Badge 
                           variant={task.priority === 'high' ? 'destructive' : 
                                    task.priority === 'medium' ? 'default' : 'secondary'}
-                          className="text-[10px] h-5"
+                          className="text-mc-caption h-5"
                         >
                           {task.priority}
                         </Badge>
-                        <Badge variant="outline" className="text-[10px] h-5">
+                        <Badge variant="outline" className="text-mc-caption h-5">
                           {task.assignee}
                         </Badge>
                       </div>

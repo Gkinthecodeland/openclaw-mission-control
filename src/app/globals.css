@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "../../node_modules/tw-animate-css/dist/tw-animate.css";
+@import "tw-animate-css";
 @import "@xterm/xterm/css/xterm.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -46,12 +46,6 @@
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
 }
-
-/* ═══════════════════════════════════════════════════
-   DESIGN TOKENS
-   Semantic color roles that adapt to light/dark.
-   Components should migrate to these over time.
-   ═══════════════════════════════════════════════════ */
 
 /* ── Light mode (default) ───────────────────────── */
 :root {
@@ -117,6 +111,16 @@
   --text-tertiary: #71717a;
   --text-quaternary: #a1a1aa;
   --text-placeholder: #a1a1aa;
+
+  /* App typography scale — terminal-grade compact monospace
+     13 → 12 → 11 → 11 → 10 → 10 → 8 */
+  --mc-font-title: 0.8125rem;   /* 13px — page / section titles */
+  --mc-font-heading: 0.75rem;   /* 12px — card / panel headings */
+  --mc-font-sub: 0.6875rem;     /* 11px — sub-headings */
+  --mc-font-body: 0.6875rem;    /* 11px — primary body text */
+  --mc-font-body-sm: 0.625rem;  /* 10px — secondary body, detail rows */
+  --mc-font-caption: 0.625rem;  /* 10px — labels, buttons, badges */
+  --mc-font-micro: 0.5rem;      /* 8px  — timestamps, counters */
 }
 
 /* ── Dark mode ──────────────────────────────────── */
@@ -178,12 +182,21 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground text-base;
     font-family: var(--font-geist-mono), ui-monospace, "SF Mono", Monaco, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, "Liberation Mono", monospace;
   }
 }
 
 @layer components {
+  /* Typography scale — use these classes for consistent font sizes app-wide */
+  .text-mc-title { font-size: var(--mc-font-title); }
+  .text-mc-heading { font-size: var(--mc-font-heading); }
+  .text-mc-sub { font-size: var(--mc-font-sub); }
+  .text-mc-body { font-size: var(--mc-font-body); }
+  .text-mc-body-sm { font-size: var(--mc-font-body-sm); }
+  .text-mc-caption { font-size: var(--mc-font-caption); }
+  .text-mc-micro { font-size: var(--mc-font-micro); }
+
   /* Liquid glass panels — frosted, translucent */
   .mc-panel {
     @apply rounded-2xl border border-white/20 dark:border-white/10 p-4 md:p-5;
@@ -220,7 +233,8 @@
   }
 
   .mc-action-btn {
-    @apply inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-40;
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-40;
+    font-size: var(--mc-font-body);
   }
 
   .mc-note-warning {
@@ -232,7 +246,8 @@
   }
 
   .mc-kicker {
-    @apply text-xs uppercase tracking-wide text-muted-foreground;
+    @apply uppercase tracking-wide text-muted-foreground;
+    font-size: var(--mc-font-caption);
   }
 }
 
@@ -467,7 +482,7 @@ body > * {
 .md-editor {
   line-height: 1.7;
   color: #52525b;
-  font-size: 0.875rem;
+  font-size: var(--mc-font-heading);
 }
 
 .dark .md-editor {
@@ -488,7 +503,7 @@ body > * {
 .md-editor h1 {
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
-  font-size: 1.125rem;
+  font-size: var(--mc-font-title);
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.4;
@@ -498,7 +513,7 @@ body > * {
 .md-editor h2 {
   margin-top: 1.25rem;
   margin-bottom: 0.5rem;
-  font-size: 1rem;
+  font-size: var(--mc-font-heading);
   font-weight: 600;
   color: #6d28d9;
   line-height: 1.4;
@@ -511,7 +526,7 @@ body > * {
 .md-editor h3 {
   margin-top: 1rem;
   margin-bottom: 0.5rem;
-  font-size: 0.875rem;
+  font-size: var(--mc-font-sub);
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.4;
@@ -521,7 +536,7 @@ body > * {
 .md-editor h4 {
   margin-top: 0.75rem;
   margin-bottom: 0.375rem;
-  font-size: 0.875rem;
+  font-size: var(--mc-font-sub);
   font-weight: 500;
   color: var(--text-secondary);
 }
@@ -529,7 +544,7 @@ body > * {
 
 .md-editor p {
   margin-bottom: 0.5rem;
-  font-size: 0.875rem;
+  font-size: var(--mc-font-heading);
   line-height: 1.75rem;
   color: var(--text-tertiary);
 }
@@ -551,7 +566,7 @@ body > * {
 }
 
 .md-editor li {
-  font-size: 0.875rem;
+  font-size: var(--mc-font-heading);
   color: var(--text-tertiary);
   margin-bottom: 0.25rem;
 }
@@ -587,7 +602,7 @@ body > * {
   border-radius: 0.25rem;
   padding: 0.125rem 0.375rem;
   font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.8125rem;
+  font-size: var(--mc-font-body);
   color: var(--text-secondary);
 }
 
@@ -597,7 +612,7 @@ body > * {
   border-radius: 0.5rem;
   background: var(--surface-2);
   padding: 1rem;
-  font-size: 0.875rem;
+  font-size: var(--mc-font-heading);
   color: var(--text-secondary);
 }
 
@@ -620,7 +635,7 @@ body > * {
   width: 100%;
   border-collapse: collapse;
   margin: 1rem 0;
-  font-size: 0.8125rem;
+  font-size: var(--mc-font-body);
   color: var(--text-tertiary);
   border: 1px solid var(--border);
 }

@@ -190,16 +190,16 @@ export function LogsView() {
 
           {/* Stats badges */}
           <div className="flex items-center gap-1.5">
-            <span className="rounded bg-muted/80 px-2 py-0.5 text-[10px] text-muted-foreground">
+            <span className="rounded bg-muted/80 px-2 py-0.5 text-mc-caption text-muted-foreground">
               {stats.info} info
             </span>
             {stats.warn > 0 && (
-              <span className="rounded bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-400">
+              <span className="rounded bg-amber-500/10 px-2 py-0.5 text-mc-caption text-amber-400">
                 {stats.warn} warn
               </span>
             )}
             {stats.error > 0 && (
-              <span className="rounded bg-red-500/10 px-2 py-0.5 text-[10px] text-red-400">
+              <span className="rounded bg-red-500/10 px-2 py-0.5 text-mc-caption text-red-400">
                 {stats.error} err
               </span>
             )}
@@ -212,7 +212,7 @@ export function LogsView() {
             type="button"
             onClick={() => setAutoRefresh(!autoRefresh)}
             className={cn(
-              "flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors",
+              "flex items-center gap-1.5 rounded-md border px-2 py-1 text-mc-body-sm transition-colors",
               autoRefresh
                 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                 : "border-foreground/[0.06] bg-muted/60 text-muted-foreground"
@@ -241,7 +241,7 @@ export function LogsView() {
             type="button"
             onClick={() => setShowFilters(!showFilters)}
             className={cn(
-              "flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors",
+              "flex items-center gap-1 rounded-md border px-2 py-1 text-mc-body-sm transition-colors",
               showFilters || hasFilters
                 ? "border-violet-500/20 bg-violet-500/10 text-violet-400"
                 : "border-foreground/[0.06] bg-muted/60 text-muted-foreground hover:text-foreground/70"
@@ -250,7 +250,7 @@ export function LogsView() {
             <Filter className="h-3 w-3" />
             Filters
             {hasFilters && (
-              <span className="ml-0.5 rounded-full bg-violet-500/30 px-1 text-[9px]">
+              <span className="ml-0.5 rounded-full bg-violet-500/30 px-1 text-mc-micro">
                 !
               </span>
             )}
@@ -267,7 +267,7 @@ export function LogsView() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search logs..."
-                className="w-40 bg-transparent text-[12px] text-foreground/70 outline-none placeholder:text-muted-foreground/60"
+                className="w-40 bg-transparent text-mc-caption text-foreground/70 outline-none placeholder:text-muted-foreground/60"
               />
               {search && (
                 <button
@@ -284,7 +284,7 @@ export function LogsView() {
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-[12px] text-foreground/70 outline-none"
+              className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-mc-caption text-foreground/70 outline-none"
             >
               <option value="">All sources</option>
               {sources.map((s) => (
@@ -304,7 +304,7 @@ export function LogsView() {
                     setLevelFilter(levelFilter === level ? "" : level)
                   }
                   className={cn(
-                    "rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                    "rounded-md border px-2 py-0.5 text-mc-body-sm font-medium transition-colors",
                     levelFilter === level
                       ? level === "error"
                         ? "border-red-500/30 bg-red-500/15 text-red-400"
@@ -323,7 +323,7 @@ export function LogsView() {
             <select
               value={limit}
               onChange={(e) => setLimit(parseInt(e.target.value, 10))}
-              className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-[12px] text-foreground/70 outline-none"
+              className="rounded-md border border-foreground/[0.08] bg-card px-2 py-1 text-mc-caption text-foreground/70 outline-none"
             >
               <option value="100">100 lines</option>
               <option value="200">200 lines</option>
@@ -335,7 +335,7 @@ export function LogsView() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="text-[11px] text-muted-foreground hover:text-foreground/70"
+                className="text-mc-body-sm text-muted-foreground hover:text-foreground/70"
               >
                 Clear all
               </button>
@@ -348,7 +348,7 @@ export function LogsView() {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto bg-background font-mono text-[12px] leading-[1.65]"
+        className="flex-1 overflow-y-auto bg-background font-mono text-mc-caption leading-[1.65]"
       >
         {loading && entries.length === 0 ? (
           <LoadingState label="Loading logs..." className="py-12" />
@@ -360,7 +360,7 @@ export function LogsView() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="text-[11px] text-violet-400 hover:text-violet-300"
+                className="text-mc-body-sm text-violet-400 hover:text-violet-300"
               >
                 Clear filters
               </button>
@@ -384,7 +384,7 @@ export function LogsView() {
                   {showDate && entry.time && (
                     <div className="my-1 flex items-center gap-2 px-2 py-0.5">
                       <div className="h-px flex-1 bg-foreground/[0.04]" />
-                      <span className="text-[10px] text-muted-foreground/60">
+                      <span className="text-mc-caption text-muted-foreground/60">
                         {formatLogDate(entry.time)}
                       </span>
                       <div className="h-px flex-1 bg-foreground/[0.04]" />
@@ -428,7 +428,7 @@ export function LogsView() {
 
       {/* ── Bottom bar ─────────────────────────── */}
       <div className="flex shrink-0 items-center justify-between border-t border-foreground/[0.06] bg-card/60 px-4 py-1.5">
-        <span className="text-[10px] text-muted-foreground/60">
+        <span className="text-mc-caption text-muted-foreground/60">
           {displayEntries.length} entries
           {hasFilters && " (filtered)"}
         </span>
@@ -443,14 +443,14 @@ export function LogsView() {
                   behavior: "smooth",
                 });
               }}
-              className="flex items-center gap-1 rounded bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-400 transition-colors hover:bg-violet-500/20"
+              className="flex items-center gap-1 rounded bg-violet-500/10 px-2 py-0.5 text-mc-caption text-violet-400 transition-colors hover:bg-violet-500/20"
             >
               <ArrowDown className="h-3 w-3" />
               Scroll to bottom
             </button>
           )}
           {autoRefresh && (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-500/60">
+            <span className="flex items-center gap-1 text-mc-caption text-emerald-500/60">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
               Auto-refresh 3s
             </span>

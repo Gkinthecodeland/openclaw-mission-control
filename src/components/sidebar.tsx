@@ -113,8 +113,8 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         const showBadge = item.section === "chat" && chatUnread > 0;
         const isDisabled = item.comingSoon;
         const linkClass = cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
-          item.isSubItem && "ml-7 py-1.5 text-[12px]",
+          "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
+          item.isSubItem && "ml-6 py-1 text-xs",
           isDisabled
             ? "cursor-not-allowed opacity-60 text-muted-foreground dark:text-zinc-500"
             : isActive
@@ -125,9 +125,9 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           <div key={`${item.section}:${item.label}`}>
             {isDisabled ? (
               <span className={linkClass} aria-disabled>
-                <Icon className="h-[18px] w-[18px] shrink-0" />
+                <Icon className="h-3.5 w-3.5 shrink-0" />
                 <span className="flex-1">{item.label}</span>
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
                   Coming soon
                 </span>
               </span>
@@ -139,7 +139,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                     onClick={onNavigate}
                     className="flex min-w-0 flex-1 items-center gap-3"
                   >
-                    <Icon className="h-[18px] w-[18px] shrink-0" />
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
                     <span className="flex-1">{item.label}</span>
                   </Link>
                   <button
@@ -174,10 +174,10 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                   onClick={onNavigate}
                   className={linkClass}
                 >
-                  <Icon className="h-[18px] w-[18px] shrink-0" />
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
                   <span className="flex-1">{item.label}</span>
                   {showBadge && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-violet-600 px-1.5 text-[10px] font-bold text-white">
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-violet-600 px-1.5 text-xs font-bold text-white">
                       {chatUnread > 9 ? "9+" : chatUnread}
                     </span>
                   )}
@@ -279,7 +279,7 @@ function GatewayBadge() {
         onClick={() => setShowMenu(!showMenu)}
         className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 transition-colors hover:bg-black/5 dark:hover:bg-zinc-800/40"
       >
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-black/5 dark:bg-zinc-800/80 text-lg">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-black/5 dark:bg-zinc-800/80 text-sm">
           🦞
         </div>
         <div className="flex-1 text-left">
@@ -291,11 +291,11 @@ function GatewayBadge() {
                 STATUS_RING[status]
               )}
             />
-            <span className="text-[11px] font-medium text-muted-foreground dark:text-zinc-400">
+            <span className="text-mc-body-sm font-medium text-muted-foreground dark:text-zinc-400">
               Gateway
             </span>
           </div>
-          <span className="text-[10px] text-muted-foreground dark:text-zinc-600">
+          <span className="text-mc-caption text-muted-foreground dark:text-zinc-600">
             {restarting ? "Restarting..." : STATUS_LABELS[status]}
           </span>
         </div>
@@ -307,7 +307,7 @@ function GatewayBadge() {
             type="button"
             onClick={handleRestart}
             disabled={restarting}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-foreground/70 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-mc-caption text-foreground/70 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           >
             <RefreshCw
               className={cn(
@@ -320,7 +320,7 @@ function GatewayBadge() {
           <button
             type="button"
             onClick={handleStop}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-mc-caption text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
           >
             <Power className="h-3.5 w-3.5" />
             Stop Gateway
@@ -329,7 +329,7 @@ function GatewayBadge() {
           <div className="px-3 py-1.5">
             <span
               className={cn(
-                "inline-flex items-center gap-1 text-[10px]",
+                "inline-flex items-center gap-1 text-mc-caption",
                 status === "online" ? "text-emerald-400" : status === "degraded" ? "text-amber-400" : "text-red-400"
               )}
             >

@@ -50,11 +50,11 @@ export function RestartAnnouncementBar() {
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 sm:gap-3 sm:px-5 sm:py-2.5">
       <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
       <div className="min-w-0 flex-1">
-        <p className="text-[12px] font-medium text-amber-600 dark:text-amber-200">
+        <p className="text-mc-caption font-medium text-amber-600 dark:text-amber-200">
           Configuration changed — gateway restart recommended
         </p>
         {reason && (
-          <p className="text-[11px] text-amber-500/70 dark:text-amber-400/60">
+          <p className="text-mc-body-sm text-amber-500/70 dark:text-amber-400/60">
             {reason}
           </p>
         )}
@@ -62,7 +62,7 @@ export function RestartAnnouncementBar() {
       <button
         onClick={handleRestart}
         disabled={restarting}
-        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-amber-500/15 px-4 py-1.5 text-[12px] font-semibold text-amber-700 transition-colors hover:bg-amber-500/25 disabled:opacity-60 dark:text-amber-200 dark:hover:bg-amber-500/30"
+        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-amber-500/15 px-4 py-1.5 text-mc-caption font-semibold text-amber-700 transition-colors hover:bg-amber-500/25 disabled:opacity-60 dark:text-amber-200 dark:hover:bg-amber-500/30"
       >
         {restarting ? (
           <>

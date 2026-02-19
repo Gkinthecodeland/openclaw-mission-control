@@ -18,7 +18,12 @@ import {
   Cpu,
   Circle,
   Trash2,
+  Paperclip,
+  X,
+  Brain,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { addUnread, clearUnread, setChatActive } from "@/lib/chat-store";
 
@@ -69,122 +74,166 @@ function formatModel(model: string) {
   return parts[parts.length - 1] || model;
 }
 
-/* ── Markdown-lite renderer for messages ───────── */
-
-function MessageContent({ text }: { text: string }) {
-  const lines = text.split("\n");
-  const elements: React.ReactNode[] = [];
-  let inCodeBlock = false;
-  let codeLines: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.startsWith("```")) {
-      if (inCodeBlock) {
-        elements.push(
-          <pre
-            key={`code-${i}`}
-            className="my-2 overflow-x-auto rounded-lg bg-card p-3 text-[12px] leading-relaxed text-foreground/70"
-          >
-            <code>{codeLines.join("\n")}</code>
-          </pre>
-        );
-        codeLines = [];
-        inCodeBlock = false;
-      } else {
-        inCodeBlock = true;
-      }
-      continue;
-    }
-    if (inCodeBlock) {
-      codeLines.push(line);
-      continue;
-    }
-    if (line.trim() === "") {
-      elements.push(<br key={`br-${i}`} />);
-    } else {
-      elements.push(
-        <p key={`p-${i}`} className="leading-relaxed">
-          <InlineFormatted text={line} />
-        </p>
-      );
-    }
-  }
-
-  if (inCodeBlock && codeLines.length > 0) {
-    elements.push(
-      <pre
-        key="code-end"
-        className="my-2 overflow-x-auto rounded-lg bg-card p-3 text-[12px] leading-relaxed text-foreground/70"
-      >
-        <code>{codeLines.join("\n")}</code>
-      </pre>
-    );
-  }
-
-  return <div className="space-y-1">{elements}</div>;
+/** Convert File[] to FileUIPart[] (data URLs) for sendMessage */
+async function filesToUIParts(files: File[]): Promise<Array<{ type: "file"; mediaType: string; filename?: string; url: string }>> {
+  return Promise.all(
+    files.map(
+      (file): Promise<{ type: "file"; mediaType: string; filename?: string; url: string }> =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve({
+              type: "file",
+              mediaType: file.type || "application/octet-stream",
+              filename: file.name,
+              url: reader.result as string,
+            });
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        })
+    )
+  );
 }
 
-function InlineFormatted({ text }: { text: string }) {
-  const parts: React.ReactNode[] = [];
-  let remaining = text;
-  let key = 0;
+/* ── Full markdown renderer for messages (tables, lists, code, etc.) ───────── */
 
-  while (remaining.length > 0) {
-    const codeMatch = remaining.match(/^`([^`]+)`/);
-    if (codeMatch) {
-      parts.push(
-        <code
-          key={key++}
-          className="rounded bg-muted px-1.5 py-0.5 text-[12px] text-violet-300"
-        >
-          {codeMatch[1]}
+const chatMarkdownComponents: React.ComponentProps<
+  typeof ReactMarkdown
+>["components"] = {
+  p: ({ children, ...props }) => (
+    <p className="mb-2 last:mb-0 leading-relaxed text-xs" {...props}>
+      {children}
+    </p>
+  ),
+  h1: ({ children, ...props }) => (
+    <h1 className="mb-2 mt-3 text-xs font-semibold first:mt-0" {...props}>
+      {children}
+    </h1>
+  ),
+  h2: ({ children, ...props }) => (
+    <h2 className="mb-2 mt-3 text-xs font-semibold first:mt-0" {...props}>
+      {children}
+    </h2>
+  ),
+  h3: ({ children, ...props }) => (
+    <h3 className="mb-1.5 mt-2 text-xs font-medium first:mt-0" {...props}>
+      {children}
+    </h3>
+  ),
+  h4: ({ children, ...props }) => (
+    <h4 className="mb-1 mt-2 text-xs font-medium first:mt-0" {...props}>
+      {children}
+    </h4>
+  ),
+  ul: ({ children, ...props }) => (
+    <ul className="my-2 list-inside list-disc space-y-0.5 text-xs" {...props}>
+      {children}
+    </ul>
+  ),
+  ol: ({ children, ...props }) => (
+    <ol className="my-2 list-inside list-decimal space-y-0.5 text-xs" {...props}>
+      {children}
+    </ol>
+  ),
+  li: ({ children, ...props }) => (
+    <li className="text-xs" {...props}>
+      {children}
+    </li>
+  ),
+  strong: ({ children, ...props }) => (
+    <strong className="font-semibold" {...props}>
+      {children}
+    </strong>
+  ),
+  em: ({ children, ...props }) => (
+    <em className="italic opacity-90" {...props}>
+      {children}
+    </em>
+  ),
+  code: ({ className, children, ...props }) => {
+    const isBlock = className?.includes("language-");
+    if (isBlock) {
+      return (
+        <code className={cn("block p-0", className)} {...props}>
+          {children}
         </code>
       );
-      remaining = remaining.slice(codeMatch[0].length);
-      continue;
     }
-    const boldMatch = remaining.match(/^\*\*(.+?)\*\*/);
-    if (boldMatch) {
-      parts.push(
-        <strong key={key++} className="font-semibold text-foreground">
-          {boldMatch[1]}
-        </strong>
-      );
-      remaining = remaining.slice(boldMatch[0].length);
-      continue;
-    }
-    const italicMatch = remaining.match(/^\*(.+?)\*/);
-    if (italicMatch) {
-      parts.push(
-        <em key={key++} className="italic text-foreground/70">
-          {italicMatch[1]}
-        </em>
-      );
-      remaining = remaining.slice(italicMatch[0].length);
-      continue;
-    }
-    const linkMatch = remaining.match(/^\[([^\]]+)\]\(([^)]+)\)/);
-    if (linkMatch) {
-      parts.push(
-        <a
-          key={key++}
-          href={linkMatch[2]}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-violet-400 underline decoration-violet-500/30 hover:text-violet-300"
-        >
-          {linkMatch[1]}
-        </a>
-      );
-      remaining = remaining.slice(linkMatch[0].length);
-      continue;
-    }
-    parts.push(remaining[0]);
-    remaining = remaining.slice(1);
-  }
+    return (
+      <code
+        className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-violet-300"
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  },
+  pre: ({ children, ...props }) => (
+    <pre
+      className="my-2 overflow-x-auto rounded-lg bg-card p-3 text-xs leading-relaxed"
+      {...props}
+    >
+      {children}
+    </pre>
+  ),
+  blockquote: ({ children, ...props }) => (
+    <blockquote
+      className="my-2 border-l-2 border-violet-500/40 pl-3 text-xs italic opacity-90"
+      {...props}
+    >
+      {children}
+    </blockquote>
+  ),
+  a: ({ href, children, ...props }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-violet-400 underline decoration-violet-500/30 hover:text-violet-300"
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+  hr: (props) => <hr className="my-3 border-foreground/[0.08]" {...props} />,
+  table: ({ children, ...props }) => (
+    <div className="my-3 w-full overflow-x-auto">
+      <table className="min-w-full border-collapse border border-foreground/[0.08] text-xs" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children, ...props }) => <thead {...props}>{children}</thead>,
+  tbody: ({ children, ...props }) => <tbody {...props}>{children}</tbody>,
+  tr: ({ children, ...props }) => (
+    <tr className="border-b border-foreground/[0.06]" {...props}>
+      {children}
+    </tr>
+  ),
+  th: ({ children, ...props }) => (
+    <th
+      className="border border-foreground/[0.08] bg-muted/60 px-2 py-1.5 text-left font-medium"
+      {...props}
+    >
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }) => (
+    <td className="border border-foreground/[0.08] px-2 py-1.5" {...props}>
+      {children}
+    </td>
+  ),
+};
 
-  return <>{parts}</>;
+function MessageContent({ text }: { text: string }) {
+  if (!text.trim()) return null;
+  return (
+    <div className="space-y-1 [&>*:last-child]:mb-0">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={chatMarkdownComponents}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 /* ── Chat panel for a single agent ─────────────── */
@@ -204,9 +253,72 @@ function ChatPanel({
   isVisible: boolean;
 }) {
   const [inputValue, setInputValue] = useState("");
+  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [availableModels, setAvailableModels] = useState<Array<{ key: string; name: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
   const prevMsgCountRef = useRef(0);
+
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const list = Array.isArray(files) ? files : Array.from(files);
+    if (list.length) setAttachedFiles((prev) => [...prev, ...list]);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes("Files")) {
+      e.dataTransfer.dropEffect = "copy";
+      setIsDraggingOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDraggingOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    const files = e.dataTransfer.files;
+    if (files?.length) addFiles(files);
+  }, [addFiles]);
+
+  // Fetch available models for dropdown
+  useEffect(() => {
+    fetch("/api/models?scope=configured", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data.models) ? data.models : [];
+        setAvailableModels(
+          list.map((m: { key?: string; name?: string }) => ({
+            key: String(m.key ?? ""),
+            name: String(m.name ?? m.key ?? ""),
+          })).filter((m: { key: string }) => m.key)
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  // Close model menu on click outside
+  useEffect(() => {
+    if (!modelMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) {
+        setModelMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [modelMenuOpen]);
 
   // Create transport that sends agentId alongside messages
   const transport = useMemo(
@@ -268,11 +380,17 @@ function ChatPanel({
 
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
-    if (!text || isLoading) return;
+    const hasFiles = attachedFiles.length > 0;
+    if ((!text && !hasFiles) || isLoading) return;
     setInputValue("");
     if (inputRef.current) inputRef.current.style.height = "auto";
-    await sendMessage({ text });
-  }, [inputValue, isLoading, sendMessage]);
+    const fileParts = hasFiles ? await filesToUIParts(attachedFiles) : undefined;
+    setAttachedFiles([]);
+    await sendMessage(
+      { text: text || "", files: fileParts },
+      { body: { model: modelOverride ?? undefined } }
+    );
+  }, [inputValue, isLoading, attachedFiles, modelOverride, sendMessage]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
@@ -311,17 +429,17 @@ function ChatPanel({
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-4 md:px-6">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/80 text-3xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/80 text-xl">
               {agentEmoji(agentId)}
             </div>
             <div className="text-center">
-              <h3 className="text-base font-semibold text-foreground/90">
+              <h3 className="text-sm font-semibold text-foreground/90">
                 Chat with {agentName}
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 Send a message to start a conversation with your agent.
               </p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+              <p className="mt-0.5 text-xs text-muted-foreground/60">
                 Powered by {formatModel(agentModel)}
               </p>
             </div>
@@ -340,7 +458,7 @@ function ChatPanel({
                     setInputValue(prompt);
                     setTimeout(() => inputRef.current?.focus(), 50);
                   }}
-                  className="rounded-lg border border-foreground/[0.06] bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground/70"
+                  className="rounded-lg border border-foreground/[0.06] bg-muted/60 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground/70"
                 >
                   {prompt}
                 </button>
@@ -359,6 +477,16 @@ function ChatPanel({
                   )
                   .map((p) => p.text)
                   .join("") || "";
+              const fileParts = (message.parts?.filter(
+                (p): p is { type: "file"; url?: string; filename?: string; mediaType?: string } =>
+                  p.type === "file"
+              ) ?? []) as Array<{ type: "file"; url?: string; filename?: string; mediaType?: string }>;
+              const imageParts = fileParts.filter(
+                (p) => p.url && /^image\//i.test(p.mediaType ?? "")
+              );
+              const otherFileParts = fileParts.filter(
+                (p) => !p.url || !/^image\//i.test(p.mediaType ?? "")
+              );
               return (
                 <div
                   key={message.id}
@@ -379,7 +507,7 @@ function ChatPanel({
                     {isUser ? (
                       <User className="h-4 w-4" />
                     ) : (
-                      <span className="text-base">
+                      <span className="text-mc-heading">
                         {agentEmoji(agentId)}
                       </span>
                     )}
@@ -388,16 +516,42 @@ function ChatPanel({
                   {/* Message bubble */}
                   <div
                     className={cn(
-                      "max-w-[80%] rounded-xl px-4 py-3 text-[13px]",
+                      "max-w-[80%] rounded-xl px-4 py-3 text-xs",
                       isUser
                         ? "bg-violet-600/20 text-foreground/90"
                         : "bg-muted/80 text-foreground/70"
                     )}
                   >
-                    <MessageContent text={text} />
+                    {text ? <MessageContent text={text} /> : null}
+                    {imageParts.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {imageParts.map((p, i) =>
+                          p.url ? (
+                            <img
+                              key={i}
+                              src={p.url}
+                              alt={p.filename ?? "Attached image"}
+                              className="max-h-48 max-w-full rounded-lg border border-foreground/10 object-contain"
+                            />
+                          ) : null
+                        )}
+                      </div>
+                    )}
+                    {otherFileParts.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {otherFileParts.map((p, i) => (
+                          <span
+                            key={i}
+                            className="rounded bg-muted/80 px-1.5 py-0.5 text-xs opacity-90"
+                          >
+                            📎 {p.filename ?? "file"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div
                       className={cn(
-                        "mt-2 text-[10px]",
+                        "mt-2 text-xs",
                         isUser
                           ? "text-right text-violet-400/40"
                           : "text-muted-foreground/60"
@@ -424,11 +578,11 @@ function ChatPanel({
                     agentColor(agentId)
                   )}
                 >
-                  <span className="text-base">{agentEmoji(agentId)}</span>
+                  <span className="text-mc-heading">{agentEmoji(agentId)}</span>
                 </div>
                 <div className="flex items-center gap-2 rounded-xl bg-muted/80 px-4 py-3">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                  <span className="text-[12px] text-muted-foreground">
+                  <span className="text-sm text-muted-foreground">
                     {agentName} is thinking...
                   </span>
                 </div>
@@ -438,9 +592,9 @@ function ChatPanel({
             {/* Error display */}
             {error && (
               <div className="mb-6 flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
-                <span className="text-[12px] text-red-400">
-                  {error.message}
-                </span>
+<span className="text-sm text-red-400">
+                {error.message}
+              </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -459,7 +613,7 @@ function ChatPanel({
                       if (retryText) sendMessage({ text: retryText });
                     }
                   }}
-                  className="ml-auto flex items-center gap-1 rounded px-2 py-1 text-[11px] text-red-400 transition-colors hover:bg-red-500/10"
+                  className="ml-auto flex items-center gap-1 rounded px-2 py-1 text-sm text-red-400 transition-colors hover:bg-red-500/10"
                 >
                   <RefreshCw className="h-3 w-3" />
                   Retry
@@ -472,19 +626,126 @@ function ChatPanel({
         )}
       </div>
 
-      {/* ── Input area ──────────────────────────── */}
-      <div className="shrink-0 border-t border-foreground/[0.06] bg-card/60 px-4 py-3">
-        <div className="mx-auto flex max-w-3xl min-w-0 items-end gap-2 sm:gap-3">
+      {/* ── Input area (drag-and-drop zone) ─────── */}
+      <div
+        className={cn(
+          "shrink-0 border-t border-foreground/[0.06] bg-card/60 px-4 py-3 transition-colors",
+          isDraggingOver && "bg-violet-500/10 border-violet-500/20"
+        )}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className="mx-auto max-w-3xl space-y-2">
+          {/* Model override (brain icon) + attachments row */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative" ref={modelMenuRef}>
+              <button
+                type="button"
+                onClick={() => setModelMenuOpen((open) => !open)}
+                title={modelOverride ? formatModel(modelOverride) : `Model (default: ${formatModel(agentModel)})`}
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-lg border transition-colors",
+                  modelMenuOpen
+                    ? "border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                    : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Brain className="h-4 w-4" />
+              </button>
+              {modelMenuOpen && (
+                <div className="absolute left-0 bottom-full z-50 mb-1 min-w-[200px] overflow-hidden rounded-lg border border-foreground/[0.08] bg-card py-1 shadow-xl backdrop-blur-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModelOverride(null);
+                      setModelMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
+                      !modelOverride
+                        ? "bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                        : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <Brain className="h-3.5 w-3.5 shrink-0" />
+                    Agent default ({formatModel(agentModel)})
+                  </button>
+                  {availableModels.map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => {
+                        setModelOverride(m.key);
+                        setModelMenuOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
+                        modelOverride === m.key
+                          ? "bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                          : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      <Cpu className="h-3.5 w-3.5 shrink-0" />
+                      {formatModel(m.name)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach files"
+              className="flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-card px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Paperclip className="h-3.5 w-3.5" />
+              Attach
+            </button>
+            {attachedFiles.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1">
+                {attachedFiles.map((f, i) => (
+                  <span
+                    key={`${f.name}-${i}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] bg-muted/60 px-2 py-0.5 text-xs"
+                  >
+                    <span className="max-w-[120px] truncate">{f.name}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAttachedFiles((prev) => prev.filter((_, j) => j !== i))
+                      }
+                      className="rounded p-0.5 hover:bg-muted"
+                      aria-label="Remove file"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex min-w-0 items-end gap-2 sm:gap-3">
           <div className="flex min-w-0 flex-1 items-end rounded-xl border border-foreground/[0.08] bg-card px-3 py-2 sm:px-4 sm:py-3 focus-within:border-violet-500/30 focus-within:ring-1 focus-within:ring-violet-500/20">
             <textarea
               ref={inputRef}
               value={inputValue}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
-              placeholder={`Message ${agentName}...`}
+              placeholder={`Message ${agentName}... (or attach files only)`}
               rows={1}
               disabled={isLoading}
-              className="max-h-[200px] flex-1 resize-none bg-transparent text-[13px] text-foreground/90 outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
+              className="max-h-[200px] flex-1 resize-none bg-transparent text-sm text-foreground/90 outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
             />
           </div>
 
@@ -503,10 +764,10 @@ function ChatPanel({
           <button
             type="button"
             onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading}
+            disabled={(!inputValue.trim() && attachedFiles.length === 0) || isLoading}
             className={cn(
               "flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl transition-colors",
-              inputValue.trim() && !isLoading
+              (inputValue.trim() || attachedFiles.length > 0) && !isLoading
                 ? "bg-violet-600 text-white hover:bg-violet-500"
                 : "bg-muted text-muted-foreground/60"
             )}
@@ -518,9 +779,9 @@ function ChatPanel({
             )}
           </button>
         </div>
-        <p className="mx-auto mt-2 max-w-3xl text-center text-[10px] text-muted-foreground/40">
-          Messages are sent to your OpenClaw agent. Press Enter to send,
-          Shift+Enter for new line.
+        </div>
+        <p className="mx-auto mt-2 max-w-3xl text-center text-xs text-muted-foreground/40">
+          Messages are sent to your OpenClaw agent. You can send text, attachments only, or both. Press Enter to send, Shift+Enter for new line.
         </p>
       </div>
     </div>
@@ -631,7 +892,7 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
                   "border-foreground/[0.08] bg-card hover:bg-muted"
                 )}
               >
-                <span className="text-lg">
+                <span className="text-sm">
                   {agentEmoji(selectedAgent)}
                 </span>
                 <span className="font-medium text-foreground/90">
@@ -663,12 +924,12 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
                             : "text-foreground/70 hover:bg-muted hover:text-foreground"
                         )}
                       >
-                        <span className="text-lg">
+                        <span className="text-sm">
                           {agentEmoji(agent.id)}
                         </span>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium">
+                            <span className="text-mc-body font-medium">
                               {agent.name}
                             </span>
                             {agent.lastActive &&
@@ -676,14 +937,14 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
                                 <Circle className="h-2 w-2 fill-emerald-400 text-emerald-400" />
                               )}
                           </div>
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-mc-body-sm text-muted-foreground">
                             {formatModel(agent.model)} &bull;{" "}
                             {agent.sessionCount} session
                             {agent.sessionCount !== 1 ? "s" : ""}
                           </span>
                         </div>
                         {agent.id === selectedAgent && (
-                          <span className="text-[10px] text-violet-400">
+                          <span className="text-mc-caption text-violet-400">
                             active
                           </span>
                         )}
@@ -698,14 +959,14 @@ export function ChatView({ isVisible = true }: { isVisible?: boolean }) {
             {currentAgent && (
               <div className="flex items-center gap-1.5 rounded-md border border-foreground/[0.06] bg-muted/60 px-2 py-1">
                 <Cpu className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-mc-body-sm text-muted-foreground">
                   {formatModel(currentAgent.model)}
                 </span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
+          <div className="flex items-center gap-1 text-mc-caption text-muted-foreground/60">
             <span>
               {agents.length} agent{agents.length !== 1 ? "s" : ""} discovered
             </span>

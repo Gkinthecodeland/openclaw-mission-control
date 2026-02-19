@@ -89,6 +89,7 @@ type UsageData = {
   };
   buckets: { last1h: Bucket; last24h: Bucket; last7d: Bucket; allTime: Bucket };
   activitySeries?: Record<Period, ActivityPoint[]>;
+  activitySeriesByModel?: Record<string, Record<Period, ActivityPoint[]>>;
   modelBreakdown: ModelBreakdown[];
   agentBreakdown: AgentBreakdown[];
   sessions: SessionEntry[];
@@ -268,9 +269,9 @@ function MetricTile({
       <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br", toneClass.wash)} />
       <div className={cn("pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full blur-3xl", toneClass.glow)} />
       <div className="relative">
-        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/68">{label}</p>
-        <p className="mt-2 text-[26px] font-semibold leading-none text-foreground/95">{value}</p>
-        {sub && <p className="mt-2 text-[11px] text-muted-foreground/80">{sub}</p>}
+        <p className="text-mc-caption font-medium uppercase tracking-[0.18em] text-muted-foreground/68">{label}</p>
+        <p className="mt-2 text-2xl font-semibold leading-none tracking-tight text-foreground/95">{value}</p>
+        {sub && <p className="mt-2 text-mc-body-sm text-muted-foreground/80">{sub}</p>}
       </div>
     </div>
   );
@@ -279,19 +280,22 @@ function MetricTile({
 function Panel({
   title,
   subtitle,
+  actions,
   children,
 }: {
   title: string;
   subtitle?: string;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-2xl border border-foreground/[0.08] bg-card/78 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur-sm md:p-5">
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <div>
-          <h2 className="text-[14px] font-semibold text-foreground/90">{title}</h2>
-          {subtitle && <p className="mt-1 text-[11px] text-muted-foreground/70">{subtitle}</p>}
+          <h2 className="text-mc-sub font-semibold text-foreground/90">{title}</h2>
+          {subtitle && <p className="mt-1 text-mc-body-sm text-muted-foreground/70">{subtitle}</p>}
         </div>
+        {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
       {children}
     </section>
@@ -313,8 +317,8 @@ function ActivityTooltip({
   const total = payload.reduce((sum, row) => sum + Number(row.value || 0), 0);
   return (
     <div className="rounded-xl border border-foreground/[0.1] bg-card/95 px-3 py-2 shadow-lg backdrop-blur-sm">
-      <p className="text-[11px] font-medium text-foreground/90">{labelForPoint(label, period)}</p>
-      <div className="mt-1.5 space-y-1 text-[11px]">
+      <p className="text-mc-body-sm font-medium text-foreground/90">{labelForPoint(label, period)}</p>
+      <div className="mt-1.5 space-y-1 text-mc-body-sm">
         {payload.map((row) => (
           <div key={row.name} className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground" style={{ color: row.color || undefined }}>
@@ -323,7 +327,7 @@ function ActivityTooltip({
             <span className="font-mono text-foreground/90">{fmtTokensLong(Number(row.value || 0))}</span>
           </div>
         ))}
-        <div className="mt-1 border-t border-foreground/[0.08] pt-1.5 text-[11px] font-semibold text-foreground/90">
+        <div className="mt-1 border-t border-foreground/[0.08] pt-1.5 text-mc-body-sm font-semibold text-foreground/90">
           Total {fmtTokensLong(total)}
         </div>
       </div>
@@ -343,8 +347,8 @@ function GenericTooltip({
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-xl border border-foreground/[0.1] bg-card/95 px-3 py-2 shadow-lg backdrop-blur-sm">
-      {label != null && <p className="text-[11px] font-medium text-foreground/90">{String(label)}</p>}
-      <div className="mt-1.5 space-y-1 text-[11px]">
+      {label != null && <p className="text-mc-body-sm font-medium text-foreground/90">{String(label)}</p>}
+      <div className="mt-1.5 space-y-1 text-mc-body-sm">
         {payload.map((row) => (
           <div key={row.name} className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground" style={{ color: row.color || undefined }}>
@@ -374,8 +378,8 @@ function ModelMixTooltip({
   const split = ratio(input, output);
   return (
     <div className="rounded-xl border border-foreground/[0.1] bg-card/95 px-3 py-2 shadow-lg backdrop-blur-sm">
-      <p className="text-[11px] font-medium text-foreground/90">{shortModel(modelName)}</p>
-      <div className="mt-1.5 space-y-1 text-[11px]">
+      <p className="text-mc-body-sm font-medium text-foreground/90">{shortModel(modelName)}</p>
+      <div className="mt-1.5 space-y-1 text-mc-body-sm">
         <div className="flex items-center justify-between gap-4">
           <span className="text-sky-400">input</span>
           <span className="font-mono text-foreground/90">{fmtTokensLong(input)} ({split.inPct}%)</span>
@@ -384,7 +388,7 @@ function ModelMixTooltip({
           <span className="text-orange-400">output</span>
           <span className="font-mono text-foreground/90">{fmtTokensLong(output)} ({split.outPct}%)</span>
         </div>
-        <div className="mt-1 border-t border-foreground/[0.08] pt-1.5 text-[11px] font-semibold text-foreground/90">
+        <div className="mt-1 border-t border-foreground/[0.08] pt-1.5 text-mc-body-sm font-semibold text-foreground/90">
           Total {fmtTokensLong(total)}
         </div>
       </div>
@@ -397,6 +401,15 @@ export function UsageView() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("allTime");
+  /** Token Flow chart: "all" or model key for per-model series */
+  const [tokenFlowModel, setTokenFlowModel] = useState<string>("all");
+
+  // Reset token flow filter to "all" if selected model no longer in breakdown
+  useEffect(() => {
+    if (tokenFlowModel === "all" || !data) return;
+    const hasModel = data.modelBreakdown.some((m) => m.model === tokenFlowModel);
+    if (!hasModel) setTokenFlowModel("all");
+  }, [data, tokenFlowModel]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -435,6 +448,18 @@ export function UsageView() {
     const source = data.activitySeries || fallbackSeriesFromBuckets(data.buckets);
     return source[period] || [];
   }, [data, period]);
+
+  /** Token Flow chart series: all or filtered by selected model */
+  const tokenFlowSeries = useMemo(() => {
+    if (!data) return [];
+    if (tokenFlowModel === "all" || !tokenFlowModel) {
+      const source = data.activitySeries || fallbackSeriesFromBuckets(data.buckets);
+      return source[period] || [];
+    }
+    const byModel = data.activitySeriesByModel || {};
+    const series = byModel[tokenFlowModel] || data.activitySeries || fallbackSeriesFromBuckets(data.buckets);
+    return series[period] || [];
+  }, [data, period, tokenFlowModel]);
 
   const modelChart = useMemo(() => {
     if (!data) return [];
@@ -501,9 +526,9 @@ export function UsageView() {
   return (
     <SectionLayout className="bg-[radial-gradient(circle_at_14%_-20%,rgba(59,130,246,0.14),transparent_40%),radial-gradient(circle_at_88%_-15%,rgba(20,184,166,0.10),transparent_36%)]">
       <SectionHeader
-        title={<span className="text-[20px] tracking-tight">Usage Intelligence</span>}
+        title={<span className="text-mc-title tracking-tight">Usage Intelligence</span>}
         description="Token economics, model pressure, and agent throughput"
-        descriptionClassName="mt-1 text-[12px] text-muted-foreground/70"
+        descriptionClassName="mt-1 text-sm text-muted-foreground/70"
         actions={
           <div className="flex items-center gap-2">
           <div className="inline-flex rounded-xl border border-foreground/[0.1] bg-card/70 p-1 backdrop-blur-sm">
@@ -513,7 +538,7 @@ export function UsageView() {
                 type="button"
                 onClick={() => setPeriod(p)}
                 className={cn(
-                  "rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors",
+                  "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                   period === p
                     ? "border-cyan-300/35 bg-cyan-500/14 text-cyan-100"
                     : "border-transparent text-muted-foreground hover:border-foreground/[0.08] hover:bg-foreground/[0.04] hover:text-foreground"
@@ -529,7 +554,7 @@ export function UsageView() {
               setLoading(true);
               void fetchData();
             }}
-            className="rounded-xl border border-foreground/[0.1] bg-card/70 px-3 py-1.5 text-[11px] font-medium text-foreground/80 backdrop-blur-sm hover:bg-foreground/[0.06]"
+            className="rounded-xl border border-foreground/[0.1] bg-card/70 px-3 py-1.5 text-xs font-medium text-foreground/80 backdrop-blur-sm hover:bg-foreground/[0.06]"
           >
             Refresh
           </button>
@@ -579,10 +604,27 @@ export function UsageView() {
 
           <div className="grid gap-5 xl:grid-cols-12">
             <div className="xl:col-span-8">
-              <Panel title="Token Flow" subtitle="Stacked usage with session intensity overlay">
+              <Panel
+                title="Token Flow"
+                subtitle="Stacked usage with session intensity overlay"
+                actions={
+                  <select
+                    value={tokenFlowModel}
+                    onChange={(e) => setTokenFlowModel(e.target.value)}
+                    className="rounded-lg border border-foreground/[0.1] bg-card/80 px-2.5 py-1.5 text-xs text-foreground/90 focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+                  >
+                    <option value="all">All models</option>
+                    {data.modelBreakdown.map((m) => (
+                      <option key={m.model} value={m.model}>
+                        {shortModel(m.model)}
+                      </option>
+                    ))}
+                  </select>
+                }
+              >
                 <div className="h-[340px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={activitySeries} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>
+                    <ComposedChart data={tokenFlowSeries} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>
                       <defs>
                         <linearGradient id="usageInput" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor={USAGE_COLORS.input} stopOpacity={0.36} />
@@ -774,9 +816,9 @@ export function UsageView() {
                           if (!p) return null;
                           return (
                             <div className="rounded-xl border border-foreground/[0.1] bg-card/95 px-3 py-2 shadow-lg backdrop-blur-sm">
-                              <p className="text-[11px] font-medium text-foreground/90">{p.agent}</p>
-                              <p className="text-[10px] text-muted-foreground/70">{p.model}</p>
-                              <div className="mt-1.5 space-y-1 text-[11px]">
+                              <p className="text-mc-body-sm font-medium text-foreground/90">{p.agent}</p>
+                              <p className="text-mc-caption text-muted-foreground/70">{p.model}</p>
+                              <div className="mt-1.5 space-y-1 text-mc-body-sm">
                                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">Context</span><span className="font-mono">{fmtTokensLong(p.x)}</span></div>
                                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">Used</span><span className="font-mono">{fmtTokensLong(p.y)}</span></div>
                                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">Pressure</span><span className="font-mono">{Math.round(p.z)}%</span></div>
@@ -795,7 +837,10 @@ export function UsageView() {
 
           <div className="grid gap-5 xl:grid-cols-12">
             <div className="xl:col-span-7">
-              <Panel title="Top Models" subtitle="Operational health by model">
+              <Panel
+                title="Top Models"
+                subtitle="Bar = each model’s share of total token volume. Context pressure = how full the context window was on average."
+              >
                 <div className="space-y-2.5">
                   {modelBreakdown.slice(0, 8).map((m) => {
                     const pressure = m.contextTokens > 0 ? Math.round((m.totalTokens / Math.max(1, m.sessions)) / m.contextTokens * 100) : 0;
@@ -804,26 +849,31 @@ export function UsageView() {
                       <div key={m.model} className="rounded-xl border border-foreground/[0.07] bg-foreground/[0.02] px-3 py-2.5">
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="truncate text-[12px] font-semibold text-foreground/90">{shortModel(m.model)}</p>
-                            <p className="text-[10px] text-muted-foreground/70">
+                            <p className="truncate text-mc-caption font-semibold text-foreground/90">{shortModel(m.model)}</p>
+                            <p className="text-mc-caption text-muted-foreground/70">
                               {m.sessions} sessions · {m.agents.length} agent{m.agents.length !== 1 ? "s" : ""} · {fmtAgo(m.lastUsed)}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-[12px] font-semibold text-foreground/90">{fmtTokens(m.totalTokens)}</p>
-                            <p className="text-[10px] text-muted-foreground/70">{pct}% share</p>
+                            <p className="text-mc-caption font-semibold text-foreground/90">{fmtTokens(m.totalTokens)}</p>
+                            <p className="text-mc-caption text-muted-foreground/70">{pct}% of total tokens</p>
                           </div>
                         </div>
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]">
-                          <div
-                            className="h-full"
-                            style={{
-                              width: `${Math.max(2, pct)}%`,
-                              background: `linear-gradient(90deg, ${USAGE_COLORS.input}, ${USAGE_COLORS.sessions}, ${USAGE_COLORS.output})`,
-                            }}
-                          />
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="shrink-0 text-xs text-muted-foreground/70">Token share</span>
+                          <div className="min-w-0 flex-1 h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]">
+                            <div
+                              className="h-full"
+                              style={{
+                                width: `${Math.max(2, pct)}%`,
+                                background: `linear-gradient(90deg, ${USAGE_COLORS.input}, ${USAGE_COLORS.sessions}, ${USAGE_COLORS.output})`,
+                              }}
+                            />
+                          </div>
                         </div>
-                        <p className="mt-1.5 text-[10px] text-muted-foreground/70">Avg context pressure: {pressure}%</p>
+                        <p className="mt-1.5 text-mc-caption text-muted-foreground/70">
+                          Context pressure: {pressure}% (avg % of context window used per session)
+                        </p>
                       </div>
                     );
                   })}
@@ -834,17 +884,17 @@ export function UsageView() {
             <div className="xl:col-span-5 space-y-5">
               <Panel title="Model Routing" subtitle="Primary, fallbacks, and auth posture">
                 {modelConfig ? (
-                  <div className="space-y-3 text-[11px]">
+                  <div className="space-y-3 text-mc-body-sm">
                     <div className="rounded-xl border border-foreground/[0.07] bg-foreground/[0.02] p-3">
-                      <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">Primary</p>
+                      <p className="text-mc-caption uppercase tracking-[0.14em] text-muted-foreground/70">Primary</p>
                       <p className="mt-1 font-semibold text-foreground/90">{shortModel(modelConfig.primary)}</p>
                     </div>
                     {modelConfig.fallbacks.length > 0 && (
                       <div className="rounded-xl border border-foreground/[0.07] bg-foreground/[0.02] p-3">
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">Fallback Chain</p>
+                        <p className="text-mc-caption uppercase tracking-[0.14em] text-muted-foreground/70">Fallback Chain</p>
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {modelConfig.fallbacks.map((f, i) => (
-                            <span key={f} className="rounded-md border border-foreground/[0.1] bg-card px-2 py-1 text-[10px] text-foreground/80">
+                            <span key={f} className="rounded-md border border-foreground/[0.1] bg-card px-2 py-1 text-mc-caption text-foreground/80">
                               {i + 1}. {shortModel(f)}
                             </span>
                           ))}
@@ -853,7 +903,7 @@ export function UsageView() {
                     )}
                     {modelConfig.authProviders.length > 0 && (
                       <div className="rounded-xl border border-foreground/[0.07] bg-foreground/[0.02] p-3">
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">Auth Providers</p>
+                        <p className="text-mc-caption uppercase tracking-[0.14em] text-muted-foreground/70">Auth Providers</p>
                         <div className="mt-1.5 space-y-1.5">
                           {modelConfig.authProviders.map((ap) => (
                             <div key={ap.provider} className="flex items-center justify-between rounded-md bg-card px-2 py-1.5">
@@ -866,17 +916,17 @@ export function UsageView() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-[12px] text-muted-foreground/70">No routing metadata available.</p>
+                  <p className="text-mc-caption text-muted-foreground/70">No routing metadata available.</p>
                 )}
               </Panel>
 
               <Panel title="Session Storage" subtitle="JSONL footprint by agent">
-                <div className="space-y-2 text-[11px]">
+                <div className="space-y-2 text-mc-body-sm">
                   {sessionFileSizes.map((s) => (
                     <div key={s.agentId} className="flex items-center justify-between rounded-lg border border-foreground/[0.07] bg-foreground/[0.02] px-3 py-2">
                       <div>
                         <p className="font-semibold text-foreground/85">{s.agentId}</p>
-                        <p className="text-[10px] text-muted-foreground/70">{s.fileCount} file{s.fileCount !== 1 ? "s" : ""}</p>
+                        <p className="text-mc-caption text-muted-foreground/70">{s.fileCount} file{s.fileCount !== 1 ? "s" : ""}</p>
                       </div>
                       <span className="font-mono text-foreground/80">{fmtBytes(s.sizeBytes)}</span>
                     </div>
@@ -894,12 +944,12 @@ export function UsageView() {
                   <div key={`${s.sessionId}-${i}`} className="rounded-xl border border-foreground/[0.07] bg-foreground/[0.02] px-3 py-2.5">
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-[12px] font-semibold text-foreground/90">{s.agentId} · {shortModel(s.model)}</p>
-                        <p className="truncate text-[10px] text-muted-foreground/70">{s.key || s.sessionId} · {fmtAgo(s.updatedAt)}</p>
+                        <p className="truncate text-mc-caption font-semibold text-foreground/90">{s.agentId} · {shortModel(s.model)}</p>
+                        <p className="truncate text-mc-caption text-muted-foreground/70">{s.key || s.sessionId} · {fmtAgo(s.updatedAt)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[12px] font-semibold text-foreground/90">{fmtTokens(s.totalTokens)}</p>
-                        <p className="text-[10px] text-muted-foreground/70">{p}% context</p>
+                        <p className="text-mc-caption font-semibold text-foreground/90">{fmtTokens(s.totalTokens)}</p>
+                        <p className="text-mc-caption text-muted-foreground/70">{p}% context</p>
                       </div>
                     </div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/[0.08]">

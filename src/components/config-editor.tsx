@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
+import { useTheme } from "next-themes";
 import { requestRestart } from "@/lib/restart-store";
 import {
   ChevronDown,
@@ -27,6 +29,11 @@ import {
 import { cn } from "@/lib/utils";
 import { SectionBody, SectionHeader, SectionLayout } from "@/components/section-layout";
 import { LoadingState } from "@/components/ui/loading-state";
+
+const MonacoEditor = dynamic(
+  () => import("@monaco-editor/react").then((mod) => mod.default),
+  { ssr: false, loading: () => <div className="flex h-[50vh] items-center justify-center rounded-lg bg-muted/60 font-mono text-xs text-muted-foreground">Loading editor…</div> }
+);
 
 /* ================================================================
    Types
@@ -230,7 +237,7 @@ function ToastBar({ toast, onDone }: { toast: Toast; onDone: () => void }) {
   return (
     <div
       className={cn(
-        "fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border px-4 py-2.5 text-[13px] font-medium shadow-xl backdrop-blur-sm",
+        "fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border px-4 py-2.5 text-mc-body font-medium shadow-xl backdrop-blur-sm",
         toast.ok
           ? "border-emerald-500/30 bg-emerald-950/80 text-emerald-300"
           : "border-red-500/30 bg-red-950/80 text-red-300"
@@ -257,16 +264,16 @@ function RestartBanner({ onRestart, onDismiss }: { onRestart: () => void; onDism
     <div className="mx-4 md:mx-6 mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3">
       <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
       <div className="flex-1">
-        <p className="text-[13px] font-medium text-amber-200">
+        <p className="text-mc-body font-medium text-amber-200">
           Configuration changed — restart recommended
         </p>
-        <p className="text-[11px] text-amber-400/70 mt-0.5">
+        <p className="text-mc-body-sm text-amber-400/70 mt-0.5">
           Some changes require a gateway restart to take effect.
         </p>
       </div>
       <button
         onClick={onRestart}
-        className="rounded-lg bg-amber-500/20 px-4 py-1.5 text-[12px] font-semibold text-amber-200 transition-colors hover:bg-amber-500/30"
+        className="rounded-lg bg-amber-500/20 px-4 py-1.5 text-mc-caption font-semibold text-amber-200 transition-colors hover:bg-amber-500/30"
       >
         Restart Gateway
       </button>
@@ -298,7 +305,7 @@ function FieldLabel({
   return (
     <div className="mb-1">
       <div className="flex items-center gap-1.5">
-        <label className="text-[12px] font-medium text-foreground/70">
+        <label className="text-mc-caption font-medium text-foreground/70">
           {label}
           {required && <span className="text-red-400 ml-0.5">*</span>}
         </label>
@@ -307,7 +314,7 @@ function FieldLabel({
         )}
       </div>
       {help && (
-        <p className="text-[10px] text-muted-foreground/60 mt-0.5 leading-relaxed">
+        <p className="text-mc-caption text-muted-foreground/60 mt-0.5 leading-relaxed">
           {help}
         </p>
       )}
@@ -337,7 +344,7 @@ function StringField({
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         placeholder={placeholder || ""}
-        className="flex-1 rounded-lg border border-foreground/[0.08] bg-muted px-3 py-1.5 text-[12px] text-foreground/90 outline-none transition-colors focus:border-violet-500/30 disabled:opacity-50 font-mono"
+        className="flex-1 rounded-lg border border-foreground/[0.08] bg-muted px-3 py-1.5 text-mc-caption text-foreground/90 outline-none transition-colors focus:border-violet-500/30 disabled:opacity-50 font-mono"
       />
       {sensitive && (
         <button
@@ -370,7 +377,7 @@ function NumberField({
         onChange(v === "" ? undefined : Number(v));
       }}
       disabled={disabled}
-      className="w-full rounded-lg border border-foreground/[0.08] bg-muted px-3 py-1.5 text-[12px] text-foreground/90 outline-none transition-colors focus:border-violet-500/30 disabled:opacity-50 font-mono"
+      className="w-full rounded-lg border border-foreground/[0.08] bg-muted px-3 py-1.5 text-mc-caption text-foreground/90 outline-none transition-colors focus:border-violet-500/30 disabled:opacity-50 font-mono"
     />
   );
 }
@@ -427,7 +434,7 @@ function EnumField({
             onClick={() => !disabled && onChange(opt)}
             disabled={disabled}
             className={cn(
-              "rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-all",
+              "rounded-lg border px-3 py-1.5 text-mc-body-sm font-medium transition-all",
               value === opt
                 ? "border-violet-500/40 bg-violet-500/15 text-violet-300"
                 : "border-foreground/[0.08] bg-foreground/[0.02] text-muted-foreground hover:border-foreground/[0.15] hover:text-foreground/70"
@@ -445,7 +452,7 @@ function EnumField({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className="rounded-lg border border-foreground/[0.08] bg-muted px-3 py-1.5 text-[12px] text-foreground/90 outline-none"
+      className="rounded-lg border border-foreground/[0.08] bg-muted px-3 py-1.5 text-mc-caption text-foreground/90 outline-none"
     >
       <option value="">Select...</option>
       {options.map((opt) => (
@@ -505,7 +512,7 @@ function ArrayField({
             value={String(item)}
             onChange={(e) => updateItem(idx, e.target.value)}
             disabled={disabled}
-            className="flex-1 rounded-lg border border-foreground/[0.08] bg-muted px-3 py-1.5 text-[12px] text-foreground/90 outline-none font-mono focus:border-violet-500/30"
+            className="flex-1 rounded-lg border border-foreground/[0.08] bg-muted px-3 py-1.5 text-mc-caption text-foreground/90 outline-none font-mono focus:border-violet-500/30"
           />
           {!disabled && (
             <button
@@ -522,7 +529,7 @@ function ArrayField({
         <button
           type="button"
           onClick={addItem}
-          className="flex items-center gap-1 rounded-lg border border-dashed border-foreground/[0.1] px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-violet-500/30 hover:text-violet-400"
+          className="flex items-center gap-1 rounded-lg border border-dashed border-foreground/[0.1] px-3 py-1.5 text-mc-body-sm text-muted-foreground transition-colors hover:border-violet-500/30 hover:text-violet-400"
         >
           <Plus className="h-3 w-3" />
           Add item
@@ -562,11 +569,11 @@ function JsonFallbackField({
         onBlur={handleBlur}
         disabled={disabled}
         rows={Math.min(12, (text || "").split("\n").length + 1)}
-        className="w-full rounded-lg border border-foreground/[0.08] bg-muted p-3 font-mono text-[11px] leading-5 text-foreground/70 outline-none resize-y focus:border-violet-500/30 disabled:opacity-50"
+        className="w-full rounded-lg border border-foreground/[0.08] bg-muted p-3 font-mono text-mc-body-sm leading-5 text-foreground/70 outline-none resize-y focus:border-violet-500/30 disabled:opacity-50"
         spellCheck={false}
       />
       {error && (
-        <p className="flex items-center gap-1 text-[10px] text-red-400">
+        <p className="flex items-center gap-1 text-mc-caption text-red-400">
           <AlertCircle className="h-3 w-3" />
           {error}
         </p>
@@ -598,7 +605,7 @@ function SectionFields({
 }) {
   if (sectionValue == null || typeof sectionValue !== "object") {
     return (
-      <div className="text-[11px] text-muted-foreground/60 italic">
+      <div className="text-mc-body-sm text-muted-foreground/60 italic">
         No configuration set for this section.
       </div>
     );
@@ -810,15 +817,15 @@ function NestedSection({
         ) : (
           <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
         )}
-        <span className="text-[12px] font-medium text-foreground/70">{label}</span>
-        <span className="text-[10px] text-muted-foreground/60">
+        <span className="text-mc-caption font-medium text-foreground/70">{label}</span>
+        <span className="text-mc-caption text-muted-foreground/60">
           {allKeys.length} field{allKeys.length !== 1 ? "s" : ""}
         </span>
       </button>
       {expanded && (
         <div className="border-t border-foreground/[0.04] px-3 py-3 space-y-3">
           {help && (
-            <p className="text-[10px] text-muted-foreground/60 leading-relaxed">{help}</p>
+            <p className="text-mc-caption text-muted-foreground/60 leading-relaxed">{help}</p>
           )}
           {isDynamicMap ? (
             <JsonFallbackField
@@ -888,6 +895,15 @@ function NestedSection({
   );
 }
 
+/** Normalize JSON string for dirty comparison (parse + re-stringify). */
+function normalizedJsonString(str: string): string | null {
+  try {
+    return JSON.stringify(JSON.parse(str), null, 2);
+  } catch {
+    return null;
+  }
+}
+
 /* ================================================================
    Main ConfigEditor
    ================================================================ */
@@ -910,23 +926,29 @@ export function ConfigEditor() {
   >({});
   const [showRestart, setShowRestart] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
+  /** Raw JSON editor content (when in raw view). Synced when entering raw view. */
+  const [rawEditorValue, setRawEditorValue] = useState<string>("");
 
   // Track which sections have unsaved edits
   const [dirtyPaths, setDirtyPaths] = useState<Set<string>>(new Set());
 
+  const { resolvedTheme } = useTheme();
+  const monacoTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
+
   /* ── Fetch ─────────────────────────── */
 
-  const fetchConfig = useCallback(async () => {
+  const fetchConfig = useCallback(async (): Promise<Record<string, unknown> | null> => {
     setLoading(true);
     setFetchWarning(null);
     try {
       const res = await fetch("/api/config", { cache: "no-store" });
       const data = await res.json();
+      const config = data?.rawConfig || data?.config || {};
       const hasConfigPayload = Boolean(data?.rawConfig || data?.config);
       if (!res.ok && !hasConfigPayload) {
         throw new Error(data?.error || `HTTP ${res.status}`);
       }
-      setRawConfig(data.rawConfig || data.config || {});
+      setRawConfig(config);
       setBaseHash(data.baseHash || "");
       if (data.schema?.properties) {
         setSchema(data.schema.properties);
@@ -936,12 +958,15 @@ export function ConfigEditor() {
       setHints(data.uiHints || {});
       if (data.warning) setFetchWarning(String(data.warning));
       setLoadError(null);
+      setLoading(false);
+      return typeof config === "object" && config !== null && !Array.isArray(config) ? config : null;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setLoadError(msg);
       console.warn("Config fetch error:", err);
+      setLoading(false);
+      return null;
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -992,16 +1017,44 @@ export function ConfigEditor() {
     [rawConfig]
   );
 
+  const rawViewDirty =
+    showRawJson &&
+    rawConfig !== null &&
+    (() => {
+      const norm = normalizedJsonString(rawEditorValue);
+      return norm !== null && norm !== JSON.stringify(rawConfig, null, 2);
+    })();
+  const hasDirty = dirtyPaths.size > 0 || rawViewDirty;
+
   /* ── Save ───────────────────────────── */
 
   const saveChanges = useCallback(async () => {
-    if (Object.keys(pendingChanges).length === 0) return;
+    const savingFromRaw = showRawJson && rawViewDirty;
+    if (!savingFromRaw && Object.keys(pendingChanges).length === 0) return;
+
+    if (savingFromRaw) {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(rawEditorValue) as Record<string, unknown>;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setToast({ ok: false, msg: "Invalid JSON: root must be an object" });
+          return;
+        }
+      } catch {
+        setToast({ ok: false, msg: "Invalid JSON: check syntax" });
+        return;
+      }
+    }
+
     setSaving(true);
     try {
+      const body = savingFromRaw
+        ? { raw: rawEditorValue, baseHash }
+        : { patch: pendingChanges, baseHash };
       const res = await fetch("/api/config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patch: pendingChanges, baseHash }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.ok) {
@@ -1010,8 +1063,10 @@ export function ConfigEditor() {
         setDirtyPaths(new Set());
         setShowRestart(true);
         requestRestart("Configuration was updated — some changes may require a restart.");
-        // Refresh to get new hash
-        await fetchConfig();
+        const newConfig = await fetchConfig();
+        if (savingFromRaw && newConfig) {
+          setRawEditorValue(JSON.stringify(newConfig, null, 2));
+        }
       } else {
         setToast({ ok: false, msg: data.error || "Save failed" });
       }
@@ -1019,7 +1074,7 @@ export function ConfigEditor() {
       setToast({ ok: false, msg: String(err) });
     }
     setSaving(false);
-  }, [pendingChanges, baseHash, fetchConfig]);
+  }, [pendingChanges, baseHash, fetchConfig, showRawJson, rawEditorValue, rawViewDirty]);
 
   /* ── Restart gateway ────────────── */
 
@@ -1044,11 +1099,32 @@ export function ConfigEditor() {
 
   /* ── Discard ────────────────────── */
 
-  const discardChanges = useCallback(() => {
+  const discardChanges = useCallback(async () => {
     setPendingChanges({});
     setDirtyPaths(new Set());
-    fetchConfig();
-  }, [fetchConfig]);
+    const newConfig = await fetchConfig();
+    if (showRawJson && newConfig) {
+      setRawEditorValue(JSON.stringify(newConfig, null, 2));
+    }
+  }, [fetchConfig, showRawJson]);
+
+  const toggleRawView = useCallback(() => {
+    const next = !showRawJson;
+    if (next && rawConfig) {
+      setRawEditorValue(JSON.stringify(rawConfig, null, 2));
+    }
+    if (!next && rawEditorValue) {
+      try {
+        const parsed = JSON.parse(rawEditorValue) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          setRawConfig(parsed);
+        }
+      } catch {
+        // keep current rawConfig on invalid JSON when switching away
+      }
+    }
+    setShowRawJson(next);
+  }, [showRawJson, rawConfig, rawEditorValue]);
 
   const toggleSection = (key: string) => {
     setExpanded((prev) => {
@@ -1059,8 +1135,6 @@ export function ConfigEditor() {
     });
   };
 
-  const hasDirty = dirtyPaths.size > 0;
-
   /* ── Loading state ─────────────── */
 
   if (loading) {
@@ -1069,20 +1143,20 @@ export function ConfigEditor() {
 
   if (!rawConfig) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-[13px] text-muted-foreground">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-mc-body text-muted-foreground">
         <div className="flex items-center">
           <AlertCircle className="mr-2 h-4 w-4" />
           Failed to load configuration
         </div>
         {loadError && (
-          <p className="max-w-xl text-center text-[11px] text-muted-foreground/80">
+          <p className="max-w-xl text-center text-mc-body-sm text-muted-foreground/80">
             {loadError}
           </p>
         )}
         <button
           type="button"
           onClick={fetchConfig}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-muted/50 px-3 py-1.5 text-[11px] text-foreground/80 transition-colors hover:bg-muted/80"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-muted/50 px-3 py-1.5 text-mc-body-sm text-foreground/80 transition-colors hover:bg-muted/80"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Retry
@@ -1097,12 +1171,13 @@ export function ConfigEditor() {
     <SectionLayout>
       <SectionHeader
         title={
-          <span className="flex items-center gap-2 text-[18px]">
+          <span className="flex items-center gap-2 text-mc-heading">
             <Settings2 className="h-5 w-5 text-violet-400" />
             Configuration
           </span>
         }
         description="Edit your OpenClaw settings safely • Changes are validated before saving"
+        descriptionClassName="text-sm text-muted-foreground"
         actions={
           <div className="flex items-center gap-2">
             {/* Search */}
@@ -1112,7 +1187,7 @@ export function ConfigEditor() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search settings..."
-                className="w-36 bg-transparent text-[12px] text-foreground/70 outline-none placeholder:text-muted-foreground/60"
+                className="w-36 bg-transparent text-mc-caption text-foreground/70 outline-none placeholder:text-muted-foreground/60"
               />
               {search && (
                 <button onClick={() => setSearch("")} className="text-muted-foreground/60 hover:text-muted-foreground">
@@ -1125,7 +1200,7 @@ export function ConfigEditor() {
               type="button"
               onClick={() => setShowSensitive(!showSensitive)}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] transition-colors",
+                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-mc-body-sm transition-colors",
                 showSensitive
                   ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
                   : "border-foreground/[0.08] text-muted-foreground hover:bg-muted/80"
@@ -1137,9 +1212,9 @@ export function ConfigEditor() {
 
             <button
               type="button"
-              onClick={() => setShowRawJson(!showRawJson)}
+              onClick={toggleRawView}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] transition-colors",
+                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-mc-body-sm transition-colors",
                 showRawJson
                   ? "border-violet-500/30 bg-violet-500/10 text-violet-400"
                   : "border-foreground/[0.08] text-muted-foreground hover:bg-muted/80"
@@ -1162,7 +1237,7 @@ export function ConfigEditor() {
 
       {fetchWarning && (
         <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/[0.06] px-4 py-2 md:px-6">
-          <p className="flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-200">
+          <p className="flex items-center gap-2 text-mc-body-sm text-amber-700 dark:text-amber-200">
             <AlertTriangle className="h-3.5 w-3.5" />
             {fetchWarning}
           </p>
@@ -1183,14 +1258,16 @@ export function ConfigEditor() {
       {hasDirty && (
         <div className="shrink-0 flex items-center gap-3 border-b border-violet-500/20 bg-violet-500/[0.06] px-4 md:px-6 py-2.5">
           <Info className="h-4 w-4 text-violet-400 shrink-0" />
-          <p className="flex-1 text-[12px] text-violet-300">
+          <p className="flex-1 text-mc-caption text-violet-300">
             You have unsaved changes in{" "}
-            <strong>{Array.from(dirtyPaths).join(", ")}</strong>
+            <strong>
+              {[rawViewDirty && "raw JSON", ...Array.from(dirtyPaths)].filter(Boolean).join(", ")}
+            </strong>
           </p>
           <button
             type="button"
             onClick={discardChanges}
-            className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground/70"
+            className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-mc-body-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground/70"
           >
             <RotateCcw className="h-3 w-3" />
             Discard
@@ -1199,7 +1276,7 @@ export function ConfigEditor() {
             type="button"
             onClick={saveChanges}
             disabled={saving}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-mc-caption font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
           >
             {saving ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1214,19 +1291,35 @@ export function ConfigEditor() {
       {/* Content */}
       <SectionBody width="wide" padding="compact" innerClassName="space-y-2">
         {showRawJson ? (
-          /* Raw JSON view */
+          /* Raw JSON view – editable Monaco editor */
           <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[13px] font-medium text-foreground/70">
-                Raw Configuration (read-only)
+              <span className="text-sm font-medium text-foreground/70">
+                Raw Configuration
               </span>
-              <span className="text-[10px] text-muted-foreground/60">
-                Use the form view to make changes safely
+              <span className="text-xs text-muted-foreground/60">
+                Edit JSON directly; save with the button above when done
               </span>
             </div>
-            <pre className="max-h-[70vh] overflow-auto rounded-lg bg-muted p-4 font-mono text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap">
-              {JSON.stringify(rawConfig, null, 2)}
-            </pre>
+            <div className="rounded-lg overflow-hidden border border-foreground/[0.06] bg-[#1e1e1e] min-h-[50vh]">
+              <MonacoEditor
+                height="70vh"
+                language="json"
+                value={rawEditorValue}
+                onChange={(v) => setRawEditorValue(v ?? "")}
+                theme={monacoTheme}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 12,
+                  lineNumbers: "on",
+                  wordWrap: "on",
+                  formatOnPaste: true,
+                  formatOnType: true,
+                  scrollBeyondLastLine: false,
+                  padding: { top: 12, bottom: 12 },
+                }}
+              />
+            </div>
           </div>
         ) : (
           /* Form view */
@@ -1267,19 +1360,19 @@ export function ConfigEditor() {
                   ) : (
                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
                   )}
-                  <span className="text-base">{icon}</span>
+                  <span className="text-mc-heading">{icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold text-foreground/90">
+                      <span className="text-mc-body font-semibold text-foreground/90">
                         {label}
                       </span>
                       {isDirty && (
-                        <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-violet-300">
+                        <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-mc-micro font-bold uppercase tracking-wider text-violet-300">
                           Modified
                         </span>
                       )}
                       {isReadonly && (
-                        <span className="rounded-full bg-muted/50 px-2 py-0.5 text-[9px] text-muted-foreground">
+                        <span className="rounded-full bg-muted/50 px-2 py-0.5 text-mc-micro text-muted-foreground">
                           Read-only
                         </span>
                       )}
@@ -1287,7 +1380,7 @@ export function ConfigEditor() {
                         <Shield className="h-3 w-3 text-amber-500" />
                       )}
                     </div>
-                    <p className="text-[10px] text-muted-foreground/60">
+                    <p className="text-mc-caption text-muted-foreground/60">
                       {sectionHint?.help || `${fieldCount} setting${fieldCount !== 1 ? "s" : ""}`}
                     </p>
                   </div>
@@ -1315,10 +1408,10 @@ export function ConfigEditor() {
         {filteredSections.length === 0 && search && (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/60">
             <Search className="h-6 w-6 mb-2" />
-            <p className="text-[13px]">No settings match &ldquo;{search}&rdquo;</p>
+            <p className="text-mc-body">No settings match &ldquo;{search}&rdquo;</p>
             <button
               onClick={() => setSearch("")}
-              className="mt-2 text-[11px] text-violet-400 hover:text-violet-300"
+              className="mt-2 text-mc-body-sm text-violet-400 hover:text-violet-300"
             >
               Clear search
             </button>

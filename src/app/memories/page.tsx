@@ -25,7 +25,7 @@ export default async function MemoriesPage() {
   return (
     <div className="p-6 h-full">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Memories</h1>
+        <h1 className="text-mc-title font-semibold">Memories</h1>
         <Badge variant="outline">{memories.length} entries</Badge>
       </div>
 
@@ -38,17 +38,17 @@ export default async function MemoriesPage() {
               <Card key={memory.date}>
                 <CardHeader className="py-3">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">{memory.date}</CardTitle>
+                    <CardTitle className="text-mc-heading">{memory.date}</CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent className="py-2">
                   <div className="prose prose-sm max-w-none dark:prose-invert">
                     {memory.content.split('\n').map((line: string, i: number) => {
                       if (line.startsWith('## ')) {
-                        return <h3 key={i} className="text-md font-semibold mt-4 mb-2">{line.replace('## ', '')}</h3>;
+                        return <h3 key={i} className="text-mc-sub font-semibold mt-4 mb-2">{line.replace('## ', '')}</h3>;
                       }
                       if (line.startsWith('### ')) {
-                        return <h4 key={i} className="text-sm font-semibold mt-3 mb-1">{line.replace('### ', '')}</h4>;
+                        return <h4 key={i} className="text-mc-sub font-semibold mt-3 mb-1">{line.replace('### ', '')}</h4>;
                       }
                       if (line.startsWith('- ')) {
                         return <li key={i} className="ml-4">{line.replace('- ', '')}</li>;

@@ -52,7 +52,7 @@ function pathDisplay(path: string): { icon: string; label: string } {
 function highlightSnippet(text: string): string {
   return text
     .replace(/\*\*(.+?)\*\*/g, '<span class="text-foreground/90 font-semibold">$1</span>')
-    .replace(/`([^`]+)`/g, '<code class="rounded bg-muted px-1 py-0.5 text-[12px] text-violet-300 font-mono">$1</code>');
+    .replace(/`([^`]+)`/g, '<code class="rounded bg-muted px-1 py-0.5 text-mc-caption text-violet-300 font-mono">$1</code>');
 }
 
 /* ── component ───────────────────────────────────── */
@@ -172,7 +172,7 @@ export function SearchModal({ open, onClose }: Props) {
               spellCheck={false}
               autoComplete="off"
             />
-            <kbd className="hidden rounded border border-foreground/[0.08] bg-muted/70 px-1.5 py-0.5 text-[10px] text-muted-foreground/60 sm:inline">
+            <kbd className="hidden rounded border border-foreground/[0.08] bg-muted/70 px-1.5 py-0.5 text-mc-caption text-muted-foreground/60 sm:inline">
               ESC
             </kbd>
           </div>
@@ -188,7 +188,7 @@ export function SearchModal({ open, onClose }: Props) {
                     Semantic Memory Search
                   </span>
                 </div>
-                <p className="max-w-sm text-[12px] leading-5 text-muted-foreground/60">
+                <p className="max-w-sm text-mc-caption leading-5 text-muted-foreground/60">
                   Uses OpenClaw&apos;s vector database to search across your
                   MEMORY.md and daily journal entries. Type at least 2
                   characters to search.
@@ -215,7 +215,7 @@ export function SearchModal({ open, onClose }: Props) {
             {results.length > 0 && (
               <div className="min-w-0 py-2">
                 <div className="px-4 pb-2 sm:px-6">
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  <span className="text-mc-caption font-medium uppercase tracking-wider text-muted-foreground/60">
                     {results.length} result{results.length !== 1 ? "s" : ""}
                   </span>
                 </div>
@@ -238,16 +238,16 @@ export function SearchModal({ open, onClose }: Props) {
                       {/* Header row */}
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="shrink-0 text-sm">{icon}</span>
-                        <span className="min-w-0 truncate text-[12px] font-medium text-foreground/70">
+                        <span className="min-w-0 truncate text-mc-caption font-medium text-foreground/70">
                           {label}
                         </span>
-                        <span className="text-[10px] text-muted-foreground/60">
+                        <span className="text-mc-caption text-muted-foreground/60">
                           L{result.startLine}–{result.endLine}
                         </span>
                         <div className="flex-1" />
                         <span
                           className={cn(
-                            "text-[10px] font-medium",
+                            "text-mc-caption font-medium",
                             scoreColor(result.score)
                           )}
                         >
@@ -258,7 +258,7 @@ export function SearchModal({ open, onClose }: Props) {
 
                       {/* Snippet */}
                       <div
-                        className="line-clamp-4 break-words text-[12px] leading-5 text-muted-foreground"
+                        className="line-clamp-4 break-words text-mc-caption leading-5 text-muted-foreground"
                         dangerouslySetInnerHTML={{
                           __html: highlightSnippet(
                             result.snippet.substring(0, 400)
@@ -273,7 +273,7 @@ export function SearchModal({ open, onClose }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-foreground/[0.06] px-4 py-2 text-[10px] text-muted-foreground/60 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-foreground/[0.06] px-4 py-2 text-mc-caption text-muted-foreground/60 sm:px-6">
             <span>
               Powered by{" "}
               <span className="font-medium text-muted-foreground">

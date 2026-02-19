@@ -147,6 +147,33 @@ export async function GET(request: NextRequest) {
  * Body: { patch: { "agents.defaults.workspace": "~/new" }, baseHash: "..." }
  *   OR: { raw: "{ agents: { defaults: { workspace: '~/new' } } }", baseHash: "..." }
  */
+/** Validate config payload before sending to gateway. */
+function validateConfigPayload(raw: string | undefined, patch: Record<string, unknown> | undefined): { ok: true; patchRaw: string } | { ok: false; error: string } {
+  if (raw !== undefined) {
+    if (typeof raw !== "string") {
+      return { ok: false, error: "raw must be a JSON string" };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, error: `Invalid JSON: ${msg}` };
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, error: "Config must be a JSON object (not array or primitive)" };
+    }
+    return { ok: true, patchRaw: raw };
+  }
+  if (patch !== undefined) {
+    if (patch === null || typeof patch !== "object" || Array.isArray(patch)) {
+      return { ok: false, error: "patch must be a JSON object" };
+    }
+    return { ok: true, patchRaw: JSON.stringify(patch) };
+  }
+  return { ok: false, error: "raw or patch required" };
+}
+
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
@@ -163,18 +190,11 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    let patchRaw: string;
-    if (raw) {
-      // Pre-formed JSON5 string
-      patchRaw = raw;
-    } else if (patch) {
-      patchRaw = JSON.stringify(patch);
-    } else {
-      return NextResponse.json(
-        { error: "raw or patch required" },
-        { status: 400 }
-      );
+    const validated = validateConfigPayload(raw, patch);
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: 400 });
     }
+    const patchRaw = validated.patchRaw;
 
     const result = await gatewayCall<Record<string, unknown>>(
       "config.patch",

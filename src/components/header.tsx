@@ -60,9 +60,9 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600/90 px-3.5 py-2 text-[12px] leading-relaxed text-white shadow-sm">
+        <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600/90 px-3.5 py-2 text-mc-caption leading-relaxed text-white shadow-sm">
           <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-          <p className="mt-1 text-right text-[9px] text-white/40">{formatTime(msg.timestamp)}</p>
+          <p className="mt-1 text-right text-mc-micro text-white/40">{formatTime(msg.timestamp)}</p>
         </div>
       </div>
     );
@@ -70,12 +70,12 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
   if (msg.role === "error") {
     return (
       <div className="flex justify-start">
-        <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-red-500/20 bg-red-500/[0.06] px-3.5 py-2 text-[12px] leading-relaxed text-red-300 shadow-sm">
-          <div className="mb-1 flex items-center gap-1 text-[10px] font-medium text-red-400">
+        <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-red-500/20 bg-red-500/[0.06] px-3.5 py-2 text-mc-caption leading-relaxed text-red-300 shadow-sm">
+          <div className="mb-1 flex items-center gap-1 text-mc-caption font-medium text-red-400">
             <AlertTriangle className="h-3 w-3" />Error
           </div>
           <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-          <p className="mt-1 text-[9px] text-red-400/40">{formatTime(msg.timestamp)}</p>
+          <p className="mt-1 text-mc-micro text-red-400/40">{formatTime(msg.timestamp)}</p>
         </div>
       </div>
     );
@@ -83,9 +83,9 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
   // assistant
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-foreground/[0.06] bg-foreground/[0.03] px-3.5 py-2 text-[12px] leading-relaxed text-foreground/80 shadow-sm">
+      <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-foreground/[0.06] bg-foreground/[0.03] px-3.5 py-2 text-mc-caption leading-relaxed text-foreground/80 shadow-sm">
         <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-        <p className="mt-1 text-[9px] text-muted-foreground/30">{formatTime(msg.timestamp)}</p>
+        <p className="mt-1 text-mc-micro text-muted-foreground/30">{formatTime(msg.timestamp)}</p>
       </div>
     </div>
   );
@@ -214,8 +214,8 @@ export function AgentChatPanel() {
             <MessageSquare className="h-3.5 w-3.5 text-violet-400" />
           </div>
           <div>
-            <p className="text-[12px] font-semibold text-foreground/80">Agent Chat</p>
-            <p className="text-[9px] text-muted-foreground/50">
+            <p className="text-mc-caption font-semibold text-foreground/80">Agent Chat</p>
+            <p className="text-mc-micro text-muted-foreground/50">
               {chat.messages.length} messages
               {chat.sending && " · typing..."}
             </p>
@@ -250,12 +250,12 @@ export function AgentChatPanel() {
             onClick={() => setShowAgentPicker(!showAgentPicker)}
             className="flex w-full items-center gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-2.5 py-1.5 text-left transition-colors hover:bg-foreground/[0.04]"
           >
-            <span className="text-[11px] text-muted-foreground">Agent:</span>
-            <span className="flex-1 truncate text-[12px] font-medium text-foreground/70">
+            <span className="text-mc-body-sm text-muted-foreground">Agent:</span>
+            <span className="flex-1 truncate text-mc-caption font-medium text-foreground/70">
               {currentAgent?.name || currentAgent?.id || "Select agent..."}
             </span>
             {currentAgent?.model && (
-              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground/60">
+              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-mc-micro text-muted-foreground/60">
                 {currentAgent.model.split("/").pop()}
               </span>
             )}
@@ -277,11 +277,11 @@ export function AgentChatPanel() {
                     a.id === chat.agentId && "bg-violet-500/5"
                   )}
                 >
-                  <span className="text-[12px] font-medium text-foreground/70">
+                  <span className="text-mc-caption font-medium text-foreground/70">
                     {a.name || a.id}
                   </span>
                   {a.model && (
-                    <span className="ml-auto text-[10px] text-muted-foreground/60">
+                    <span className="ml-auto text-mc-caption text-muted-foreground/60">
                       {a.model.split("/").pop()}
                     </span>
                   )}
@@ -302,8 +302,8 @@ export function AgentChatPanel() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10">
               <Zap className="h-6 w-6 text-violet-400/60" />
             </div>
-            <p className="text-[13px] font-medium text-foreground/50">Send a message</p>
-            <p className="max-w-[200px] text-[11px] text-muted-foreground/40">
+            <p className="text-mc-body font-medium text-foreground/50">Send a message</p>
+            <p className="max-w-[200px] text-mc-body-sm text-muted-foreground/40">
               Chat with your agents. History is kept while the app is open.
             </p>
           </div>
@@ -315,7 +315,7 @@ export function AgentChatPanel() {
           <div className="flex justify-start">
             <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-foreground/[0.06] bg-foreground/[0.03] px-3.5 py-2.5 shadow-sm">
               <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
-              <span className="text-[11px] text-muted-foreground/60">Agent is thinking...</span>
+              <span className="text-mc-body-sm text-muted-foreground/60">Agent is thinking...</span>
             </div>
           </div>
         )}
@@ -332,7 +332,7 @@ export function AgentChatPanel() {
             placeholder="Message your agent..."
             rows={1}
             disabled={chat.sending || !chat.agentId}
-            className="flex-1 resize-none rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] px-3.5 py-2 text-[12px] text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none disabled:opacity-50"
+            className="flex-1 resize-none rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] px-3.5 py-2 text-mc-caption text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none disabled:opacity-50"
             style={{ maxHeight: "80px" }}
             onInput={(e) => {
               const ta = e.target as HTMLTextAreaElement;
@@ -353,7 +353,7 @@ export function AgentChatPanel() {
             )}
           </button>
         </div>
-        <p className="mt-1.5 text-[9px] text-muted-foreground/30">
+        <p className="mt-1.5 text-mc-micro text-muted-foreground/30">
           Enter to send · Shift+Enter for newline · Esc to close
         </p>
       </div>
@@ -536,7 +536,7 @@ function GatewayStatusBadge({
           />
         </span>
         {/* Label */}
-        <span className={cn("text-[11px] font-medium", cfg.text)}>
+        <span className={cn("text-[0.5rem] font-medium", cfg.text)}>
           {cfg.label}
         </span>
       </div>
@@ -548,10 +548,10 @@ function GatewayStatusBadge({
           <div className={cn("flex items-center gap-2.5 px-3.5 py-3 border-b border-foreground/[0.06]", cfg.bg)}>
             <Icon className={cn("h-4 w-4", cfg.text, status === "loading" && "animate-spin")} />
             <div>
-              <p className={cn("text-[12px] font-semibold", cfg.text)}>
+              <p className={cn("text-sm font-semibold", cfg.text)}>
                 Gateway {cfg.label}
               </p>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {status === "offline"
                   ? "Cannot reach gateway process"
                   : status === "degraded"
@@ -594,7 +594,7 @@ function GatewayStatusBadge({
           {/* Error info */}
           {!!health?.error && (
             <div className="border-t border-foreground/[0.06] px-3.5 py-2.5">
-              <p className="text-[10px] leading-relaxed text-red-400">
+              <p className="text-xs leading-relaxed text-red-400">
                 {String(health.error)}
               </p>
             </div>
@@ -602,7 +602,7 @@ function GatewayStatusBadge({
 
           {/* Footer hint */}
           <div className="border-t border-foreground/[0.06] px-3.5 py-2">
-            <p className="text-[10px] text-muted-foreground/50">
+            <p className="text-xs text-muted-foreground/50">
               Polling every 12s · Click Pause above to stop gateway
             </p>
           </div>
@@ -615,8 +615,8 @@ function GatewayStatusBadge({
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between py-1.5">
-      <span className="text-[11px] text-muted-foreground/60">{label}</span>
-      <span className="text-[11px] font-medium text-foreground/70">{value}</span>
+      <span className="text-mc-body-sm text-muted-foreground/60">{label}</span>
+      <span className="text-mc-body-sm font-medium text-foreground/70">{value}</span>
     </div>
   );
 }
@@ -646,8 +646,8 @@ export function Header() {
     <>
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-sidebar/80 px-3 md:px-5 backdrop-blur-sm">
         <div className="flex items-center gap-2.5 pl-10 md:pl-0">
-          <span className="text-lg">🦞</span>
-          <h1 className="text-sm font-semibold text-foreground">
+          <span className="text-mc-heading">🦞</span>
+          <h1 className="text-mc-body font-semibold text-foreground">
             Mission Control
           </h1>
           <GatewayStatusBadge status={gwStatus} health={gwHealth} />
@@ -661,7 +661,7 @@ export function Header() {
             data-chat-toggle
             onClick={() => chatStore.toggle()}
             className={cn(
-              "relative flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-xs transition-colors",
+              "relative flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-[0.5rem] transition-colors",
               chat.open
                 ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
                 : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted/80"
@@ -670,7 +670,7 @@ export function Header() {
             <Zap className="h-3.5 w-3.5" />
             <span className="hidden md:inline">Ping Agent</span>
             {chat.unread > 0 && !chat.open && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-500 px-1 text-[9px] font-bold text-white shadow-lg">
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-500 px-1 text-mc-micro font-bold text-white shadow-lg">
                 {chat.unread}
               </span>
             )}
@@ -683,11 +683,11 @@ export function Header() {
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="flex h-8 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-card px-2 md:px-3 text-xs text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground/70"
+            className="flex h-8 items-center gap-2 rounded-lg border border-foreground/[0.08] bg-card px-2 md:px-3 text-[0.5rem] text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground/70"
           >
             <Search className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Search</span>
-            <kbd className="ml-1 hidden rounded border border-foreground/[0.08] bg-muted/70 px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">
+            <kbd className="ml-1 hidden rounded border border-foreground/[0.08] bg-muted/70 px-1.5 py-0.5 text-[0.5rem] text-muted-foreground sm:inline">
               ⌘K
             </kbd>
           </button>
@@ -703,7 +703,7 @@ export function Header() {
             onClick={togglePause}
             disabled={pauseBusy}
             className={cn(
-              "flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-xs transition-colors disabled:opacity-50",
+              "flex h-8 items-center gap-1.5 rounded-lg border px-2 md:px-3 text-[0.5rem] transition-colors disabled:opacity-50",
               paused
                 ? "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
                 : "border-foreground/[0.08] bg-card text-muted-foreground hover:bg-muted/80"

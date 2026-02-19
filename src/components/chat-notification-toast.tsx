@@ -83,17 +83,17 @@ export function ChatNotificationToast() {
             <MessageCircle className="h-4 w-4 text-violet-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-medium text-foreground/90">
+            <p className="text-mc-caption font-medium text-foreground/90">
               {toast.agentName} responded
             </p>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-mc-caption text-muted-foreground">
               New message in chat
             </p>
           </div>
           <button
             type="button"
             onClick={() => goToChat(toast.id)}
-            className="shrink-0 rounded-lg bg-violet-600/20 px-3 py-1.5 text-[11px] font-medium text-violet-300 transition-colors hover:bg-violet-600/30 hover:text-violet-200"
+            className="shrink-0 rounded-lg bg-violet-600/20 px-3 py-1.5 text-mc-body-sm font-medium text-violet-300 transition-colors hover:bg-violet-600/30 hover:text-violet-200"
           >
             View
           </button>

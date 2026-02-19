@@ -84,7 +84,7 @@ export function ThemeToggle() {
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] transition-colors",
+                  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors",
                   isActive
                     ? "bg-violet-500/10 text-violet-600 dark:text-violet-300"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground"

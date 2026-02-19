@@ -351,6 +351,13 @@ export async function GET() {
 
     const activitySeries = buildActivitySeries(allSessions, now);
 
+    // Per-model activity series for Token Flow filter (all vs specific model)
+    const activitySeriesByModel: Record<string, Record<Period, ActivityPoint[]>> = {};
+    for (const modelKey of Object.keys(byModel)) {
+      const sessionsForModel = allSessions.filter((s) => s.model === modelKey);
+      activitySeriesByModel[modelKey] = buildActivitySeries(sessionsForModel, now);
+    }
+
     return NextResponse.json({
       totals: {
         sessions: allSessions.length,
@@ -362,6 +369,7 @@ export async function GET() {
       },
       buckets,
       activitySeries,
+      activitySeriesByModel,
       modelBreakdown,
       agentBreakdown,
       sessions: allSessions.slice(0, 50), // top 50 most recent

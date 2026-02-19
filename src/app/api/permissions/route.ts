@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { writeFileSync, unlinkSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { runCli, runCliJson } from "@/lib/openclaw-cli";
 
 export const dynamic = "force-dynamic";
@@ -372,6 +375,50 @@ async function mutateAllowlist(action: "add" | "remove", agentId: string, patter
   return redactApprovalsSnapshot(parsed);
 }
 
+const VALID_SECURITY = ["deny", "allowlist", "full"] as const;
+const VALID_ASK = ["off", "on-miss", "always"] as const;
+const VALID_ASK_FALLBACK = ["deny", "allowlist", "full"] as const;
+
+async function setApprovalsDefaults(updates: { security?: string; ask?: string; askFallback?: string }) {
+  const raw = await runCliJson<ApprovalsSnapshot>(["approvals", "get"], 12000);
+  const file = raw?.file;
+  if (!file) throw new Error("No approvals file in response.");
+  const defaults = { ...file.defaults } as ScopeConfig;
+  if (updates.security !== undefined) {
+    if (!VALID_SECURITY.includes(updates.security as (typeof VALID_SECURITY)[number])) {
+      throw new Error(`Invalid security: ${updates.security}. Use: ${VALID_SECURITY.join(", ")}`);
+    }
+    defaults.security = updates.security;
+  }
+  if (updates.ask !== undefined) {
+    if (!VALID_ASK.includes(updates.ask as (typeof VALID_ASK)[number])) {
+      throw new Error(`Invalid ask: ${updates.ask}. Use: ${VALID_ASK.join(", ")}`);
+    }
+    defaults.ask = updates.ask;
+  }
+  if (updates.askFallback !== undefined) {
+    if (!VALID_ASK_FALLBACK.includes(updates.askFallback as (typeof VALID_ASK_FALLBACK)[number])) {
+      throw new Error(`Invalid askFallback: ${updates.askFallback}. Use: ${VALID_ASK_FALLBACK.join(", ")}`);
+    }
+    defaults.askFallback = updates.askFallback;
+  }
+  const next: ApprovalsFile = {
+    ...file,
+    defaults,
+  };
+  const tmpPath = join(tmpdir(), `exec-approvals-${Date.now()}.json`);
+  try {
+    writeFileSync(tmpPath, JSON.stringify(next, null, 2), "utf-8");
+    await runCli(["approvals", "set", "--file", tmpPath], 12000);
+  } finally {
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export async function GET() {
   try {
     const snapshot = await readSnapshot();
@@ -417,6 +464,18 @@ export async function POST(request: NextRequest) {
         restartRecommended: true,
         snapshot,
       });
+    }
+
+    if (action === "set-approvals-defaults") {
+      const security = body.security !== undefined ? String(body.security).trim() : undefined;
+      const ask = body.ask !== undefined ? String(body.ask).trim() : undefined;
+      const askFallback = body.askFallback !== undefined ? String(body.askFallback).trim() : undefined;
+      if (!security && !ask && !askFallback) {
+        return NextResponse.json({ error: "At least one of security, ask, askFallback is required" }, { status: 400 });
+      }
+      await setApprovalsDefaults({ security, ask, askFallback });
+      const snapshot = await readSnapshot();
+      return NextResponse.json({ ok: true, action, snapshot });
     }
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
