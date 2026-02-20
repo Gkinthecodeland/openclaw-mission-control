@@ -366,28 +366,40 @@ function EditCronForm({
 
   const [confirmDel, setConfirmDel] = useState(false);
 
-  // Fetch known delivery targets on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/cron?action=targets");
-        const data = await res.json();
-        setKnownTargets(data.targets || []);
-      } catch {
-        /* ignore */
-      }
-      setTargetsLoading(false);
-    })();
-    (async () => {
-      try {
-        const res = await fetch("/api/channels?scope=all", { cache: "no-store" });
-        const data = await res.json();
-        setChannels((data.channels || []) as ChannelInfo[]);
-      } catch {
-        /* ignore */
-      }
-    })();
+  const fetchTargets = useCallback(async () => {
+    setTargetsLoading(true);
+    try {
+      const [targetsRes, channelsRes] = await Promise.all([
+        fetch("/api/cron?action=targets", { cache: "no-store" }),
+        fetch("/api/channels?scope=all", { cache: "no-store" }),
+      ]);
+      const targetsData = await targetsRes.json();
+      const channelsData = await channelsRes.json();
+      setKnownTargets(targetsData.targets || []);
+      setChannels((channelsData.channels || []) as ChannelInfo[]);
+    } catch {
+      /* ignore */
+    }
+    setTargetsLoading(false);
   }, []);
+
+  useEffect(() => {
+    void fetchTargets();
+  }, [fetchTargets]);
+
+  const targetChannel = useCallback((t: string) => {
+    if (t.startsWith("telegram:")) return "telegram";
+    if (t.startsWith("discord:")) return "discord";
+    if (t.startsWith("+")) return "whatsapp";
+    return "";
+  }, []);
+
+  // When channel changes, show dropdown again; clear to only if it was for a different channel
+  useEffect(() => {
+    if (!channel) return;
+    setCustomTo(false);
+    if (to && targetChannel(to) !== channel) setTo("");
+  }, [channel]);
 
   const readyChannels = useMemo(() => {
     return channels.filter((ch) => {
@@ -580,10 +592,21 @@ function EditCronForm({
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">
-                To (recipient)
-              </label>
-              {/* Smart target selector: known targets dropdown or custom input */}
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="block text-xs text-muted-foreground">
+                  To (recipient)
+                </label>
+                {deliveryMode !== "none" && channel && (
+                  <button
+                    type="button"
+                    onClick={() => fetchTargets()}
+                    disabled={targetsLoading}
+                    className="shrink-0 text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50"
+                  >
+                    {targetsLoading ? "Refreshing…" : "Refresh targets"}
+                  </button>
+                )}
+              </div>
               {deliveryMode === "none" ? (
                 <input
                   disabled
@@ -591,57 +614,54 @@ function EditCronForm({
                   placeholder="—"
                   className="w-full rounded-lg border border-foreground/10 bg-muted/80 px-3 py-2 font-mono text-xs text-foreground/70 outline-none disabled:opacity-40"
                 />
-              ) : targetsLoading ? (
+              ) : targetsLoading && knownTargets.length === 0 ? (
                 <div className="flex h-9 items-center rounded-lg border border-foreground/10 bg-muted/80 px-3">
                   <InlineSpinner size="sm" />
                   <span className="ml-2 text-xs text-muted-foreground/40">
-                    Loading targets...
+                    Loading targets…
                   </span>
                 </div>
-              ) : !customTo && filteredTargets.length > 0 ? (
+              ) : (
                 <div className="space-y-1.5">
                   <select
-                    value={to}
+                    value={customTo ? "__custom__" : to}
                     onChange={(e) => {
-                      if (e.target.value === "__custom__") {
+                      const v = e.target.value;
+                      if (v === "__custom__") {
                         setCustomTo(true);
                       } else {
-                        setTo(e.target.value);
+                        setCustomTo(false);
+                        setTo(v);
                       }
                     }}
                     className="w-full rounded-lg border border-foreground/10 bg-muted/80 px-3 py-2 font-mono text-xs text-foreground/70 outline-none focus:border-violet-500/30"
                   >
-                    <option value="">Select a target...</option>
+                    <option value="">Select recipient…</option>
                     {filteredTargets.map((t) => (
                       <option key={t.target} value={t.target}>
                         {t.target} ({t.source})
                       </option>
                     ))}
-                    <option value="__custom__">Enter manually...</option>
+                    <option value="__custom__">
+                      {channel
+                        ? `Enter ${channel} ID manually…`
+                        : "Enter channel ID manually…"}
+                    </option>
                   </select>
-                  {to && (
-                    <p className="text-xs text-emerald-500/70">
-                      <CheckCircle className="mr-1 inline h-2.5 w-2.5" />
-                      Target set: <code className="text-emerald-400">{to}</code>
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-1.5">
+                  {customTo && (
                     <input
                       value={to}
                       onChange={(e) => setTo(e.target.value)}
                       placeholder={CHANNEL_PLACEHOLDER[channel] || "channel:TARGET_ID"}
                       className="w-full rounded-lg border border-foreground/10 bg-muted/80 px-3 py-2 font-mono text-xs text-foreground/70 outline-none focus:border-violet-500/30"
+                      aria-label="Recipient (e.g. discord:CHANNEL_ID)"
                     />
-                  {filteredTargets.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setCustomTo(false)}
-                      className="text-xs text-violet-400 hover:text-violet-300"
-                    >
-                      ← Pick from known targets
-                    </button>
+                  )}
+                  {!customTo && to && (
+                    <p className="text-xs text-emerald-500/70">
+                      <CheckCircle className="mr-1 inline h-2.5 w-2.5" />
+                      Target set: <code className="text-emerald-400">{to}</code>
+                    </p>
                   )}
                 </div>
               )}
@@ -824,7 +844,21 @@ function CreateCronForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch agents and delivery targets on mount
+  const fetchTargetsCreate = useCallback(async () => {
+    setTargetsLoading(true);
+    try {
+      const [targetsRes, channelsRes] = await Promise.all([
+        fetch("/api/cron?action=targets", { cache: "no-store" }),
+        fetch("/api/channels?scope=all", { cache: "no-store" }),
+      ]);
+      const targetsData = await targetsRes.json();
+      const channelsData = await channelsRes.json();
+      setKnownTargets(targetsData.targets || []);
+      setChannels((channelsData.channels || []) as ChannelInfo[]);
+    } catch { /* ignore */ }
+    setTargetsLoading(false);
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -838,22 +872,21 @@ function CreateCronForm({
         if (agentList.length === 1) setAgent(agentList[0].id);
       } catch { /* ignore */ }
     })();
-    (async () => {
-      try {
-        const res = await fetch("/api/cron?action=targets");
-        const data = await res.json();
-        setKnownTargets(data.targets || []);
-      } catch { /* ignore */ }
-      setTargetsLoading(false);
-    })();
-    (async () => {
-      try {
-        const res = await fetch("/api/channels?scope=all", { cache: "no-store" });
-        const data = await res.json();
-        setChannels((data.channels || []) as ChannelInfo[]);
-      } catch { /* ignore */ }
-    })();
+    void fetchTargetsCreate();
+  }, [fetchTargetsCreate]);
+
+  const targetChannelCreate = useCallback((t: string) => {
+    if (t.startsWith("telegram:")) return "telegram";
+    if (t.startsWith("discord:")) return "discord";
+    if (t.startsWith("+")) return "whatsapp";
+    return "";
   }, []);
+
+  useEffect(() => {
+    if (!channel) return;
+    setCustomTo(false);
+    if (to && targetChannelCreate(to) !== channel) setTo("");
+  }, [channel]);
 
   const readyChannels = useMemo(() => {
     return channels.filter((ch) => {
@@ -1284,49 +1317,65 @@ function CreateCronForm({
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
-                  Recipient
-                </label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                    Recipient
+                  </label>
+                  {deliveryMode !== "none" && channel && (
+                    <button
+                      type="button"
+                      onClick={() => fetchTargetsCreate()}
+                      disabled={targetsLoading}
+                      className="shrink-0 text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50"
+                    >
+                      {targetsLoading ? "Refreshing…" : "Refresh targets"}
+                    </button>
+                  )}
+                </div>
                 {deliveryMode === "none" ? (
                   <input disabled value="" placeholder="—" className="w-full rounded-lg border border-foreground/10 bg-muted/80 px-3 py-2 font-mono text-xs text-foreground/70 outline-none disabled:opacity-40" />
-                ) : targetsLoading ? (
+                ) : targetsLoading && knownTargets.length === 0 ? (
                   <div className="flex h-9 items-center rounded-lg border border-foreground/10 bg-muted/80 px-3">
                     <InlineSpinner size="sm" />
-                    <span className="ml-2 text-xs text-muted-foreground/40">Loading targets...</span>
-                  </div>
-                ) : !customTo && filteredTargets.length > 0 ? (
-                  <div className="space-y-1.5">
-                    <select
-                      value={to}
-                      onChange={(e) => {
-                        if (e.target.value === "__custom__") { setCustomTo(true); }
-                        else { setTo(e.target.value); }
-                      }}
-                      className="w-full rounded-lg border border-foreground/10 bg-muted/80 px-3 py-2 font-mono text-xs text-foreground/70 outline-none focus:border-violet-500/30"
-                    >
-                      <option value="">Select a target...</option>
-                      {filteredTargets.map((t) => (
-                        <option key={t.target} value={t.target}>{t.target} ({t.source})</option>
-                      ))}
-                      <option value="__custom__">Enter manually...</option>
-                    </select>
+                    <span className="ml-2 text-xs text-muted-foreground/40">Loading targets…</span>
                   </div>
                 ) : (
                   <div className="space-y-1.5">
-                    <input
-                      value={to}
-                      onChange={(e) => setTo(e.target.value)}
-                      placeholder={
-                        channel === "last"
-                          ? "Auto from last active channel"
-                          : CHANNEL_PLACEHOLDER[channel] || "channel:TARGET_ID"
-                      }
+                    <select
+                      value={customTo ? "__custom__" : to}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "__custom__") setCustomTo(true);
+                        else { setCustomTo(false); setTo(v); }
+                      }}
                       className="w-full rounded-lg border border-foreground/10 bg-muted/80 px-3 py-2 font-mono text-xs text-foreground/70 outline-none focus:border-violet-500/30"
-                    />
-                    {filteredTargets.length > 0 && (
-                      <button type="button" onClick={() => setCustomTo(false)} className="text-xs text-violet-400 hover:text-violet-300">
-                        ← Pick from known targets
-                      </button>
+                    >
+                      <option value="">Select recipient…</option>
+                      {filteredTargets.map((t) => (
+                        <option key={t.target} value={t.target}>{t.target} ({t.source})</option>
+                      ))}
+                      <option value="__custom__">
+                        {channel ? `Enter ${channel} ID manually…` : "Enter channel ID manually…"}
+                      </option>
+                    </select>
+                    {customTo && (
+                      <input
+                        value={to}
+                        onChange={(e) => setTo(e.target.value)}
+                        placeholder={
+                          channel === "last"
+                            ? "Auto from last active channel"
+                            : CHANNEL_PLACEHOLDER[channel] || "channel:TARGET_ID"
+                        }
+                        className="w-full rounded-lg border border-foreground/10 bg-muted/80 px-3 py-2 font-mono text-xs text-foreground/70 outline-none focus:border-violet-500/30"
+                        aria-label="Recipient (e.g. discord:CHANNEL_ID)"
+                      />
+                    )}
+                    {!customTo && to && (
+                      <p className="text-xs text-emerald-500/70">
+                        <CheckCircle className="mr-1 inline h-2.5 w-2.5" />
+                        Target set: <code className="text-emerald-400">{to}</code>
+                      </p>
                     )}
                   </div>
                 )}

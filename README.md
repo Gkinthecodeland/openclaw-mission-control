@@ -379,6 +379,23 @@ OPENCLAW_HOME=/path/to/other/.openclaw npm run dev -- --port 3001
 
 ---
 
+## Releasing / 发布
+
+Releases are created automatically when you push a version tag. After pushing your code:
+
+发布会在推送版本标签时自动创建。推送代码后：
+
+```bash
+git tag v0.1.0   # use the version you're releasing (e.g. match package.json)
+git push origin v0.1.0
+```
+
+The [Release workflow](.github/workflows/release.yml) creates a GitHub Release with auto-generated notes. Bump `version` in `package.json` before tagging if you want the tag to match.
+
+[Release 工作流](.github/workflows/release.yml) 会自动创建 GitHub Release 并生成说明。若希望标签与版本一致，请在打 tag 前更新 `package.json` 中的 `version`。
+
+---
+
 ## Contributing / 贡献
 
 Pull requests are welcome! If you find a bug or have a feature idea, [open an issue](https://github.com/openclaw/dashboard/issues).

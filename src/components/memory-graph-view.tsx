@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
   MarkerType,
+  useNodesState,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -33,9 +35,65 @@ import {
   Table2,
   UploadCloud,
 } from "lucide-react";
+import dagre from "dagre";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { InlineSpinner, LoadingState } from "@/components/ui/loading-state";
+
+const DAGRE_NODE_WIDTH = 200;
+const DAGRE_NODE_HEIGHT = 72;
+
+/** Saved positions outside this range are treated as outliers (e.g. from old grid) and ignored so dagre keeps the graph compact. */
+const LAYOUT_SAVED_POSITION_MAX = 1800;
+
+function isSavedPositionReasonable(x: number, y: number): boolean {
+  return (
+    Math.abs(x) <= LAYOUT_SAVED_POSITION_MAX &&
+    Math.abs(y) <= LAYOUT_SAVED_POSITION_MAX
+  );
+}
+
+function getDagreLayout(
+  nodeIds: string[],
+  edges: Array<{ source: string; target: string }>
+): Map<string, { x: number; y: number }> {
+  const result = new Map<string, { x: number; y: number }>();
+  if (nodeIds.length === 0) return result;
+  const Graph = dagre.graphlib?.Graph;
+  const layoutFn = dagre.layout;
+  if (!Graph || !layoutFn) return result;
+  const g = new Graph();
+  g.setGraph({
+    rankdir: "LR",
+    nodesep: 22,
+    ranksep: 36,
+    marginx: 16,
+    marginy: 16,
+  });
+  for (const id of nodeIds) {
+    g.setNode(id, { width: DAGRE_NODE_WIDTH, height: DAGRE_NODE_HEIGHT });
+  }
+  for (const edge of edges) {
+    if (nodeIds.includes(edge.source) && nodeIds.includes(edge.target)) {
+      g.setEdge(edge.source, edge.target);
+    }
+  }
+  try {
+    layoutFn(g);
+    for (const id of nodeIds) {
+      const node = g.node(id);
+      if (node && typeof node.x === "number" && typeof node.y === "number") {
+        result.set(id, {
+          x: node.x - (node.width ?? DAGRE_NODE_WIDTH) / 2,
+          y: node.y - (node.height ?? DAGRE_NODE_HEIGHT) / 2,
+        });
+      }
+    }
+  } catch {
+    /* fallback to grid below */
+  }
+  return result;
+}
 
 type GraphNodePayload = {
   id: string;
@@ -224,6 +282,25 @@ function relationLabel(value: string): string {
     .join(" ");
 }
 
+const RELATION_COLORS: ReadonlyArray<{ dark: string; light: string }> = [
+  { dark: "rgba(34,197,94,0.85)", light: "rgba(21,128,61,0.88)" },
+  { dark: "rgba(56,189,248,0.85)", light: "rgba(3,105,161,0.88)" },
+  { dark: "rgba(168,85,247,0.85)", light: "rgba(126,34,206,0.88)" },
+  { dark: "rgba(251,146,60,0.85)", light: "rgba(194,65,12,0.88)" },
+  { dark: "rgba(236,72,153,0.85)", light: "rgba(190,24,93,0.88)" },
+  { dark: "rgba(250,204,21,0.85)", light: "rgba(161,98,7,0.88)" },
+  { dark: "rgba(244,63,94,0.85)", light: "rgba(185,28,28,0.88)" },
+  { dark: "rgba(20,184,166,0.85)", light: "rgba(13,148,136,0.88)" },
+];
+
+function relationToColor(relation: string, isDark: boolean): string {
+  const norm = normalizeRelation(relation);
+  let h = 0;
+  for (let i = 0; i < norm.length; i++) h = (h * 31 + norm.charCodeAt(i)) >>> 0;
+  const entry = RELATION_COLORS[h % RELATION_COLORS.length];
+  return isDark ? entry.dark : entry.light;
+}
+
 function canonicalText(input: string): string {
   return String(input || "")
     .toLowerCase()
@@ -266,6 +343,26 @@ function nodeKindColor(kind: string, isDark: boolean): string {
   if (normalized === "task") return isDark ? "rgba(251,146,60,0.30)" : "rgba(251,146,60,0.17)";
   if (normalized === "project") return isDark ? "rgba(236,72,153,0.28)" : "rgba(236,72,153,0.14)";
   return isDark ? "rgba(148,163,184,0.26)" : "rgba(148,163,184,0.12)";
+}
+
+function kindLabel(kind: string): string {
+  const k = String(kind || "").toLowerCase();
+  if (k === "topic") return "Topic";
+  if (k === "fact") return "Fact";
+  if (k === "project") return "Project";
+  if (k === "task") return "Task";
+  if (k === "profile") return "Profile";
+  if (k === "person") return "Person";
+  return kind || "Node";
+}
+
+const SUMMARY_TRUNCATE = 72;
+const TITLE_TRUNCATE = 42;
+
+function truncate(str: string, max: number): string {
+  const s = String(str || "").trim();
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1).trim() + "…";
 }
 
 function scoreRecency(ts: number): number {
@@ -395,6 +492,7 @@ export function MemoryGraphView() {
   const [lens, setLens] = useState<LensMode>("topic");
   const [showTopicTable, setShowTopicTable] = useState(true);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -1122,12 +1220,24 @@ export function MemoryGraphView() {
   const flowNodes = useMemo(() => {
     const visible = collapsed.nodes.filter((node) => filteredScope.nodeIds.has(node.id));
     const count = Math.max(1, visible.length);
+    const nodeIds = visible.map((n) => n.id);
+    const layoutPositions =
+      layer === "overview"
+        ? new Map<string, { x: number; y: number }>()
+        : getDagreLayout(nodeIds, filteredScope.edges);
+
+    const edgeCountByNode = new Map<string, number>();
+    for (const e of filteredScope.edges) {
+      edgeCountByNode.set(e.source, (edgeCountByNode.get(e.source) ?? 0) + 1);
+      edgeCountByNode.set(e.target, (edgeCountByNode.get(e.target) ?? 0) + 1);
+    }
 
     return visible.map((node, idx) => {
       const insight = nodeInsights.get(node.id);
       const dist = filteredScope.hopDistance.get(node.id);
       const selected = selectedNodeId === node.id;
       const pinned = pinnedIds.includes(node.id);
+      const edgeCount = edgeCountByNode.get(node.id) ?? 0;
 
       let opacity = 1;
       if (typeof dist === "number" && dist === 2) opacity = 0.42;
@@ -1139,32 +1249,82 @@ export function MemoryGraphView() {
           ? "ring-amber-300/60"
           : "ring-cyan-300/40";
 
-      const baseX = Number.isFinite(node.x) ? node.x : 200 + (idx % 5) * 220;
-      const baseY = Number.isFinite(node.y) ? node.y : 100 + Math.floor(idx / 5) * 140;
+      const hasReasonableSavedPosition =
+        Number.isFinite(node.x) &&
+        Number.isFinite(node.y) &&
+        isSavedPositionReasonable(node.x, node.y);
+      const layoutPos = layoutPositions.get(node.id);
+      const gridFallback = {
+        x: 200 + (idx % 5) * 220,
+        y: 100 + Math.floor(idx / 5) * 140,
+      };
+      const baseX = hasReasonableSavedPosition ? node.x! : (layoutPos?.x ?? gridFallback.x);
+      const baseY = hasReasonableSavedPosition ? node.y! : (layoutPos?.y ?? gridFallback.y);
       const position =
         layer === "overview"
           ? {
-            x: 220 + Math.cos((idx / count) * Math.PI * 2) * 360,
-            y: 220 + Math.sin((idx / count) * Math.PI * 2) * 240,
+            x: 200 + Math.cos((idx / count) * Math.PI * 2) * 280,
+            y: 200 + Math.sin((idx / count) * Math.PI * 2) * 180,
           }
           : { x: baseX, y: baseY };
+
+      const summary = (node.summary || "").trim();
+      const labelTrim = (node.label || "").trim();
+      const summaryIsDifferent =
+        summary.length > 10 &&
+        labelTrim.length > 0 &&
+        !labelTrim.toLowerCase().startsWith(summary.toLowerCase().slice(0, Math.min(15, summary.length)));
+      const primarySource = insight?.sources?.[0];
+      const isFileLike = node.kind?.toLowerCase() === "project" || (primarySource?.endsWith(".md") ?? false);
+
+      let subtitle: string;
+      if (summaryIsDifferent && summary) {
+        subtitle = truncate(summary, SUMMARY_TRUNCATE);
+      } else if (isFileLike && primarySource) {
+        subtitle = `From ${primarySource}`;
+      } else if ((insight?.retrievalInWindow ?? 0) > 0) {
+        const n = insight!.retrievalInWindow;
+        subtitle = n === 1 ? "Used in 1 recent chat" : `Used in ${n} recent chats`;
+      } else if (insight?.recencyMs && insight.recencyMs > 0) {
+        subtitle = `Updated ${formatAgo(insight.recencyMs)}`;
+      } else if (edgeCount > 0) {
+        subtitle = edgeCount === 1 ? "1 connection" : `${edgeCount} connections`;
+      } else {
+        subtitle = kindLabel(node.kind);
+      }
 
       return {
         id: node.id,
         position,
-        draggable: false,
+        draggable: layer !== "overview",
         data: {
           label: (
-            <div className={cn("rounded-xl border border-border/80 bg-background/80 px-3 py-2 text-left text-xs shadow-sm backdrop-blur-sm", selected && `ring-2 ${ringTone}`)}>
-              <p className="truncate text-xs font-semibold text-foreground">{node.label}</p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {node.kind} · {Math.round((insight?.usefulness || 0) * 100)} usefulness
+            <div className={cn("rounded-xl border border-border/80 bg-background/80 px-3 py-2.5 text-left text-xs shadow-sm backdrop-blur-sm", selected && `ring-2 ${ringTone}`)}>
+              <p className="line-clamp-1 font-semibold leading-snug text-foreground" title={labelTrim}>
+                {truncate(labelTrim || node.id, TITLE_TRUNCATE)}
               </p>
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">conf {Math.round(node.confidence * 100)}%</span>
-                {insight?.conflicts ? <span className="rounded bg-rose-500/20 px-1.5 py-0.5 text-xs text-rose-700 dark:text-rose-200">conflicts {insight.conflicts}</span> : null}
-                {insight?.lowProvenance ? <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-700 dark:text-amber-200">low provenance</span> : null}
-                {pinned ? <span className="rounded bg-violet-500/25 px-1.5 py-0.5 text-xs text-violet-700 dark:text-violet-100">pinned</span> : null}
+              <p className="mt-1 line-clamp-2 min-h-0 text-[11px] leading-snug text-muted-foreground" title={subtitle}>
+                {subtitle}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-md bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  {kindLabel(node.kind)}
+                </span>
+                {(insight?.conflicts ?? 0) > 0 && (
+                  <span className="rounded-md bg-rose-500/20 px-1.5 py-0.5 text-[10px] text-rose-700 dark:text-rose-200">
+                    {insight!.conflicts} conflict{(insight!.conflicts ?? 0) === 1 ? "" : "s"}
+                  </span>
+                )}
+                {insight?.lowProvenance && (
+                  <span className="rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-200">
+                    Unverified
+                  </span>
+                )}
+                {pinned && (
+                  <span className="rounded-md bg-violet-500/25 px-1.5 py-0.5 text-[10px] text-violet-700 dark:text-violet-100">
+                    Pinned
+                  </span>
+                )}
               </div>
             </div>
           ),
@@ -1176,7 +1336,7 @@ export function MemoryGraphView() {
             } 100%)`,
           color: isDark ? "#f4f4f5" : "#111827",
           opacity,
-          minWidth: 190,
+          minWidth: 200,
           boxShadow: selected
             ? isDark
               ? "0 0 0 1px rgba(255,255,255,0.20), 0 12px 28px rgba(0,0,0,0.36)"
@@ -1188,19 +1348,34 @@ export function MemoryGraphView() {
         },
       } as Node<FlowNodeData>;
     });
-  }, [collapsed.nodes, filteredScope.hopDistance, filteredScope.nodeIds, isDark, layer, nodeInsights, pinnedIds, selectedNodeId]);
+  }, [collapsed.nodes, filteredScope.edges, filteredScope.hopDistance, filteredScope.nodeIds, isDark, layer, nodeInsights, pinnedIds, selectedNodeId]);
+
+  const flowNodesStructureKey = useMemo(
+    () => `${flowNodes.length}\n${flowNodes.map((n) => n.id).join(",")}`,
+    [flowNodes]
+  );
+  const prevFlowNodesStructureKey = useRef<string | null>(null);
+  const isDraggingRef = useRef(false);
+
+  const [displayNodes, setDisplayNodes, onNodesChangeFromHook] = useNodesState(flowNodes);
+
+  useEffect(() => {
+    if (isDraggingRef.current) return;
+    if (prevFlowNodesStructureKey.current !== flowNodesStructureKey) {
+      prevFlowNodesStructureKey.current = flowNodesStructureKey;
+      setDisplayNodes(flowNodes);
+    }
+  }, [flowNodesStructureKey, flowNodes, setDisplayNodes]);
 
   const flowEdges = useMemo(() => {
     return filteredScope.edges.map((edge) => {
       const distSource = filteredScope.hopDistance.get(edge.source);
       const distTarget = filteredScope.hopDistance.get(edge.target);
       const faint = (distSource === 2 || distTarget === 2) && !showThreeHops;
-      const label = `${relationLabel(edge.relation)} · x${edge.count} · ${Math.round(edge.confidence * 100)}% · ${formatAgo(edge.lastSeenMs)}`;
       return {
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        label,
         data: {
           relation: edge.relation,
           count: edge.count,
@@ -1209,32 +1384,17 @@ export function MemoryGraphView() {
         },
         markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
         style: {
-          stroke: edge.confidence >= 0.7
-            ? isDark
-              ? "rgba(34,197,94,0.70)"
-              : "rgba(21,128,61,0.74)"
-            : isDark
-              ? "rgba(56,189,248,0.68)"
-              : "rgba(3,105,161,0.74)",
+          stroke: relationToColor(edge.relation, isDark),
           strokeWidth: Math.max(1.4, Math.min(4.2, 1 + edge.confidence * 2.4 + Math.log2(edge.count + 1) * 0.45)),
           opacity: faint ? 0.32 : 0.85,
-        },
-        labelStyle: {
-          fontSize: 10.5,
-          fill: isDark ? "rgba(241,245,249,0.96)" : "rgba(15,23,42,0.92)",
-          fontWeight: 600,
-        },
-        labelShowBg: true,
-        labelBgPadding: [6, 3],
-        labelBgBorderRadius: 6,
-        labelBgStyle: {
-          fill: isDark ? "rgba(9,14,24,0.82)" : "rgba(255,255,255,0.92)",
-          stroke: isDark ? "rgba(71,85,105,0.7)" : "rgba(148,163,184,0.65)",
-          strokeWidth: 0.8,
         },
       } as Edge<FlowEdgeData>;
     });
   }, [filteredScope.edges, filteredScope.hopDistance, isDark, showThreeHops]);
+
+  const visibleRelationTypes = useMemo(() => {
+    return [...new Set(filteredScope.edges.map((e) => e.relation))].sort((a, b) => a.localeCompare(b));
+  }, [filteredScope.edges]);
 
   const forensics = useMemo(() => {
     const anchor = selectedNode || selectedTopic;
@@ -1289,6 +1449,38 @@ export function MemoryGraphView() {
     });
     setDirty(true);
   }, []);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const positionChanges = changes.filter((c) => c.type === "position") as Array<
+        NodeChange & { id: string; dragging?: boolean; position?: { x: number; y: number } }
+      >;
+      for (const c of positionChanges) {
+        if (c.dragging === true) isDraggingRef.current = true;
+        if (c.dragging === false) isDraggingRef.current = false;
+      }
+      onNodesChangeFromHook(changes as Parameters<typeof onNodesChangeFromHook>[0]);
+      const toPersist = positionChanges.filter(
+        (c) => c.dragging === false && c.position != null && typeof c.position.x === "number"
+      );
+      if (toPersist.length > 0) {
+        setGraph((prev) => {
+          if (!prev) return prev;
+          const byId = new Map(toPersist.map((c) => [c.id, c.position!]));
+          return {
+            ...prev,
+            nodes: prev.nodes.map((node) => {
+              const pos = byId.get(node.id);
+              if (!pos) return node;
+              return { ...node, x: pos.x, y: pos.y };
+            }),
+          };
+        });
+        setDirty(true);
+      }
+    },
+    [onNodesChangeFromHook]
+  );
 
   const togglePin = useCallback((nodeId: string) => {
     setPinnedIds((prev) => {
@@ -1402,47 +1594,62 @@ export function MemoryGraphView() {
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden">
-      <aside className="flex w-80 shrink-0 flex-col border-r border-foreground/10 bg-card/60">
-        <div className="space-y-2 border-b border-foreground/10 p-3">
-          <div className="grid grid-cols-3 gap-1.5 text-xs">
+      <aside
+        className={cn(
+          "flex shrink-0 flex-row border-r border-foreground/10 bg-card/60 transition-[width] duration-200 ease-out",
+          sidebarCollapsed ? "w-10" : "w-80"
+        )}
+      >
+        {/* Main sidebar content — hidden when collapsed */}
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 flex-col overflow-hidden border-r border-foreground/10",
+            sidebarCollapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100"
+          )}
+          aria-hidden={sidebarCollapsed}
+        >
+          <div className="space-y-2 border-b border-foreground/10 p-3">
+            <div className="grid grid-cols-3 gap-1.5 text-xs">
+              <button
+                type="button"
+                onClick={() => void loadGraph()}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-foreground/10 bg-muted/40 px-2 py-1.5 text-foreground/90 hover:bg-muted"
+              >
+                <RefreshCw className="h-3 w-3" /> Refresh
+              </button>
+              <button
+                type="button"
+                onClick={() => void rebuildFromMemory()}
+                disabled={rebuilding || saving || publishing}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-200 disabled:opacity-50"
+              >
+                {rebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />} Rebuild
+              </button>
+              <button
+                type="button"
+                onClick={saveGraph}
+                disabled={!dirty || saving}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-violet-500/35 bg-violet-500/15 px-2 py-1.5 text-violet-700 hover:bg-violet-500/25 dark:text-violet-200 disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
+              </button>
+            </div>
             <button
               type="button"
-              onClick={() => void loadGraph()}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-foreground/10 bg-muted/40 px-2 py-1.5 text-foreground/90 hover:bg-muted"
+              onClick={publishSnapshot}
+              disabled={publishing}
+              className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2 py-1.5 text-xs text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-200 disabled:opacity-50"
             >
-              <RefreshCw className="h-3 w-3" /> Refresh
+              {publishing ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3 w-3" />} Publish Snapshot
             </button>
-            <button
-              type="button"
-              onClick={() => void rebuildFromMemory()}
-              disabled={rebuilding || saving || publishing}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1.5 text-sky-700 hover:bg-sky-500/20 dark:text-sky-200 disabled:opacity-50"
-            >
-              {rebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />} Rebuild
-            </button>
-            <button
-              type="button"
-              onClick={saveGraph}
-              disabled={!dirty || saving}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-violet-500/35 bg-violet-500/15 px-2 py-1.5 text-violet-700 hover:bg-violet-500/25 dark:text-violet-200 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
-            </button>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Gateway source-of-truth sync</span>
+              <span>{telemetry.generatedAt ? `telemetry ${formatAgo(new Date(telemetry.generatedAt).getTime())}` : "telemetry unknown"}</span>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={publishSnapshot}
-            disabled={publishing}
-            className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2 py-1.5 text-xs text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-200 disabled:opacity-50"
-          >
-            {publishing ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3 w-3" />} Publish Snapshot
-          </button>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Gateway source-of-truth sync</span>
-            <span>{telemetry.generatedAt ? `telemetry ${formatAgo(new Date(telemetry.generatedAt).getTime())}` : "telemetry unknown"}</span>
-          </div>
-        </div>
 
+          {sidebarCollapsed ? null : (
+          <>
         <div className="space-y-2 border-b border-foreground/10 p-3">
           <div className="flex items-center gap-2 rounded-md border border-foreground/10 bg-card px-2 py-1.5">
             <Search className="h-3.5 w-3.5 text-muted-foreground/70" />
@@ -1679,6 +1886,27 @@ export function MemoryGraphView() {
             </div>
           ) : null}
         </div>
+          </>
+          )}
+        </div>
+
+        {/* Collapse/expand strip — always visible on the right edge of the sidebar */}
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((prev) => !prev)}
+          className="flex h-full w-10 shrink-0 flex-col items-center justify-center gap-0 border-0 bg-card/80 text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-inset focus:ring-violet-500/40"
+          title={sidebarCollapsed ? "Expand filters (sidebar)" : "Collapse filters (sidebar)"}
+          aria-label={sidebarCollapsed ? "Expand filters" : "Collapse filters"}
+        >
+          {sidebarCollapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
+          <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wider opacity-70">
+            {sidebarCollapsed ? "Filters" : ""}
+          </span>
+        </button>
       </aside>
 
       <main
@@ -1690,15 +1918,17 @@ export function MemoryGraphView() {
         )}
       >
         <ReactFlow
-          nodes={flowNodes}
+          nodes={displayNodes}
           edges={flowEdges}
           onNodeClick={onNodeClick}
+          onNodesChange={onNodesChange}
           onPaneClick={() => setSelectedNodeId(null)}
           fitView
           fitViewOptions={{ padding: 0.24 }}
-          nodesDraggable={false}
+          nodesDraggable={true}
           nodesConnectable={false}
           elementsSelectable
+          colorMode={isDark ? "dark" : "light"}
           className="h-full w-full"
         >
           <Background gap={20} size={1} color={isDark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.14)"} />
@@ -1706,11 +1936,30 @@ export function MemoryGraphView() {
           <Controls />
         </ReactFlow>
 
-        <div className="pointer-events-none absolute left-3 top-3 z-20 inline-flex items-center gap-2 rounded-md border border-foreground/15 bg-card/80 px-2.5 py-1 text-xs text-foreground/90 shadow-sm backdrop-blur">
-          <Sparkles className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
-          <span>
-            Top {MAX_VISIBLE_NODES} nodes / {MAX_VISIBLE_EDGES} edges by expected usefulness.
-          </span>
+        <div className="pointer-events-none absolute left-3 top-3 z-20 flex flex-col gap-2">
+          <div className="inline-flex items-center gap-2 rounded-md border border-foreground/15 bg-card/80 px-2.5 py-1 text-xs text-foreground/90 shadow-sm backdrop-blur">
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" />
+            <span>
+              Top {MAX_VISIBLE_NODES} nodes / {MAX_VISIBLE_EDGES} edges by expected usefulness.
+            </span>
+          </div>
+          {visibleRelationTypes.length > 0 ? (
+            <div className="rounded-md border border-foreground/15 bg-card/80 px-2.5 py-1.5 text-xs shadow-sm backdrop-blur">
+              <p className="mb-1.5 font-semibold text-foreground/90">Relations</p>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {visibleRelationTypes.map((relation) => (
+                  <span key={relation} className="inline-flex items-center gap-1.5">
+                    <span
+                      className="h-2 w-3 shrink-0 rounded-sm border border-foreground/20"
+                      style={{ backgroundColor: relationToColor(relation, isDark) }}
+                      aria-hidden
+                    />
+                    <span className="text-foreground/80">{relationLabel(relation)}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </main>
 
