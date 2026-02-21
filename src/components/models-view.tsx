@@ -7,6 +7,7 @@ import {
   Check,
   Eye,
   EyeOff,
+  Heart,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -57,6 +58,8 @@ type DefaultsModelConfig = {
   primary: string;
   fallbacks: string[];
 };
+
+type HeartbeatConfig = { every: string; model: string };
 
 type AgentModelInfo = {
   id: string;
@@ -305,6 +308,7 @@ export function ModelsView() {
   const [agents, setAgents] = useState<AgentModelInfo[]>([]);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentRuntimeStatus>>({});
   const [liveModels, setLiveModels] = useState<Record<string, LiveModelInfo>>({});
+  const [heartbeat, setHeartbeat] = useState<HeartbeatConfig | null>(null);
   const [modelCredentialSummary, setModelCredentialSummary] = useState<{
     connected: number;
     total: number;
@@ -356,6 +360,14 @@ export function ModelsView() {
         (data.agentStatuses || {}) as Record<string, AgentRuntimeStatus>
       );
       setLiveModels((data.liveModels || {}) as Record<string, LiveModelInfo>);
+      if (data.heartbeat && typeof data.heartbeat === "object" && "model" in data.heartbeat) {
+        setHeartbeat({
+          every: typeof data.heartbeat.every === "string" ? data.heartbeat.every : "",
+          model: typeof data.heartbeat.model === "string" ? data.heartbeat.model : "",
+        });
+      } else {
+        setHeartbeat(null);
+      }
 
       try {
         const accountsRes = await fetch("/api/accounts", { cache: "no-store" });
@@ -551,6 +563,7 @@ export function ModelsView() {
 
     ensure(defaultPrimary);
     ensure(defaultResolved);
+    if (heartbeat?.model) ensure(heartbeat.model);
 
     for (const agent of agents) {
       const configured = agent.modelPrimary || defaultPrimary;
@@ -569,6 +582,7 @@ export function ModelsView() {
     allowedModels,
     defaultPrimary,
     defaultResolved,
+    heartbeat?.model,
     liveModels,
     models,
     providerAuthMap,
@@ -582,6 +596,22 @@ export function ModelsView() {
       return a.name.localeCompare(b.name);
     });
   }, [optionMap]);
+
+  const heartbeatModelOptions = useMemo(() => {
+    const empty: ModelOption = {
+      key: "",
+      name: "— Not set",
+      provider: "",
+      available: false,
+      local: false,
+      known: false,
+      ready: true,
+      authConnected: false,
+      authKind: null,
+      oauthStatus: null,
+    };
+    return [empty, ...modelOptions];
+  }, [modelOptions]);
 
   const availableModels = useMemo(
     () => modelOptions.filter((m) => m.ready || m.local),
@@ -681,6 +711,17 @@ export function ModelsView() {
         },
         `${agent.name} now uses global defaults`,
         `reset:${agent.id}`
+      );
+    },
+    [runAction]
+  );
+
+  const changeHeartbeat = useCallback(
+    async (updates: { model?: string; every?: string }) => {
+      await runAction(
+        { action: "set-heartbeat", ...updates },
+        "Heartbeat updated",
+        "heartbeat"
       );
     },
     [runAction]
@@ -921,6 +962,83 @@ export function ModelsView() {
                 void changeDefaultModel(next);
               }}
             />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-border p-4 md:p-5 bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Heart className="h-4 w-4 text-rose-400" />
+              <h2 className="text-xs font-semibold text-foreground">Heartbeat</h2>
+            </div>
+            {heartbeat?.model ? (
+              <StatusPill tone="good" label="Configured" />
+            ) : (
+              <StatusPill tone="neutral" label="Not set" />
+            )}
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Model and interval for <code>agents.defaults.heartbeat</code>. Used for periodic
+            system heartbeat runs.
+          </p>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <div className="rounded-lg border border-border p-2.5 bg-muted/20">
+              <p className="uppercase tracking-wide text-muted-foreground text-xs">
+                Model
+              </p>
+              <p className="mt-1 text-xs font-semibold text-foreground">
+                {heartbeat?.model
+                  ? getModelDisplayName(heartbeat.model, models, aliases)
+                  : "—"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border p-2.5 bg-muted/20">
+              <p className="uppercase tracking-wide text-muted-foreground text-xs">
+                Interval
+              </p>
+              <p className="mt-1 text-xs font-semibold text-foreground">
+                {heartbeat?.every || "—"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="w-full max-w-md">
+              <label className="mb-1 block text-xs text-muted-foreground">Heartbeat model</label>
+              <ModelSelect
+                value={heartbeat?.model ?? ""}
+                options={heartbeatModelOptions}
+                disabled={Boolean(busyKey)}
+                onSelect={(next) => {
+                  void changeHeartbeat({ model: next, every: heartbeat?.every ?? "1h" });
+                }}
+              />
+            </div>
+            <div className="w-full max-w-[8rem]">
+              <label className="mb-1 block text-xs text-muted-foreground">Interval</label>
+              <select
+                value={heartbeat?.every ?? "1h"}
+                disabled={Boolean(busyKey)}
+                onChange={(e) => {
+                  const every = e.target.value;
+                  void changeHeartbeat({
+                    model: heartbeat?.model ?? "",
+                    every,
+                  });
+                }}
+                className="rounded-lg border border-border bg-muted/50 w-full px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-cyan-500/40 disabled:opacity-50"
+              >
+                <option value="15m">15m</option>
+                <option value="30m">30m</option>
+                <option value="1h">1h</option>
+                <option value="2h">2h</option>
+                <option value="4h">4h</option>
+              </select>
+            </div>
+            {busyKey === "heartbeat" && (
+              <p className="text-cyan-700 dark:text-cyan-300 text-xs self-center">Applying...</p>
+            )}
           </div>
         </section>
 

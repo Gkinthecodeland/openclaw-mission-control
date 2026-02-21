@@ -225,6 +225,32 @@ async function readDefaultsModelConfig(): Promise<DefaultsModelConfig | null> {
   }
 }
 
+type HeartbeatConfig = { every: string; model: string };
+
+async function readDefaultsHeartbeat(): Promise<HeartbeatConfig | null> {
+  try {
+    const configData = await gatewayCallWithRetry<Record<string, unknown>>(
+      "config.get",
+      undefined,
+      10000
+    );
+    const parsed = (configData.parsed || {}) as Record<string, unknown>;
+    const agents = (parsed.agents || {}) as Record<string, unknown>;
+    const defaults = (agents.defaults || {}) as Record<string, unknown>;
+    const hb = defaults.heartbeat;
+    if (hb && typeof hb === "object" && !Array.isArray(hb)) {
+      const h = hb as Record<string, unknown>;
+      return {
+        every: typeof h.every === "string" ? h.every : "",
+        model: typeof h.model === "string" ? h.model : "",
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function readDefaultsModelConfigFromFile(): Promise<DefaultsModelConfig | null> {
   try {
     const raw = await readFile(join(OPENCLAW_HOME, "openclaw.json"), "utf-8");
@@ -367,6 +393,7 @@ export async function GET(request: NextRequest) {
         parentId: string | null;
       }[] = [];
       let configHash: string | null = null;
+      let defaultsHeartbeat: { every: string; model: string } | null = null;
       try {
         const configData = await gatewayCallWithRetry<Record<string, unknown>>(
           "config.get",
@@ -388,6 +415,14 @@ export async function GET(request: NextRequest) {
           : parsedDefaultsModel.primary
             ? parsedDefaultsModel
             : null;
+        const hb = parsedDefaultsBlock.heartbeat;
+        if (hb && typeof hb === "object" && !Array.isArray(hb)) {
+          const h = hb as Record<string, unknown>;
+          defaultsHeartbeat = {
+            every: typeof h.every === "string" ? h.every : "",
+            model: typeof h.model === "string" ? h.model : "",
+          };
+        }
         const entries = (agentsBlock.list || []) as Record<string, unknown>[];
         const parsedAgents = entries.map((a) => {
           const agentModel = a.model as
@@ -471,6 +506,7 @@ export async function GET(request: NextRequest) {
       return jsonNoStore({
         status: statusForResponse,
         defaults: defaultsModel,
+        heartbeat: defaultsHeartbeat,
         models: list.models || [],
         agents: agentsList,
         agentStatuses,
@@ -550,6 +586,7 @@ export async function GET(request: NextRequest) {
  *   { action: "reset-agent-model", agentId: "..." }  // remove per-agent override
  *   { action: "set-alias", alias: "...", model: "..." }
  *   { action: "remove-alias", alias: "..." }
+ *   { action: "set-heartbeat", model?: "...", every?: "..." }  // agents.defaults.heartbeat
  *   { action: "auth-provider", provider: "...", token: "..." }  // paste API key/token for a provider
  */
 export async function POST(request: NextRequest) {
@@ -846,6 +883,28 @@ export async function POST(request: NextRequest) {
       case "remove-alias": {
         await runCli(["models", "aliases", "remove", body.alias], 10000);
         return NextResponse.json({ ok: true, action, alias: body.alias });
+      }
+
+      case "set-heartbeat": {
+        const current = await readDefaultsHeartbeat();
+        const next: HeartbeatConfig = {
+          every: current?.every ?? "1h",
+          model: current?.model ?? "",
+        };
+        if (body.model !== undefined && body.model !== null) {
+          next.model = String(body.model);
+        }
+        if (body.every !== undefined && body.every !== null) {
+          next.every = String(body.every);
+        }
+        await applyConfigPatchWithRetry({
+          agents: { defaults: { heartbeat: next } },
+        });
+        return NextResponse.json({
+          ok: true,
+          action,
+          heartbeat: next,
+        });
       }
 
       case "auth-provider": {
