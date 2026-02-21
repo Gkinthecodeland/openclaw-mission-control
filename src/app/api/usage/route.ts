@@ -5,6 +5,7 @@ import { getOpenClawHome } from "@/lib/paths";
 import { runCliJson } from "@/lib/openclaw-cli";
 import { fetchGatewaySessions } from "@/lib/gateway-sessions";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const OPENCLAW_HOME = getOpenClawHome();
 export const dynamic = "force-dynamic";
 
@@ -114,7 +115,9 @@ function buildActivitySeries(
 
 /* ── GET /api/usage ──────────────────────────────── */
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     // 1. Config for agents list
     const configPath = join(OPENCLAW_HOME, "openclaw.json");

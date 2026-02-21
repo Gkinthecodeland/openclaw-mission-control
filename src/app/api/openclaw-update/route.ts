@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runCli } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const GITHUB_RELEASES_URL =
   "https://api.github.com/repos/openclaw/openclaw/releases/latest";
 
@@ -32,7 +33,9 @@ export const dynamic = "force-dynamic";
  * Returns current OpenClaw version, latest release from GitHub, and whether an update is available.
  * Optionally includes changelog (release body) for the latest release.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     let currentVersion = "";
     try {

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gatewayCall, runCli } from "@/lib/openclaw-cli";
 import { readFile, stat } from "fs/promises";
-import { extname, join } from "path";
+import { extname, join, resolve } from "path";
 import { getOpenClawHome } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 /* ── Gather personal context for TTS test phrase generation ── */
 
 async function gatherContext(): Promise<string> {
@@ -129,6 +130,8 @@ const MIME_TYPES: Record<string, string> = {
  *        path=<filepath>  (required for scope=stream)
  */
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") || "status";
 
@@ -139,15 +142,20 @@ export async function GET(request: NextRequest) {
       if (!filePath) {
         return NextResponse.json({ error: "path required" }, { status: 400 });
       }
-      // Security: only allow temp directory audio files
-      if (!filePath.startsWith("/tmp/") && !filePath.includes("/T/tts-") && !filePath.includes("/tmp/")) {
-        return NextResponse.json({ error: "Path not allowed" }, { status: 403 });
+
+      // Security: resolve the path fully first, then verify it is within /tmp.
+      // A naive includes("/tmp/") check is bypassable via symlinks or /../ sequences.
+      const resolvedPath = resolve(filePath);
+      const inTmp = resolvedPath.startsWith("/tmp/") || resolvedPath.startsWith("/private/tmp/");
+      if (!inTmp) {
+        return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
       }
+
       try {
-        const info = await stat(filePath);
-        const ext = extname(filePath).toLowerCase();
+        const info = await stat(resolvedPath);
+        const ext = extname(resolvedPath).toLowerCase();
         const contentType = MIME_TYPES[ext] || "audio/mpeg";
-        const buffer = await readFile(filePath);
+        const buffer = await readFile(resolvedPath);
         return new NextResponse(buffer, {
           status: 200,
           headers: {
@@ -244,6 +252,8 @@ export async function GET(request: NextRequest) {
  *   { action: "update-config", section: "tts" | "talk", config: { ... } }
  */
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;

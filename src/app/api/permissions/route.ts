@@ -4,6 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { runCli, runCliJson } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 type RawAllowlistEntry = {
@@ -419,7 +420,9 @@ async function setApprovalsDefaults(updates: { security?: string; ask?: string; 
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const snapshot = await readSnapshot();
     return NextResponse.json(snapshot);
@@ -429,6 +432,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = String(body.action || "");

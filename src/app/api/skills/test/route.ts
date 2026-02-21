@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runCli } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const SAFE_TOKEN_RE = /^[A-Za-z0-9._-]+$/;
@@ -19,6 +20,8 @@ function safeToken(raw: string, fallback = ""): string {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = (await request.json()) as SkillTestRequest;
 

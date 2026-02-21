@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gatewayCall } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 type Session = {
@@ -31,7 +32,9 @@ function toNonNegativeNumber(value: unknown, fallback = 0): number {
   return num;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const data = await gatewayCall<{
       count: number;
@@ -73,6 +76,8 @@ export async function GET() {
 }
 
 export async function DELETE(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const { searchParams } = new URL(request.url);
     const key = searchParams.get("key");

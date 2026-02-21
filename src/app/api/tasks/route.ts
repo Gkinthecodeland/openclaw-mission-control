@@ -4,6 +4,7 @@ import { join, dirname } from "path";
 import { getDefaultWorkspace } from "@/lib/paths";
 import { notifyKanbanUpdated } from "@/lib/kanban-live";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 async function getKanbanPath(): Promise<string> {
   const ws = await getDefaultWorkspace();
   return join(ws, "kanban.json");
@@ -18,7 +19,9 @@ const DEFAULT_COLUMNS = [
 
 /* ── GET — read existing board ────────────────────── */
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const kanbanPath = await getKanbanPath();
     const raw = await readFile(kanbanPath, "utf-8");
@@ -37,6 +40,8 @@ export async function GET() {
 /* ── PUT — save board ─────────────────────────────── */
 
 export async function PUT(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     if (!body.columns || !body.tasks) {
@@ -60,6 +65,8 @@ export async function PUT(request: NextRequest) {
 /* ── POST — initialize board + teach agent ────────── */
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action;

@@ -6,6 +6,7 @@ import {
   getAuthUrl,
   getRedirectUri,
 } from "@/lib/google-calendar";
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,8 @@ function toCalendarEvent(e: { id: string; title: string; startMs: number; endMs:
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const days = Math.min(Math.max(parseInt(searchParams.get("days") || "14", 10), 1), 60);
   const skipCache = searchParams.get("refresh") === "1";

@@ -1,5 +1,6 @@
 import { runCli } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 /**
  * Chat endpoint that sends a message to an OpenClaw agent and returns the response.
  * Works with Vercel AI SDK v5's TextStreamChatTransport.
@@ -29,6 +30,8 @@ function dataUrlToSafeMessagePart(
 }
 
 export async function POST(req: Request) {
+  if (!verifyAuth(req)) return unauthorizedResponse();
+
   try {
     const body = await req.json();
     const messages: {

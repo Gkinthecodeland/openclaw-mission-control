@@ -6,6 +6,7 @@ import { basename, join } from "path";
 import { getDefaultWorkspaceSync } from "@/lib/paths";
 import { gatewayCall, runCli, runCliJson } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const WORKSPACE = getDefaultWorkspaceSync();
@@ -1059,6 +1060,8 @@ async function readRecentChatMessages(limitSessions = 8, perSessionLimit = 40): 
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get("mode") || "";
@@ -1173,6 +1176,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = String(body.action || "save");

@@ -2,7 +2,43 @@ import { NextRequest } from "next/server";
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { getOpenClawHome } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
+import { isCredentialKey } from "@/lib/redact";
+
 export const dynamic = "force-dynamic";
+
+const SAFE_ENV_KEYS = new Set([
+  "PATH", "HOME", "SHELL", "TERM", "LANG", "USER", "EDITOR",
+  "LC_ALL", "LC_CTYPE", "TMPDIR", "LOGNAME",
+  "OPENCLAW_HOME", "OPENCLAW_CONFIG_PATH",
+]);
+
+const BLOCKED_ENV_PREFIXES = ["ANTHROPIC_", "DISCORD_", "OPENAI_", "GITHUB_TOKEN"];
+
+function buildSafeEnv(): Record<string, string | undefined> {
+  const env: Record<string, string> = {
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    FORCE_COLOR: "3",
+    LANG: "en_US.UTF-8",
+    HOME: process.env.HOME || "/tmp",
+    CLICOLOR: "1",
+    CLICOLOR_FORCE: "1",
+    NODE_ENV: process.env.NODE_ENV || "production",
+    PATH: process.env.PATH || "/usr/bin:/bin",
+  };
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!value) continue;
+    if (SAFE_ENV_KEYS.has(key) || key.startsWith("XDG_")) {
+      env[key] = value;
+    } else if (isCredentialKey(key) || BLOCKED_ENV_PREFIXES.some(p => key.startsWith(p))) {
+      continue; // strip credentials
+    } else if (key.startsWith("OPENCLAW_") && !isCredentialKey(key)) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
 
 /* ── Session store (module-level, persists across requests) ── */
 
@@ -10,6 +46,7 @@ type ShellSession = {
   proc: ChildProcessWithoutNullStreams;
   buffer: TerminalEvent[];
   created: number;
+  lastActivity: number;
   cwd: string;
   alive: boolean;
   listeners: Set<(event: TerminalEvent) => void>;
@@ -74,8 +111,8 @@ if (typeof globalThis !== "undefined") {
   const cleanup = () => {
     const now = Date.now();
     for (const [id, s] of sessions) {
-      // Kill sessions older than 30 minutes or dead ones
-      if (!s.alive || now - s.created > 30 * 60 * 1000) {
+      // Kill sessions older than 30 minutes of inactivity, or dead ones
+      if (!s.alive || now - s.lastActivity > 30 * 60 * 1000) {
         try { s.proc.kill(); } catch { /* */ }
         sessions.delete(id);
       }
@@ -96,16 +133,7 @@ function createSession(): string {
   // Spawn a PTY bridge process so the shell has a real TTY.
   const proc = spawn("python3", ["-u", "-c", PY_PTY_BRIDGE, shell], {
     cwd: home,
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-      COLORTERM: "truecolor",
-      FORCE_COLOR: "3",
-      LANG: "en_US.UTF-8",
-      HOME: process.env.HOME || "/tmp",
-      CLICOLOR: "1",
-      CLICOLOR_FORCE: "1",
-    },
+    env: buildSafeEnv() as NodeJS.ProcessEnv,
     stdio: ["pipe", "pipe", "pipe"],
   });
 
@@ -113,12 +141,14 @@ function createSession(): string {
     proc,
     buffer: [],
     created: Date.now(),
+    lastActivity: Date.now(),
     cwd: home,
     alive: true,
     listeners: new Set(),
   };
 
   const pushEvent = (event: TerminalEvent) => {
+    session.lastActivity = Date.now();
     // Keep last 5000 events in buffer for reconnection
     session.buffer.push(event);
     if (session.buffer.length > 5000) session.buffer.shift();
@@ -154,6 +184,8 @@ function createSession(): string {
 /* ── GET: SSE stream of terminal output ── */
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action") || "stream";
   const sessionId = searchParams.get("session") || "";
@@ -235,11 +267,20 @@ export async function GET(request: NextRequest) {
 /* ── POST: create session, send input, resize, kill ── */
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const body = await request.json();
   const action = body.action as string;
 
   switch (action) {
     case "create": {
+      const activeSessions = [...sessions.values()].filter(s => s.alive).length;
+      if (activeSessions >= 2) {
+        return Response.json(
+          { error: "Max concurrent sessions (2) reached. Kill an existing session first." },
+          { status: 429 }
+        );
+      }
       const id = createSession();
       return Response.json({ ok: true, session: id });
     }
@@ -252,6 +293,7 @@ export async function POST(request: NextRequest) {
         return Response.json({ error: "Session not found or dead" }, { status: 404 });
       }
       session.proc.stdin.write(data);
+      session.lastActivity = Date.now();
       return Response.json({ ok: true });
     }
 

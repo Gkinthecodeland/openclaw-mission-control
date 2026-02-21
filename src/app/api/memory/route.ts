@@ -13,7 +13,9 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { getDefaultWorkspaceSync } from "@/lib/paths";
 import { runCli, runCliJson } from "@/lib/openclaw-cli";
+import { safePath } from "@/lib/safe-path";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const WORKSPACE = getDefaultWorkspaceSync();
 const exec = promisify(execFile);
 
@@ -208,6 +210,8 @@ function resolveAgentWorkspace(agentId: string, agents: CliAgentRow[]): string {
 }
 
 export async function PUT(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { file, content } = body;
@@ -242,15 +246,19 @@ export async function PUT(request: NextRequest) {
     }
 
     if (file) {
-      const safePath = String(file).replace(/\.\./g, "").replace(/^\/+/, "");
-      if (!safePath.endsWith(".md")) {
+      const memoryBase = join(WORKSPACE, "memory");
+      const fullPath = safePath(memoryBase, String(file));
+      if (!fullPath) {
+        return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
+      }
+      if (!fullPath.endsWith(".md")) {
         return NextResponse.json({ error: "invalid file" }, { status: 400 });
       }
-      const fullPath = join(WORKSPACE, "memory", safePath);
       await writeFile(fullPath, content, "utf-8");
+      const safeFile = basename(fullPath);
       const words = content.split(/\s+/).filter(Boolean).length;
       const size = Buffer.byteLength(content, "utf-8");
-      return NextResponse.json({ ok: true, file: safePath, words, size });
+      return NextResponse.json({ ok: true, file: safeFile, words, size });
     }
 
     const memoryFile = await readWorkspaceMemoryFile(WORKSPACE, false);
@@ -272,23 +280,29 @@ export async function PUT(request: NextRequest) {
 
 /** DELETE a memory journal file */
 export async function DELETE(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const { searchParams } = new URL(request.url);
     const file = searchParams.get("file");
     if (!file) {
       return NextResponse.json({ error: "file required" }, { status: 400 });
     }
-    const safePath = String(file).replace(/\.\./g, "").replace(/^\/+/, "");
-    if (!safePath.endsWith(".md")) {
+    const memoryBase = join(WORKSPACE, "memory");
+    const fullPath = safePath(memoryBase, String(file));
+    if (!fullPath) {
+      return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
+    }
+    if (!fullPath.endsWith(".md")) {
       return NextResponse.json({ error: "invalid file" }, { status: 400 });
     }
-    const fullPath = join(WORKSPACE, "memory", safePath);
     const s = await stat(fullPath);
     if (!s.isFile()) {
       return NextResponse.json({ error: "not a file" }, { status: 400 });
     }
     await unlink(fullPath);
-    return NextResponse.json({ ok: true, file: safePath, deleted: true });
+    const safeFile = basename(fullPath);
+    return NextResponse.json({ ok: true, file: safeFile, deleted: true });
   } catch (err) {
     console.error("Memory DELETE error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -297,6 +311,8 @@ export async function DELETE(request: NextRequest) {
 
 /** PATCH - rename or duplicate a memory journal file */
 export async function PATCH(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { action, file: fileName, newName } = body as {
@@ -307,8 +323,11 @@ export async function PATCH(request: NextRequest) {
     if (!fileName || !action) {
       return NextResponse.json({ error: "action and file required" }, { status: 400 });
     }
-    const safePath = String(fileName).replace(/\.\./g, "").replace(/^\/+/, "");
-    const fullPath = join(WORKSPACE, "memory", safePath);
+    const memoryBase = join(WORKSPACE, "memory");
+    const fullPath = safePath(memoryBase, String(fileName));
+    if (!fullPath) {
+      return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
+    }
 
     if (action === "rename") {
       if (!newName) {
@@ -318,22 +337,26 @@ export async function PATCH(request: NextRequest) {
       if (!sanitized) {
         return NextResponse.json({ error: "invalid name" }, { status: 400 });
       }
-      const newFullPath = join(WORKSPACE, "memory", sanitized);
+      const newFullPath = safePath(memoryBase, sanitized);
+      if (!newFullPath) {
+        return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
+      }
       await rename(fullPath, newFullPath);
-      return NextResponse.json({ ok: true, file: sanitized, oldFile: safePath });
+      return NextResponse.json({ ok: true, file: basename(newFullPath), oldFile: basename(fullPath) });
     }
 
     if (action === "duplicate") {
-      const ext = extname(safePath);
-      const base = basename(safePath, ext);
+      const ext = extname(fullPath);
+      const base = basename(fullPath, ext);
       let suffix = 1;
       let dupPath: string;
       do {
-        dupPath = join(
-          WORKSPACE,
-          "memory",
-          `${base} (copy${suffix > 1 ? ` ${suffix}` : ""})${ext}`
-        );
+        const dupName = `${base} (copy${suffix > 1 ? ` ${suffix}` : ""})${ext}`;
+        const candidate = safePath(memoryBase, dupName);
+        if (!candidate) {
+          return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
+        }
+        dupPath = candidate;
         suffix++;
       } while (
         await stat(dupPath)
@@ -354,6 +377,8 @@ export async function PATCH(request: NextRequest) {
 
 /** POST - trigger memory indexing */
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = String(body.action || "");
@@ -366,8 +391,12 @@ export async function POST(request: NextRequest) {
     const agentId = String(body.agentId || "").trim();
 
     if (file) {
-      const safePath = file.replace(/\.\./g, "").replace(/^\/+/, "");
-      if (!safePath.endsWith(".md")) {
+      const memoryBase = join(WORKSPACE, "memory");
+      const resolvedFile = safePath(memoryBase, file);
+      if (!resolvedFile) {
+        return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
+      }
+      if (!resolvedFile.endsWith(".md")) {
         return NextResponse.json({ error: "invalid file" }, { status: 400 });
       }
     }
@@ -379,18 +408,22 @@ export async function POST(request: NextRequest) {
 
     let vectorState: VectorState | undefined;
     if (file) {
-      const safePath = file.replace(/\.\./g, "").replace(/^\/+/, "");
       try {
         const agents = agentId ? await getCliAgents() : [];
         const workspaceDir = agentId ? resolveAgentWorkspace(agentId, agents) : WORKSPACE;
-        const isTopLevelMemory = /^memory\.md$/i.test(safePath);
+        const isTopLevelMemory = /^memory\.md$/i.test(file);
 
         let fullPath: string;
         if (isTopLevelMemory) {
           const memoryFile = await readWorkspaceMemoryFile(workspaceDir, false);
           fullPath = memoryFile.path;
         } else {
-          fullPath = join(workspaceDir, "memory", safePath);
+          const memoryBase = join(workspaceDir, "memory");
+          const resolved = safePath(memoryBase, file);
+          if (!resolved) {
+            return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
+          }
+          fullPath = resolved;
         }
 
         const s = await stat(fullPath);
@@ -422,6 +455,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const file = searchParams.get("file");
   const agentMemory = searchParams.get("agentMemory");
@@ -429,18 +464,20 @@ export async function GET(request: NextRequest) {
 
   try {
     if (file) {
-      const safePath = file.replace(/\.\./g, "").replace(/^\/+/, "");
-      if (!safePath.endsWith(".md")) {
+      const base = workspaceRoot ? WORKSPACE : join(WORKSPACE, "memory");
+      const fullPath = safePath(base, String(file));
+      if (!fullPath) {
+        return NextResponse.json({ error: "Path traversal blocked" }, { status: 403 });
+      }
+      if (!fullPath.endsWith(".md")) {
         return NextResponse.json({ error: "invalid file" }, { status: 400 });
       }
-      const fullPath = workspaceRoot
-        ? join(WORKSPACE, safePath)
-        : join(WORKSPACE, "memory", safePath);
       const content = await readFile(fullPath, "utf-8");
       const s = await stat(fullPath);
       const words = content.split(/\s+/).filter(Boolean).length;
       const size = Buffer.byteLength(content, "utf-8");
-      return NextResponse.json({ content, words, size, file: safePath, mtime: s.mtime.toISOString() });
+      const safeFile = basename(fullPath);
+      return NextResponse.json({ content, words, size, file: safeFile, mtime: s.mtime.toISOString() });
     }
 
     if (agentMemory) {

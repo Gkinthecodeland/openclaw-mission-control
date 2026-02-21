@@ -6,6 +6,7 @@ import { access, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { getDefaultWorkspaceSync } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const exec = promisify(execFile);
@@ -190,6 +191,8 @@ async function runClawHub(args: string[], timeout = 30000): Promise<{ stdout: st
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action") || "explore";
 
@@ -232,6 +235,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;

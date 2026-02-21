@@ -3,6 +3,7 @@ import { readdir, readFile, stat, writeFile, unlink, rename, copyFile } from "fs
 import { join, extname, dirname, basename } from "path";
 import { getOpenClawHome } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const OPENCLAW_HOME = getOpenClawHome();
 
 const SKIP_DIRS = new Set([
@@ -114,6 +115,8 @@ function detectTag(relPath: string, name: string): string {
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const filePath = searchParams.get("path");
   try {
@@ -143,6 +146,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { path: filePath, content } = body;
@@ -166,6 +171,8 @@ export async function PUT(request: NextRequest) {
 
 /** DELETE - delete a file */
 export async function DELETE(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const { searchParams } = new URL(request.url);
     const filePath = searchParams.get("path");
@@ -189,6 +196,8 @@ export async function DELETE(request: NextRequest) {
 
 /** PATCH - rename or duplicate a file */
 export async function PATCH(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { action, path: filePath, newName, newPath: _newPath } = body as {

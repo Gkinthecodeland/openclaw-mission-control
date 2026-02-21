@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { subscribeKanban } from "@/lib/kanban-live";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 /**
  * SSE stream for live kanban updates.
  * When kanban.json is written via the dashboard API (PUT or POST init),
@@ -8,6 +9,8 @@ import { subscribeKanban } from "@/lib/kanban-live";
  * No polling, no file watcher — works on any install (Mac, VPC).
  */
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

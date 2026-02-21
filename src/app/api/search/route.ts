@@ -3,6 +3,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { getOpenClawBin } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const exec = promisify(execFile);
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,8 @@ type SearchResult = {
 };
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q");
 

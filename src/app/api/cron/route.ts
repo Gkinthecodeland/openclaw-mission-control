@@ -4,6 +4,7 @@ import { join } from "path";
 import { runCli, runCliJson, runCliCaptureBoth, gatewayCall } from "@/lib/openclaw-cli";
 import { getOpenClawHome } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 type CronJob = {
@@ -135,6 +136,8 @@ function detectChannel(to: string): string {
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action");
   const jobId = searchParams.get("id");
@@ -205,6 +208,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { action, id, ...params } = body as {

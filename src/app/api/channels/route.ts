@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runCliJson, runCli, gatewayCall } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /* ── Types ── */
@@ -301,6 +302,8 @@ function normalizeChannels(
  *   scope=all     - combined: configured channels + status + setup hints
  */
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") || "list";
 
@@ -503,6 +506,8 @@ export async function GET(request: NextRequest) {
  *   { action: "disable", channel: "telegram" }
  */
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;

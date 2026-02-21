@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readdir, realpath, stat } from "fs/promises";
 import { extname, join, relative } from "path";
+import { getDefaultWorkspace } from "@/lib/paths";
+import { safePath } from "@/lib/safe-path";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 type WorkspaceFileRow = {
   relativePath: string;
   size: number;
@@ -74,6 +77,8 @@ async function walkFiles(
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const rawPath = (searchParams.get("path") || "").trim();
   if (!rawPath) {
@@ -83,11 +88,32 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  let workspacePath = rawPath;
+  // Resolve the default workspace to use as the confinement boundary.
+  const workspace = await getDefaultWorkspace();
+
+  // Validate the requested path is within the workspace before resolving symlinks.
+  const boundedPath = safePath(workspace, rawPath);
+  if (!boundedPath) {
+    return NextResponse.json(
+      { error: "Path traversal blocked" },
+      { status: 403 }
+    );
+  }
+
+  // Resolve symlinks and re-validate — prevents symlink escape attacks.
+  let workspacePath = boundedPath;
   try {
-    workspacePath = await realpath(rawPath);
+    workspacePath = await realpath(boundedPath);
   } catch {
-    // keep raw path for better error message
+    // keep boundedPath for better error message
+  }
+
+  // Re-validate the fully resolved (post-symlink) path.
+  if (!safePath(workspace, workspacePath)) {
+    return NextResponse.json(
+      { error: "Path traversal blocked" },
+      { status: 403 }
+    );
   }
 
   let s;

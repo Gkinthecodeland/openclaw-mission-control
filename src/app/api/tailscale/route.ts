@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { ALLOWED_TAILSCALE_COMMANDS, BLOCKED_TAILSCALE_ARGS } from "@/lib/validate";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const exec = promisify(execFile);
 
 export const dynamic = "force-dynamic";
@@ -83,7 +85,9 @@ function formatExecError(err: unknown): string {
   return String(err);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const ver = await runTailscale(["version"], 6000).catch(() => null);
     if (!ver) {
@@ -165,6 +169,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!verifyAuth(req)) return unauthorizedResponse();
+
   try {
     const body = await req.json().catch(() => ({}));
     const action = String((body as { action?: string }).action || "");
@@ -184,6 +190,19 @@ export async function POST(req: Request) {
         return NextResponse.json(
           { ok: false, error: "Invalid tailscale args" },
           { status: 400 }
+        );
+      }
+      const subcommand = args[0];
+      if (!ALLOWED_TAILSCALE_COMMANDS.has(subcommand)) {
+        return NextResponse.json(
+          { ok: false, error: `Subcommand "${subcommand}" is not allowed. Allowed: ${[...ALLOWED_TAILSCALE_COMMANDS].join(", ")}` },
+          { status: 403 }
+        );
+      }
+      if (args.some((arg) => BLOCKED_TAILSCALE_ARGS.some((blocked) => arg.includes(blocked)))) {
+        return NextResponse.json(
+          { ok: false, error: "Request contains a blocked argument (auth-key, --advertise, etc.)" },
+          { status: 403 }
         );
       }
       try {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gatewayCall } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 type GatewayMessage = {
   role?: string;
   content?: Array<{ type?: string; text?: string; [k: string]: unknown }>;
@@ -205,6 +206,8 @@ function defaultSessionKey(agentId: string): string {
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const { searchParams } = new URL(request.url);
     const agentId = sanitizeArg(searchParams.get("agentId") || "main", 64);
@@ -226,6 +229,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = sanitizeArg(body?.action, 24).toLowerCase();

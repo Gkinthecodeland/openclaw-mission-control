@@ -4,6 +4,7 @@ import { getOpenClawHome } from "@/lib/paths";
 import { readdir, readFile } from "fs/promises";
 import { join } from "path";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /* ── Types ────────────────────────────────────────── */
@@ -34,7 +35,9 @@ type DeviceRequest = {
 
 /* ── GET: list all pending requests ──────────────── */
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const home = getOpenClawHome();
   const dmRequests: DmRequest[] = [];
   const deviceRequests: DeviceRequest[] = [];
@@ -113,6 +116,8 @@ export async function GET() {
 /* ── POST: approve / reject ──────────────────────── */
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;

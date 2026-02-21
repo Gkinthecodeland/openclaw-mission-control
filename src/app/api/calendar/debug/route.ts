@@ -3,17 +3,20 @@ import {
   isOAuthConfigured,
   getStoredTokens,
   getAccessToken,
-  getTokenPath,
 } from "@/lib/google-calendar";
+import { join } from "path";
 import { getOpenClawHome } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/calendar/debug
  * Shows whether Google Calendar OAuth is configured and if we have tokens.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const hasClientId = Boolean(process.env.GOOGLE_CALENDAR_CLIENT_ID?.trim());
   const hasClientSecret = Boolean(process.env.GOOGLE_CALENDAR_CLIENT_SECRET?.trim());
   const tokens = await getStoredTokens();
@@ -30,7 +33,7 @@ export async function GET() {
     oauthConfigured: isOAuthConfigured(),
     hasClientId,
     hasClientSecret,
-    tokenPath: getTokenPath(),
+    tokenPath: join(getOpenClawHome(), "google-calendar-tokens.json"),
     openclawHome: getOpenClawHome(),
     hasStoredTokens: Boolean(tokens?.refresh_token),
     accessTokenWorks: accessTokenOk,

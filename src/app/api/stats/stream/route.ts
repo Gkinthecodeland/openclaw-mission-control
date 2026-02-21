@@ -6,6 +6,7 @@ import { promisify } from "util";
 import { join } from "path";
 import { gatewayCall } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 const exec = promisify(execFile);
 
@@ -484,7 +485,9 @@ async function buildSnapshot(home: string) {
 
 /* ── SSE endpoint ─────────────────────────────────── */
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const home = getOpenClawHome();
 
   const encoder = new TextEncoder();

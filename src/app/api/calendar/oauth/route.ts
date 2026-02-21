@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUrl, getRedirectUri } from "@/lib/google-calendar";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /** GET /api/calendar/oauth — redirect to Google OAuth. */
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const origin = request.headers.get("origin") || request.nextUrl.origin;
   const redirectUri = getRedirectUri(origin);
   const authUrl = getAuthUrl(redirectUri);

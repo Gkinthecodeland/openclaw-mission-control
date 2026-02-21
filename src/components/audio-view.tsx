@@ -662,22 +662,25 @@ function TalkModeSection({
     (config && Object.keys(config).length > 0) || talkSectionExists === true;
 
   const startListening = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition =
       typeof window !== "undefined" &&
-      (window as unknown as { SpeechRecognition?: new () => SpeechRecognition; webkitSpeechRecognition?: new () => SpeechRecognition }).SpeechRecognition;
+      (window as unknown as Record<string, unknown>).SpeechRecognition as (new () => unknown) | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const WebkitSpeechRecognition =
       typeof window !== "undefined" &&
-      (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognition }).webkitSpeechRecognition;
+      (window as unknown as Record<string, unknown>).webkitSpeechRecognition as (new () => unknown) | undefined;
     const Recognition = SpeechRecognition || WebkitSpeechRecognition;
     if (!Recognition) {
       return;
     }
-    const rec = new Recognition();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new Recognition() as any;
     rec.continuous = false;
     rec.interimResults = false;
     rec.lang = "en-US";
     setListening(true);
-    rec.onresult = (event: SpeechRecognitionEvent) => {
+    rec.onresult = (event: { results?: { [index: number]: { [index: number]: { transcript?: string } } } }) => {
       const transcript = event.results?.[0]?.[0]?.transcript;
       if (transcript) setTestMessage((prev) => (prev ? `${prev} ${transcript}` : transcript).trim());
       setListening(false);

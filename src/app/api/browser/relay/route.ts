@@ -5,6 +5,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { runCli, runCliJson } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -214,6 +215,8 @@ async function buildSnapshot(profile: string | null): Promise<RelaySnapshot> {
 }
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const { searchParams } = new URL(request.url);
     const profile = sanitizeProfile(searchParams.get("profile"));
@@ -233,6 +236,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   let profile: string | null = null;
   try {
     const body = (await request.json().catch(() => ({}))) as {

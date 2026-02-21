@@ -4,6 +4,7 @@ import { getOpenClawBin } from "@/lib/paths";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const exec = promisify(execFile);
 
 async function runGatewayServiceCommand(
@@ -22,7 +23,9 @@ async function runGatewayServiceCommand(
  * Uses `openclaw health --json` for rich data including channel status,
  * agent info, sessions, and heartbeat configuration.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const health = await runCliJson<Record<string, unknown>>(
       ["health"],
@@ -59,6 +62,8 @@ export async function GET() {
  * or daemon manager automatically restarts it.
  */
 export async function POST(req: Request) {
+  if (!verifyAuth(req)) return unauthorizedResponse();
+
   try {
     const body = await req.json();
     const action = body.action as string;

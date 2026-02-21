@@ -4,7 +4,9 @@ import { constants as FS_CONSTANTS } from "fs";
 import { join } from "path";
 import { getDefaultWorkspaceSync, getOpenClawHome, getSystemSkillsDir } from "@/lib/paths";
 import { gatewayCall, runCliJson } from "@/lib/openclaw-cli";
+import { redactValue } from "@/lib/redact";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -324,8 +326,8 @@ function pushDiscoveredCredential(
   out.push({
     ...row,
     key,
-    value,
-    redacted: isRedacted(value),
+    value: redactValue(value),
+    redacted: true,
   });
 }
 
@@ -706,8 +708,8 @@ async function getSkillCredentialMatrix(
           key,
           present: Boolean(selectedValue),
           source,
-          value: selectedValue || null,
-          redacted: selectedValue ? isRedacted(selectedValue) : true,
+          value: selectedValue ? redactValue(selectedValue) : null,
+          redacted: true,
         };
       });
       const missingEnv = resolvedEnv.filter((env) => !env.present).map((env) => env.key);
@@ -790,9 +792,9 @@ function collectConfigSecrets(
       out.push({
         path: nextPath.join("."),
         key,
-        value,
+        value: redactValue(value),
         source: "config.parsed",
-        redacted: isRedacted(value),
+        redacted: true,
       });
       continue;
     }
@@ -844,7 +846,9 @@ function normalizeAgentRow(raw: AgentListEntry): {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const warnings: string[] = [];
 
   const [agentsRaw, channelsListRaw, channelsStatusRaw, configGetRaw] =
@@ -965,7 +969,7 @@ export async function GET() {
           apiKeyCount: Number(profiles.apiKey || 0),
           labels: asArray<string>(profiles.labels).map((v) => String(v)),
           envSource: toStringValue(env.source) || null,
-          envValue: toStringValue(env.value) || null,
+          envValue: env.value ? redactValue(toStringValue(env.value)) : null,
           modelsJsonSource: toStringValue(modelsJson.source) || null,
         };
       })
@@ -1043,9 +1047,9 @@ export async function GET() {
     .filter(([k, v]) => looksCredentialEnvKey(k) && typeof v === "string")
     .map(([k, v]) => ({
       key: k,
-      value: String(v),
+      value: redactValue(String(v)),
       source: "config.env",
-      redacted: isRedacted(String(v)),
+      redacted: true,
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
 
@@ -1054,9 +1058,9 @@ export async function GET() {
     .filter(([k]) => !(k in configEnv))
     .map(([k, v]) => ({
       key: k,
-      value: String(v),
+      value: redactValue(String(v)),
       source: "process.env",
-      redacted: isRedacted(String(v)),
+      redacted: true,
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
 
@@ -1134,6 +1138,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = (await request.json()) as {
       action?: string;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gatewayCall } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const SENSITIVE_PATTERNS = [
@@ -78,6 +79,8 @@ async function gatewayCallWithRetry<T>(
  * Query: scope=config (default) | schema
  */
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") || "config";
 
@@ -129,8 +132,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       config: redacted,
-      rawConfig: parsed, // same structure as ~/.openclaw/openclaw.json for form + raw editor
-      resolvedConfig: resolved,
+      rawConfig: redactSensitive(parsed) as Record<string, unknown>,
       baseHash: configData.hash || "",
       schema: schemaData?.schema || {},
       uiHints: schemaData?.uiHints || {},
@@ -176,6 +178,8 @@ function validateConfigPayload(raw: string | undefined, patch: Record<string, un
 }
 
 export async function PATCH(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { raw, patch, baseHash } = body as {
@@ -219,6 +223,8 @@ export async function PATCH(request: NextRequest) {
  * PUT /api/config  — Legacy full-config save (kept for backwards compat)
  */
 export async function PUT(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const { config, baseHash } = body as {

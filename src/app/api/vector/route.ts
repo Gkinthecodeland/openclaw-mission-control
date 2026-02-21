@@ -4,6 +4,7 @@ import { join } from "path";
 import { runCliJson, runCli, gatewayCall } from "@/lib/openclaw-cli";
 import { getOpenClawHome, getDefaultWorkspace } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /* ── Types ────────────────────────────────────────── */
@@ -93,6 +94,8 @@ async function getWorkspaceReferencePaths(): Promise<string[]> {
 /* ── GET: status + search ─────────────────────────── */
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") || "status";
 
@@ -198,6 +201,8 @@ export async function GET(request: NextRequest) {
 /* ── POST: reindex + config updates ──────────────── */
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;

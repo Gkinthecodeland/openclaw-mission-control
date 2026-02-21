@@ -4,6 +4,7 @@ import { join } from "path";
 import { getOpenClawHome, getSystemSkillsDir, getDefaultWorkspaceSync } from "@/lib/paths";
 import { fetchGatewaySessions, type NormalizedGatewaySession } from "@/lib/gateway-sessions";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const OPENCLAW_HOME = getOpenClawHome();
 export const dynamic = "force-dynamic";
 
@@ -255,7 +256,9 @@ function toSessionInfo(sessions: NormalizedGatewaySession[]): SessionInfo[] {
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const configPath = join(OPENCLAW_HOME, "openclaw.json");
     const config = await readJsonSafe<Record<string, unknown>>(

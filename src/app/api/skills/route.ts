@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runCliJson, gatewayCall } from "@/lib/openclaw-cli";
 import { readFile } from "fs/promises";
+import { isValidPackageName } from "@/lib/validate";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /* ── Types ────────────────────────────────────────── */
@@ -80,6 +82,8 @@ type SkillDetail = {
 /* ── GET ──────────────────────────────────────────── */
 
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action") || "list";
 
@@ -171,6 +175,8 @@ export async function GET(request: NextRequest) {
 /* ── POST: install / enable / disable / config ──── */
 
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;
@@ -182,6 +188,11 @@ export async function POST(request: NextRequest) {
         if (!pkg)
           return NextResponse.json(
             { error: "package required" },
+            { status: 400 }
+          );
+        if (!isValidPackageName(pkg))
+          return NextResponse.json(
+            { error: "Invalid package name. Only alphanumeric, hyphens, underscores, dots, and @scope/name format allowed." },
             { status: 400 }
           );
         // Run brew install

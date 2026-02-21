@@ -4,6 +4,7 @@ import { join } from "path";
 import { homedir } from "os";
 import { runCli, gatewayCall } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 type WebSearchRequest = {
@@ -107,7 +108,9 @@ function resolveKey(
  *   4. openclaw.json → env block / env.vars
  *   5. process.env  (inherited from shell / launchd / systemd)
  */
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     // ── Read all sources in parallel ──
     const [mainConfig, authProfiles, authJson, dotEnvRaw] = await Promise.all([
@@ -241,6 +244,8 @@ const VALID_MODELS = new Set([
  * so we never clobber sibling keys like apiKey.
  */
 export async function PATCH(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = (await request.json()) as { model?: string };
     const model = String(body.model || "").trim();
@@ -286,6 +291,8 @@ export async function PATCH(request: NextRequest) {
 
 /** POST: run a web search via the agent */
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = (await request.json()) as WebSearchRequest;
     const query = String(body.query || "").trim();

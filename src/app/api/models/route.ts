@@ -5,6 +5,7 @@ import { runCliJson, runCli, gatewayCall } from "@/lib/openclaw-cli";
 import { getOpenClawHome } from "@/lib/paths";
 import { fetchGatewaySessions } from "@/lib/gateway-sessions";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 const OPENCLAW_HOME = getOpenClawHome();
@@ -366,6 +367,8 @@ async function readLiveModels(agentIds: string[]): Promise<Record<string, LiveMo
  *   agent=<id> - get per-agent model config
  */
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope") || "status";
   const agentId = searchParams.get("agent");
@@ -590,6 +593,8 @@ export async function GET(request: NextRequest) {
  *   { action: "auth-provider", provider: "...", token: "..." }  // paste API key/token for a provider
  */
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;

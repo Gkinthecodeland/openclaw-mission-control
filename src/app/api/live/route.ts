@@ -4,6 +4,7 @@ import { join } from "path";
 import { getOpenClawHome, getGatewayUrl, getGatewayPort } from "@/lib/paths";
 import { fetchGatewaySessions, summarizeSessionsByAgent } from "@/lib/gateway-sessions";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const OPENCLAW_HOME = getOpenClawHome();
 
 async function readJsonSafe<T>(path: string, fallback: T): Promise<T> {
@@ -67,7 +68,9 @@ type CronRunEntry = {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const [gateway, cronData, logs, cronRuns, agents] = await Promise.all([
       checkGatewayHealth(),

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
-import { join, normalize } from "path";
+import { normalize } from "path";
 import { getDefaultWorkspace } from "@/lib/paths";
+import { safePath } from "@/lib/safe-path";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const IMAGE_EXTENSIONS = new Set([
   ".png",
   ".jpg",
@@ -17,9 +19,11 @@ const IMAGE_EXTENSIONS = new Set([
 /**
  * GET /api/workspace/file?path=relative/path/to/file.png
  * Serves a single file from the workspace (e.g. for kanban task attachments).
- * Path must be relative to workspace root; no directory traversal (..) allowed.
+ * Path must resolve within workspace root; path traversal is blocked.
  */
 export async function GET(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const { searchParams } = new URL(request.url);
   const rawPath = (searchParams.get("path") || "").trim();
   if (!rawPath) {
@@ -30,13 +34,17 @@ export async function GET(request: NextRequest) {
   }
 
   const normalized = normalize(rawPath).replace(/\\/g, "/");
-  if (normalized.startsWith("..") || normalized.includes("/..")) {
-    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
-  }
 
   try {
     const workspace = await getDefaultWorkspace();
-    const fullPath = join(workspace, normalized);
+    const fullPath = safePath(workspace, normalized);
+    if (!fullPath) {
+      return NextResponse.json(
+        { error: "Path traversal blocked" },
+        { status: 403 }
+      );
+    }
+
     const content = await readFile(fullPath);
 
     const ext = normalized.toLowerCase().slice(normalized.lastIndexOf("."));

@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { spawn } from "child_process";
+import { isValidPackageName } from "@/lib/validate";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes for long installs
 
@@ -13,6 +15,8 @@ export const maxDuration = 300; // 5 minutes for long installs
  * Body: { kind: "brew" | "npm", package: string }
  */
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   const body = await request.json();
   const kind = body.kind as string;
   const pkg = body.package as string;
@@ -20,6 +24,21 @@ export async function POST(request: NextRequest) {
   if (!pkg) {
     return new Response(
       JSON.stringify({ error: "package required" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const confirm = body.confirm as boolean | undefined;
+  if (confirm !== true) {
+    return new Response(
+      JSON.stringify({ error: "confirm: true is required to install packages" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!isValidPackageName(pkg)) {
+    return new Response(
+      JSON.stringify({ error: "Invalid package name. Only alphanumeric, hyphens, underscores, dots, and @scope/name format allowed." }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }

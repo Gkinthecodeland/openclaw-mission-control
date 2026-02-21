@@ -7,6 +7,9 @@ import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ChatNotificationToast } from "@/components/chat-notification-toast";
 import { RestartAnnouncementBar } from "@/components/restart-announcement-bar";
+import { Suspense } from "react";
+
+export const dynamic = "force-dynamic";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -99,12 +102,12 @@ export default function RootLayout({
         <ThemeProvider>
           <KeyboardShortcuts />
           <div className="flex h-screen overflow-hidden">
-            <Sidebar />
+            <Suspense><Sidebar /></Suspense>
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <Header />
               <RestartAnnouncementBar />
               <main className="flex flex-1 overflow-hidden">
-                {children}
+                <Suspense>{children}</Suspense>
               </main>
             </div>
           </div>

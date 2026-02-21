@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runCliJson, runCli } from "@/lib/openclaw-cli";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 type TokenInfo = {
   role: string;
   scopes: string[];
@@ -46,7 +47,9 @@ type DeviceListResult = {
 /**
  * GET /api/devices - List all pending requests and paired devices.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const data = await runCliJson<DeviceListResult>(
       ["devices", "list"],
@@ -84,6 +87,8 @@ export async function GET() {
  *   { action: "revoke", deviceId: "...", role: "..." }
  */
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;

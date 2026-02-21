@@ -5,6 +5,7 @@ import { getOpenClawHome, getDefaultWorkspaceSync } from "@/lib/paths";
 import { runCliJson, runCli } from "@/lib/openclaw-cli";
 import { fetchGatewaySessions, summarizeSessionsByAgent } from "@/lib/gateway-sessions";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const OPENCLAW_HOME = getOpenClawHome();
 export const dynamic = "force-dynamic";
 
@@ -122,7 +123,9 @@ async function readTextSafe(path: string): Promise<string | null> {
 /**
  * Rich agent discovery — merges CLI data, config, sessions, identity.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     // 1. Get agents from CLI (includes binding info)
     let cliAgents: CliAgent[] = [];
@@ -425,6 +428,8 @@ export async function GET() {
  *   { action: "create", name: "work", model?: "provider/model", workspace?: "/path", bindings?: ["whatsapp:biz"] }
  */
 export async function POST(request: NextRequest) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     const body = await request.json();
     const action = body.action as string;

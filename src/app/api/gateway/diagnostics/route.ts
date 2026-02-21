@@ -4,6 +4,7 @@ import { promisify } from "util";
 import { runCliJson } from "@/lib/openclaw-cli";
 import { getOpenClawBin } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const exec = promisify(execFile);
@@ -281,7 +282,9 @@ function buildStatusHighlights(status: GatewayStatusPayload): Highlight[] {
   return out;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   let status: GatewayStatusPayload | null = null;
   let statusErr: string | null = null;
 

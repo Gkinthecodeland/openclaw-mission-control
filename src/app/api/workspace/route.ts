@@ -3,9 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import { getDefaultWorkspaceSync } from "@/lib/paths";
 
+import { verifyAuth, unauthorizedResponse } from "@/lib/auth";
 const WORKSPACE_DIR = getDefaultWorkspaceSync();
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAuth(request)) return unauthorizedResponse();
+
   try {
     // Read memory files
     const memoryDir = path.join(WORKSPACE_DIR, 'memory');
