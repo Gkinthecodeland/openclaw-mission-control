@@ -48,6 +48,10 @@ const VectorView = dynamic_(
   () => import("@/components/vector-view").then((m) => m.VectorView),
   { loading: () => <SectionLoader label="Vector DB" />, ssr: false }
 );
+const WarRoomView = dynamic_(
+  () => import("@/components/war-room/war-room-view").then((m) => m.WarRoomView),
+  { loading: () => <SectionLoader label="War Room" />, ssr: false }
+);
 
 /* ── Loading fallback ───────────────────────────────── */
 function SectionLoader({ label }: { label: string }) {
@@ -69,6 +73,8 @@ function SectionContent({ section }: { section: string }) {
         return <AgentsView />;
       case "tasks":
         return <TasksView />;
+      case "warroom":
+        return <WarRoomView />;
       case "cron":
         return <CronView />;
       case "sessions":

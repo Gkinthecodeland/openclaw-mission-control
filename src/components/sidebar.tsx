@@ -42,6 +42,7 @@ import {
   Globe,
   KeyRound,
   Search,
+  Swords,
 } from "lucide-react";
 import { getChatUnreadCount, subscribeChatStore } from "@/lib/chat-store";
 import {
@@ -86,6 +87,7 @@ const navGroups: NavGroup[] = [
     label: "Automation",
     items: [
       { section: "tasks", label: "Tasks", icon: ListChecks },
+      { section: "warroom", label: "War Room", icon: Swords },
       { section: "cron", label: "Cron Jobs", icon: Clock },
       { section: "calendar", label: "Calendar", icon: CalendarDays, comingSoon: true },
     ],
