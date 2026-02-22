@@ -50,6 +50,13 @@ type AgentFull = {
     status: "running" | "recent";
   }>;
   status: "active" | "idle" | "unknown";
+  // Extended config fields
+  toolsAllow: string[];
+  toolsBlock: string[];
+  a2aEnabled: boolean;
+  a2aAllow: string[];
+  heartbeat: { model?: string; interval?: number } | null;
+  identityTheme: string | null;
 };
 
 const SUBAGENT_RECENT_WINDOW_MS = 30 * 60 * 1000;
@@ -307,6 +314,22 @@ export async function GET() {
         | undefined;
       const subagents = (subagentsCfg?.allowAgents as string[]) || [];
 
+      // Tools config
+      const toolsCfg = cfg.tools as Record<string, unknown> | undefined;
+      const toolsAllow = (toolsCfg?.allow as string[]) || [];
+      const toolsBlock = (toolsCfg?.block as string[]) || [];
+      const a2aCfg = toolsCfg?.agentToAgent as Record<string, unknown> | undefined;
+      const a2aEnabled = !!a2aCfg?.enabled;
+      const a2aAllow = (a2aCfg?.allow as string[]) || [];
+
+      // Heartbeat
+      const heartbeatCfg = cfg.heartbeat as { model?: string; interval?: number } | undefined;
+      const heartbeat = heartbeatCfg || null;
+
+      // Identity theme
+      const identityCfg = cfg.identity as Record<string, unknown> | undefined;
+      const identityTheme = (identityCfg?.theme as string) || null;
+
       // Bindings / channels
       const cliBindings = (cli?.bindingDetails || []).map((b) => b.trim());
       const persistedBindings = configBindingsByAgent.get(id) || [];
@@ -374,6 +397,12 @@ export async function GET() {
         subagents,
         runtimeSubagents,
         status,
+        toolsAllow,
+        toolsBlock,
+        a2aEnabled,
+        a2aAllow,
+        heartbeat,
+        identityTheme,
       });
     }
 
@@ -563,12 +592,118 @@ export async function POST(request: NextRequest) {
           config.bindings = existingBindings;
         }
 
+        // Update tools.allow/block
+        if ("toolsAllow" in body || "toolsBlock" in body) {
+          const tools = (agent.tools as Record<string, unknown>) || {};
+          if ((body.toolsAllow as string[])?.length) tools.allow = body.toolsAllow;
+          else delete tools.allow;
+          if ((body.toolsBlock as string[])?.length) tools.block = body.toolsBlock;
+          else delete tools.block;
+          if (Object.keys(tools).length > 0) agent.tools = tools;
+          else delete agent.tools;
+        }
+
+        // Update A2A policy
+        if ("a2aEnabled" in body) {
+          const tools = (agent.tools as Record<string, unknown>) || {};
+          if (body.a2aEnabled) {
+            tools.agentToAgent = { enabled: true, allow: body.a2aAllow || [] };
+          } else {
+            delete tools.agentToAgent;
+          }
+          if (Object.keys(tools).length > 0) agent.tools = tools;
+          else delete agent.tools;
+        }
+
+        // Update identity (emoji, theme)
+        if ("identity" in body) {
+          const id_ = body.identity as Record<string, unknown>;
+          const existing = (agent.identity as Record<string, unknown>) || {};
+          if (id_.emoji !== undefined) existing.emoji = id_.emoji || undefined;
+          if (id_.theme !== undefined) existing.theme = id_.theme || undefined;
+          if (existing.emoji || existing.theme) agent.identity = existing;
+          else delete agent.identity;
+        }
+
+        // Update heartbeat
+        if ("heartbeat" in body) {
+          if (body.heartbeat) agent.heartbeat = body.heartbeat;
+          else delete agent.heartbeat;
+        }
+
         agentsList[agentIdx] = agent;
         agentsSection.list = agentsList;
 
         await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
 
         return NextResponse.json({ ok: true, action: "update", id });
+      }
+
+      case "delete": {
+        const id = body.id as string;
+        if (!id) {
+          return NextResponse.json(
+            { error: "Agent ID is required" },
+            { status: 400 }
+          );
+        }
+
+        // Try CLI delete first (handles registry cleanup, workspace removal)
+        try {
+          const output = await runCli(
+            ["agents", "delete", id, "--non-interactive", "--json"],
+            30000
+          );
+          let result: Record<string, unknown> = {};
+          try { result = JSON.parse(output); } catch { result = { raw: output }; }
+
+          // Also clean bindings from config
+          const configPath = join(OPENCLAW_HOME, "openclaw.json");
+          try {
+            const config = JSON.parse(await readFile(configPath, "utf-8"));
+            if (Array.isArray(config.bindings)) {
+              config.bindings = (config.bindings as Record<string, unknown>[])
+                .filter((b) => (b.agentId as string) !== id);
+            }
+            const agentsSection = config.agents as Record<string, unknown> | undefined;
+            if (agentsSection) {
+              const list = (agentsSection.list || []) as Record<string, unknown>[];
+              agentsSection.list = list.filter((a) => a.id !== id);
+            }
+            await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+          } catch { /* config cleanup optional */ }
+
+          return NextResponse.json({ ok: true, action: "delete", id, ...result });
+        } catch (cliErr) {
+          // If CLI fails (e.g. agent not in registry), try config-only cleanup
+          const configPath = join(OPENCLAW_HOME, "openclaw.json");
+          try {
+            const config = JSON.parse(await readFile(configPath, "utf-8"));
+            const agentsSection = config.agents as Record<string, unknown> | undefined;
+            const list = ((agentsSection?.list || []) as Record<string, unknown>[]);
+            const existed = list.some((a) => a.id === id);
+            if (!existed) {
+              return NextResponse.json(
+                { error: `Agent "${id}" not found` },
+                { status: 404 }
+              );
+            }
+            if (agentsSection) {
+              agentsSection.list = list.filter((a) => a.id !== id);
+            }
+            if (Array.isArray(config.bindings)) {
+              config.bindings = (config.bindings as Record<string, unknown>[])
+                .filter((b) => (b.agentId as string) !== id);
+            }
+            await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+            return NextResponse.json({ ok: true, action: "delete", id, cliError: String(cliErr) });
+          } catch {
+            return NextResponse.json(
+              { error: `Failed to delete agent: ${cliErr}` },
+              { status: 500 }
+            );
+          }
+        }
       }
 
       default:

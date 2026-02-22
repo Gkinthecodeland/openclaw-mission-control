@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -50,6 +50,9 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Trash2,
+  Palette,
+  Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { requestRestart } from "@/lib/restart-store";
@@ -88,6 +91,13 @@ type Agent = {
     status: "running" | "recent";
   }>;
   status: "active" | "idle" | "unknown";
+  // Extended config fields
+  toolsAllow: string[];
+  toolsBlock: string[];
+  a2aEnabled: boolean;
+  a2aAllow: string[];
+  heartbeat: { model?: string; interval?: number } | null;
+  identityTheme: string | null;
 };
 
 type ConfiguredChannel = {
@@ -2393,6 +2403,108 @@ function AddAgentModal({
 }
 
 /* ================================================================
+   Shared Edit Helpers
+   ================================================================ */
+
+function EditSection({
+  title,
+  icon,
+  defaultCollapsed = false,
+  children,
+}: {
+  title: string;
+  icon?: ReactNode;
+  defaultCollapsed?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(!defaultCollapsed);
+  return (
+    <div className="border-t border-foreground/5 pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between py-0.5 text-xs font-semibold text-foreground/70 hover:text-foreground/90"
+      >
+        <span className="flex items-center gap-1.5">
+          {icon}
+          {title}
+        </span>
+        <ChevronDown
+          className={cn(
+            "h-3 w-3 transition-transform text-muted-foreground/40",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+      {open && <div className="mt-2.5 space-y-2.5">{children}</div>}
+    </div>
+  );
+}
+
+function ToolChipInput({
+  items,
+  onAdd,
+  onRemove,
+  disabled,
+  placeholder,
+}: {
+  items: string[];
+  onAdd: (item: string) => void;
+  onRemove: (item: string) => void;
+  disabled?: boolean;
+  placeholder: string;
+}) {
+  const [value, setValue] = useState("");
+  const add = () => {
+    const v = value.trim();
+    if (v) { onAdd(v); setValue(""); }
+  };
+  return (
+    <div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="flex-1 rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-1.5 text-xs text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none disabled:opacity-40"
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={disabled || !value.trim()}
+          className="shrink-0 rounded-lg border border-foreground/10 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-foreground/5 disabled:opacity-40"
+        >
+          Add
+        </button>
+      </div>
+      {items.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {items.map((item) => (
+            <span
+              key={item}
+              className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-2 py-0.5 text-xs text-violet-300"
+            >
+              {item}
+              <button
+                type="button"
+                onClick={() => onRemove(item)}
+                disabled={disabled}
+                className="text-violet-400/60 hover:text-violet-300"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================================================================
    Edit Agent Modal
    ================================================================ */
 
@@ -2433,6 +2545,28 @@ function EditAgentModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Tools permissions
+  const [toolsAllow, setToolsAllow] = useState<string[]>(agent.toolsAllow || []);
+  const [toolsBlock, setToolsBlock] = useState<string[]>(agent.toolsBlock || []);
+
+  // A2A
+  const [a2aEnabled, setA2aEnabled] = useState(agent.a2aEnabled || false);
+  const [a2aAllow, setA2aAllow] = useState<string[]>(agent.a2aAllow || []);
+
+  // Identity
+  const [identityEmoji, setIdentityEmoji] = useState(agent.emoji || "");
+  const [identityTheme, setIdentityTheme] = useState(agent.identityTheme || "");
+
+  // Heartbeat
+  const [heartbeatEnabled, setHeartbeatEnabled] = useState(!!agent.heartbeat);
+  const [heartbeatModel, setHeartbeatModel] = useState(agent.heartbeat?.model || "");
+  const [heartbeatInterval, setHeartbeatInterval] = useState(agent.heartbeat?.interval || 300);
+
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteInput, setDeleteInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   /* ── Fetch available models ── */
   const [models, setModels] = useState<AvailableModel[]>([]);
@@ -2533,6 +2667,14 @@ function EditAgentModal({
           fallbacks: fallbacks.length > 0 ? fallbacks : [],
           subagents,
           bindings,
+          toolsAllow: toolsAllow.length > 0 ? toolsAllow : undefined,
+          toolsBlock: toolsBlock.length > 0 ? toolsBlock : undefined,
+          a2aEnabled,
+          a2aAllow: a2aEnabled && a2aAllow.length > 0 ? a2aAllow : undefined,
+          identity: { emoji: identityEmoji || undefined, theme: identityTheme || undefined },
+          heartbeat: heartbeatEnabled
+            ? { model: heartbeatModel || undefined, interval: heartbeatInterval }
+            : null,
         }),
       });
       const data = await res.json();
@@ -2551,7 +2693,49 @@ function EditAgentModal({
       setError(String(err));
     }
     setBusy(false);
-  }, [agent.id, model, fallbacks, subagents, bindings, onSaved, onClose]);
+  }, [agent.id, model, fallbacks, subagents, bindings, toolsAllow, toolsBlock, a2aEnabled, a2aAllow, identityEmoji, identityTheme, heartbeatEnabled, heartbeatModel, heartbeatInterval, onSaved, onClose]);
+
+  /* ── Delete ── */
+  const handleDelete = useCallback(async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", id: agent.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || `Failed (HTTP ${res.status})`);
+        setDeleting(false);
+        return;
+      }
+      requestRestart("Agent deleted — restart to pick up changes.");
+      setTimeout(() => {
+        onSaved();
+        onClose();
+      }, 800);
+    } catch (err) {
+      setError(String(err));
+      setDeleting(false);
+    }
+  }, [agent.id, onSaved, onClose]);
+
+  /* ── Tool chip helpers ── */
+  const addToolAllow = useCallback((tool: string) => {
+    const t = tool.trim();
+    if (t && !toolsAllow.includes(t)) setToolsAllow((prev) => [...prev, t]);
+  }, [toolsAllow]);
+
+  const addToolBlock = useCallback((tool: string) => {
+    const t = tool.trim();
+    if (t && !toolsBlock.includes(t)) setToolsBlock((prev) => [...prev, t]);
+  }, [toolsBlock]);
+
+  const addA2aTarget = useCallback((id: string) => {
+    if (id && !a2aAllow.includes(id)) setA2aAllow((prev) => [...prev, id]);
+  }, [a2aAllow]);
 
   const sc = STATUS_COLORS[agent.status] || STATUS_COLORS.unknown;
   const otherAgents = allAgents.filter((a) => a.id !== agent.id);
@@ -2809,6 +2993,209 @@ function EditAgentModal({
               {agent.workspace}
             </code>
           </div>
+
+          {/* 5. Identity Editor */}
+          <EditSection title="Identity" icon={<Palette className="h-3 w-3 text-pink-400" />}>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground/60">Emoji</label>
+                <input
+                  type="text"
+                  value={identityEmoji}
+                  onChange={(e) => setIdentityEmoji(e.target.value)}
+                  placeholder="e.g. 🤖"
+                  disabled={busy}
+                  className="w-full rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2 text-sm text-foreground/90 placeholder:text-muted-foreground/40 focus:border-violet-500/30 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground/60">Theme</label>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {["violet", "cyan", "amber", "emerald", "rose", "blue"].map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setIdentityTheme(identityTheme === color ? "" : color)}
+                      disabled={busy}
+                      className={cn(
+                        "h-6 w-6 rounded-full transition-all",
+                        color === "violet" && "bg-violet-500",
+                        color === "cyan" && "bg-cyan-500",
+                        color === "amber" && "bg-amber-500",
+                        color === "emerald" && "bg-emerald-500",
+                        color === "rose" && "bg-rose-500",
+                        color === "blue" && "bg-blue-500",
+                        identityTheme === color
+                          ? "ring-2 ring-white ring-offset-2 ring-offset-card"
+                          : "opacity-50 hover:opacity-80"
+                      )}
+                      title={color}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            {agent.identitySnippet && (
+              <div className="mt-2 rounded-lg border border-foreground/5 bg-foreground/5 p-2.5">
+                <p className="text-xs italic leading-relaxed text-muted-foreground/60">
+                  {agent.identitySnippet.slice(0, 200)}
+                  {agent.identitySnippet.length > 200 ? "…" : ""}
+                </p>
+              </div>
+            )}
+          </EditSection>
+
+          {/* 6. Tools Permissions */}
+          <EditSection title="Tools Permissions" icon={<Key className="h-3 w-3 text-amber-400" />}>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground/60">Allow List</label>
+                <ToolChipInput items={toolsAllow} onAdd={addToolAllow} onRemove={(t) => setToolsAllow((prev) => prev.filter((x) => x !== t))} disabled={busy} placeholder="Tool name…" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground/60">Block List</label>
+                <ToolChipInput items={toolsBlock} onAdd={addToolBlock} onRemove={(t) => setToolsBlock((prev) => prev.filter((x) => x !== t))} disabled={busy} placeholder="Tool name…" />
+              </div>
+              <p className="text-xs text-muted-foreground/40">Leave both empty to inherit defaults.</p>
+            </div>
+          </EditSection>
+
+          {/* 7. A2A Communication */}
+          <EditSection title="Agent-to-Agent Communication" icon={<Users className="h-3 w-3 text-cyan-400" />}>
+            <button
+              type="button"
+              onClick={() => setA2aEnabled(!a2aEnabled)}
+              disabled={busy}
+              className="flex items-center gap-2.5"
+            >
+              <div className={cn("relative h-5 w-9 rounded-full transition-colors", a2aEnabled ? "bg-cyan-500" : "bg-foreground/10")}>
+                <div className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform", a2aEnabled ? "translate-x-4" : "translate-x-0.5")} />
+              </div>
+              <span className="text-xs text-muted-foreground">Enable A2A</span>
+            </button>
+            {a2aEnabled && (
+              <div className="mt-2 space-y-2">
+                <label className="block text-xs font-medium text-muted-foreground/60">Allowed Agents</label>
+                <ToolChipInput items={a2aAllow} onAdd={addA2aTarget} onRemove={(id) => setA2aAllow((prev) => prev.filter((x) => x !== id))} disabled={busy} placeholder="Agent ID…" />
+                {otherAgents.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {otherAgents.filter((a) => !a2aAllow.includes(a.id)).map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => addA2aTarget(a.id)}
+                        disabled={busy}
+                        className="rounded bg-foreground/5 px-1.5 py-0.5 text-xs text-muted-foreground/50 hover:bg-foreground/10 hover:text-foreground/70"
+                      >
+                        + {a.emoji} {a.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </EditSection>
+
+          {/* 8. Heartbeat */}
+          <EditSection title="Heartbeat" icon={<Heart className="h-3 w-3 text-red-400" />} defaultCollapsed>
+            <button
+              type="button"
+              onClick={() => setHeartbeatEnabled(!heartbeatEnabled)}
+              disabled={busy}
+              className="flex items-center gap-2.5"
+            >
+              <div className={cn("relative h-5 w-9 rounded-full transition-colors", heartbeatEnabled ? "bg-red-500" : "bg-foreground/10")}>
+                <div className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform", heartbeatEnabled ? "translate-x-4" : "translate-x-0.5")} />
+              </div>
+              <span className="text-xs text-muted-foreground">Enable heartbeat</span>
+            </button>
+            {heartbeatEnabled && (
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground/60">Model</label>
+                  {modelsLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground/50">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                    </div>
+                  ) : (
+                    <select
+                      value={heartbeatModel}
+                      onChange={(e) => setHeartbeatModel(e.target.value)}
+                      disabled={busy}
+                      className="w-full appearance-none rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2 text-xs text-foreground/90 focus:border-violet-500/30 focus:outline-none"
+                    >
+                      <option value="">Use agent model</option>
+                      {models.map((m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.name || shortModel(m.key)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground/60">Interval (sec)</label>
+                  <input
+                    type="number"
+                    value={heartbeatInterval}
+                    onChange={(e) => setHeartbeatInterval(Number(e.target.value) || 300)}
+                    min={30}
+                    disabled={busy}
+                    className="w-full rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2 text-xs text-foreground/90 focus:border-violet-500/30 focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </EditSection>
+
+          {/* 9. Danger Zone — Delete Agent */}
+          {!agent.isDefault && (
+            <EditSection title="Danger Zone" icon={<Trash2 className="h-3 w-3 text-red-400" />} defaultCollapsed>
+              {!showDeleteConfirm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={busy}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-40"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete Agent
+                </button>
+              ) : (
+                <div className="space-y-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+                  <p className="text-xs text-red-400">
+                    Type <span className="font-mono font-bold">{agent.id}</span> to confirm deletion.
+                  </p>
+                  <input
+                    type="text"
+                    value={deleteInput}
+                    onChange={(e) => setDeleteInput(e.target.value)}
+                    placeholder={agent.id}
+                    disabled={deleting}
+                    className="w-full rounded-lg border border-red-500/20 bg-foreground/5 px-3 py-2 text-xs text-foreground/90 placeholder:text-muted-foreground/40 focus:border-red-500/30 focus:outline-none"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteInput(""); }}
+                      className="flex-1 rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-foreground/5"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={deleteInput !== agent.id || deleting}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-40"
+                    >
+                      {deleting && <Loader2 className="h-3 w-3 animate-spin" />}
+                      Confirm Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+            </EditSection>
+          )}
 
           {/* Error */}
           {error && (
