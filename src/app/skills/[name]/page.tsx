@@ -1,5 +1,7 @@
 import { SkillsView } from "@/components/skills-view";
 
+export const dynamic = "force-dynamic";
+
 type SkillPageProps = {
   params: Promise<{ name: string }>;
 };

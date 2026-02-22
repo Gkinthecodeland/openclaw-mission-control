@@ -12,7 +12,7 @@ const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
-function getTokenPath(): string {
+export function getTokenPath(): string {
   return join(getOpenClawHome(), "calendar-oauth.json");
 }
 

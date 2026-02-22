@@ -1758,7 +1758,7 @@ export function ConfigEditor() {
         )}
         <button
           type="button"
-          onClick={fetchConfig}
+          onClick={() => fetchConfig()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-muted/50 px-3 py-1.5 text-xs text-foreground/80 transition-colors hover:bg-muted/80"
         >
           <RefreshCw className="h-3.5 w-3.5" />
@@ -1829,7 +1829,7 @@ export function ConfigEditor() {
 
             <button
               type="button"
-              onClick={fetchConfig}
+              onClick={() => fetchConfig()}
               className="rounded-lg border border-foreground/10 p-1.5 text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground/70"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -1931,7 +1931,7 @@ export function ConfigEditor() {
                       padding: { top: 12, bottom: 12 },
                       bracketPairColorization: { enabled: true },
                       folding: true,
-                      semanticHighlighting: { enabled: true },
+                      "semanticHighlighting.enabled": true,
                       readOnly: !showSensitive,
                     }}
                   />

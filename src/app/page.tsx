@@ -25,6 +25,10 @@ import { BrowserRelayView } from "@/components/browser-relay-view";
 import { AccountsKeysView } from "@/components/accounts-keys-view";
 import { CalendarView } from "@/components/calendar-view";
 import { WebSearchView } from "@/components/web-search-view";
+import { ContentView } from "@/components/content-view";
+import { CommsView } from "@/components/comms-view";
+import { CodeView } from "@/components/code-view";
+import { EcosystemView } from "@/components/ecosystem-view";
 import { OpenClawUpdateBanner } from "@/components/openclaw-update-banner";
 import { setChatActive } from "@/lib/chat-store";
 
@@ -77,6 +81,14 @@ function SectionContent({ section }: { section: string }) {
       return <CalendarView />;
     case "search":
       return <WebSearchView />;
+    case "content":
+      return <ContentView />;
+    case "comms":
+      return <CommsView />;
+    case "code":
+      return <CodeView />;
+    case "ecosystem":
+      return <EcosystemView />;
     default:
       return <DashboardView />;
   }

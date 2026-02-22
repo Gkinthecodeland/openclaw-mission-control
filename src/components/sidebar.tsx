@@ -42,6 +42,8 @@ import {
   Globe,
   KeyRound,
   Search,
+  FileText,
+  Code2,
 } from "lucide-react";
 import { getChatUnreadCount, subscribeChatStore } from "@/lib/chat-store";
 import {
@@ -72,6 +74,10 @@ const navItems: {
   { section: "memory", label: "Memory", icon: Brain },
   { section: "docs", label: "Docs", icon: FolderOpen },
   { section: "vectors", label: "Vector DB", icon: Database, dividerAfter: true },
+  { section: "content", label: "Content", icon: FileText },
+  { section: "comms", label: "Comms", icon: Radio },
+  { section: "code", label: "Code", icon: Code2 },
+  { section: "ecosystem", label: "Ecosystem", icon: Package, dividerAfter: true },
   { section: "skills", label: "Skills", icon: Wrench },
   { section: "skills", label: "ClawHub", icon: Package, href: "/?section=skills&tab=clawhub", tab: "clawhub", isSubItem: true },
   { section: "models", label: "Models", icon: Cpu },

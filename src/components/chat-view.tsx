@@ -478,8 +478,7 @@ function ChatPanel({
                   .map((p) => p.text)
                   .join("") || "";
               const fileParts = (message.parts?.filter(
-                (p): p is { type: "file"; url?: string; filename?: string; mediaType?: string } =>
-                  p.type === "file"
+                (p) => p.type === "file"
               ) ?? []) as Array<{ type: "file"; url?: string; filename?: string; mediaType?: string }>;
               const imageParts = fileParts.filter(
                 (p) => p.url && /^image\//i.test(p.mediaType ?? "")
