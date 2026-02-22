@@ -10,13 +10,14 @@ import {
   UserPlus,
   ArrowRight,
   CheckCircle,
-  AlertCircle,
+  AlertTriangle,
   Trash2,
   Moon,
   PanelLeft,
   PanelRight,
   Send,
   GripVertical,
+  Circle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionLayout } from "@/components/section-layout";
@@ -44,6 +45,36 @@ const COLUMN_DOT: Record<string, string> = {
   done: "bg-emerald-400",
 };
 
+const TAG_COLORS: Record<string, string> = {
+  seo: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+  research: "bg-blue-500/15 text-blue-400 border-blue-500/20",
+  pricing: "bg-violet-500/15 text-violet-400 border-violet-500/20",
+  email: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+  content: "bg-pink-500/15 text-pink-400 border-pink-500/20",
+  copywriting: "bg-orange-500/15 text-orange-400 border-orange-500/20",
+  automation: "bg-cyan-500/15 text-cyan-400 border-cyan-500/20",
+  audit: "bg-red-500/15 text-red-400 border-red-500/20",
+  competitive: "bg-indigo-500/15 text-indigo-400 border-indigo-500/20",
+  outreach: "bg-teal-500/15 text-teal-400 border-teal-500/20",
+  social: "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/20",
+};
+
+const TAG_FALLBACK_COLORS = [
+  "bg-slate-500/15 text-slate-400 border-slate-500/20",
+  "bg-sky-500/15 text-sky-400 border-sky-500/20",
+  "bg-lime-500/15 text-lime-400 border-lime-500/20",
+  "bg-rose-500/15 text-rose-400 border-rose-500/20",
+];
+
+function getTagColor(tag: string): string {
+  const lower = tag.toLowerCase();
+  if (TAG_COLORS[lower]) return TAG_COLORS[lower];
+  // Deterministic fallback based on hash
+  let hash = 0;
+  for (let i = 0; i < lower.length; i++) hash = (hash * 31 + lower.charCodeAt(i)) | 0;
+  return TAG_FALLBACK_COLORS[Math.abs(hash) % TAG_FALLBACK_COLORS.length];
+}
+
 /* ── Helpers ─────────────────────────────────────── */
 
 function timeAgo(ms: number | undefined): string {
@@ -59,10 +90,41 @@ function timeAgo(ms: number | undefined): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function formatDate(ms: number | undefined): string {
+  if (!ms) return "";
+  const d = new Date(ms);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  if (isToday) return time;
+  if (isYesterday) return `Yesterday, ${time}`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + `, ${time}`;
+}
+
 function getAgentStatus(agent: AgentInfo): "active" | "idle" | "unknown" {
   if (agent.status) return agent.status;
   if (!agent.lastActivity) return "unknown";
   return Date.now() - agent.lastActivity < 300000 ? "active" : "idle";
+}
+
+function getAgentRole(agent: AgentInfo): string {
+  if (agent.model?.includes("opus")) return "LEAD";
+  if (agent.model?.includes("sonnet")) return "SPC";
+  if (agent.model?.includes("haiku")) return "WRK";
+  return "";
+}
+
+function getAgentRoleColor(role: string): string {
+  switch (role) {
+    case "LEAD": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+    case "SPC": return "bg-violet-500/20 text-violet-400 border-violet-500/30";
+    case "WRK": return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+    default: return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+  }
 }
 
 /* ── Main Component ──────────────────────────────── */
@@ -78,6 +140,7 @@ export function WarRoomView() {
   const [squadCollapsed, setSquadCollapsed] = useState(false);
   const [feedCollapsed, setFeedCollapsed] = useState(false);
   const [filteredAgentId, setFilteredAgentId] = useState<string | null>(null);
+  const [filteredColumn, setFilteredColumn] = useState<string | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [dragOverAgent, setDragOverAgent] = useState<string | null>(null);
@@ -312,40 +375,69 @@ export function WarRoomView() {
   return (
     <SectionLayout>
       {/* ── Header ───────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-foreground/10 bg-card/80 shrink-0">
-        <div className="flex items-center gap-3">
-          <h2 className="font-semibold text-sm tracking-tight">War Room</h2>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/5 px-2.5 py-1 text-xs font-medium">
-            <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", activeAgents > 0 ? "bg-emerald-400 animate-pulse" : "bg-zinc-400")} />
-            {activeAgents} ACTIVE
-          </span>
-          <span className="text-xs text-muted-foreground hidden sm:inline">
-            {queueCount} in queue
-          </span>
+      <div className="border-b border-foreground/10 bg-card/80 shrink-0">
+        {/* Top row: title + stats + toggles */}
+        <div className="flex items-center justify-between px-4 py-2">
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold text-sm tracking-tight">Mission Queue</h2>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-400">
+                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", activeAgents > 0 ? "bg-emerald-400 animate-pulse" : "bg-zinc-400")} />
+                {activeAgents} ACTIVE
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/5 px-2.5 py-1 font-medium text-muted-foreground">
+                {queueCount} TASKS IN QUEUE
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSquadCollapsed(!squadCollapsed)}
+              className={cn(
+                "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                !squadCollapsed && "bg-muted/50"
+              )}
+              title="Toggle squad panel"
+            >
+              <PanelLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setFeedCollapsed(!feedCollapsed)}
+              className={cn(
+                "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                !feedCollapsed && "bg-muted/50"
+              )}
+              title="Toggle live feed"
+            >
+              <PanelRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setSquadCollapsed(!squadCollapsed)}
-            className={cn(
-              "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              !squadCollapsed && "bg-muted/50"
-            )}
-            title="Toggle squad panel"
-          >
-            <PanelLeft className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setFeedCollapsed(!feedCollapsed)}
-            className={cn(
-              "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              !feedCollapsed && "bg-muted/50"
-            )}
-            title="Toggle live feed"
-          >
-            <PanelRight className="h-3.5 w-3.5" />
-          </button>
+
+        {/* Column filter pills */}
+        <div className="flex items-center gap-1.5 px-4 pb-2 overflow-x-auto">
+          {columns.map((col) => {
+            const count = tasks.filter((t) => t.column === col.id).length;
+            return (
+              <button
+                key={col.id}
+                type="button"
+                onClick={() => setFilteredColumn(filteredColumn === col.id ? null : col.id)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all whitespace-nowrap",
+                  filteredColumn === col.id
+                    ? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/30"
+                    : "bg-foreground/5 text-muted-foreground hover:bg-foreground/10"
+                )}
+              >
+                <span className={cn("h-2 w-2 rounded-full shrink-0", COLUMN_DOT[col.id] || "bg-zinc-400")} />
+                {col.title}
+                <span className="font-bold">{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -359,20 +451,10 @@ export function WarRoomView() {
           )}
         >
           <div className="p-3 space-y-1">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Squad ({agents.length})
+                Squad ({activeAgents} Active)
               </h3>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
-                <span className="flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  {activeAgents}
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                  {agents.length - activeAgents}
-                </span>
-              </div>
             </div>
 
             {agents.map((agent) => {
@@ -380,6 +462,7 @@ export function WarRoomView() {
               const agentTaskCount = tasks.filter((t) => t.assignedAgent === agent.id && t.column !== "done").length;
               const isFiltered = filteredAgentId === agent.id;
               const isDragTarget = dragOverAgent === agent.id;
+              const role = getAgentRole(agent);
 
               return (
                 <button
@@ -412,17 +495,31 @@ export function WarRoomView() {
                       )}
                     />
                   </div>
-                  {/* Name + info */}
+                  {/* Name + role + info */}
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium truncate block capitalize">{agent.name || agent.id}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium truncate capitalize">{agent.name || agent.id}</span>
+                      {role && (
+                        <span className={cn("rounded px-1 py-px text-[9px] font-bold tracking-wider border", getAgentRoleColor(role))}>
+                          {role}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[11px] text-muted-foreground truncate block">
-                      {status === "active" ? "Working" : status === "idle" ? "Idle" : "Unknown"}
-                      {agentTaskCount > 0 && ` · ${agentTaskCount} task${agentTaskCount > 1 ? "s" : ""}`}
+                      {agent.model?.split("/").pop()?.split("-").slice(0, 2).join("-") || "unknown"}
                     </span>
                   </div>
-                  {/* Workload indicator */}
-                  <div className="shrink-0 w-6 text-right">
-                    <span className="text-[10px] text-muted-foreground/60">{agentTaskCount}</span>
+                  {/* Status + task count */}
+                  <div className="shrink-0 text-right flex flex-col items-end gap-0.5">
+                    <span className={cn(
+                      "text-[10px] font-semibold uppercase tracking-wide",
+                      status === "active" ? "text-emerald-400" : status === "idle" ? "text-muted-foreground/50" : "text-zinc-500"
+                    )}>
+                      {status === "active" ? "WORKING" : status === "idle" ? "IDLE" : "–"}
+                    </span>
+                    {agentTaskCount > 0 && (
+                      <span className="text-[10px] text-muted-foreground/50">{agentTaskCount} task{agentTaskCount > 1 ? "s" : ""}</span>
+                    )}
                   </div>
                 </button>
               );
@@ -456,7 +553,9 @@ export function WarRoomView() {
           )}
 
           <div className="flex flex-1 gap-3 overflow-x-auto p-4">
-            {columns.map((col) => {
+            {columns
+              .filter((col) => !filteredColumn || col.id === filteredColumn)
+              .map((col) => {
               let colTasks = tasks.filter((t) => t.column === col.id);
               if (filteredAgentId) {
                 colTasks = colTasks.filter((t) => t.assignedAgent === filteredAgentId);
@@ -555,7 +654,8 @@ export function WarRoomView() {
                               <div className="flex-1 min-w-0">
                                 {/* Urgency badge */}
                                 {task.urgency === "immediate" && (
-                                  <span className="inline-block mb-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-400">
+                                  <span className="inline-flex items-center gap-1 mb-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-400 border border-red-500/20">
+                                    <AlertTriangle className="h-2.5 w-2.5" />
                                     Urgent
                                   </span>
                                 )}
@@ -572,7 +672,7 @@ export function WarRoomView() {
                                 {task.tags.map((tag) => (
                                   <span
                                     key={tag}
-                                    className="rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                                    className={cn("rounded border px-1.5 py-0.5 text-[10px] font-medium", getTagColor(tag))}
                                   >
                                     {tag}
                                   </span>
@@ -596,7 +696,7 @@ export function WarRoomView() {
                                   <span className="text-xs text-muted-foreground/40">Unassigned</span>
                                 )}
                               </div>
-                              <span className="text-[11px] text-muted-foreground/50">{timeAgo(task.updatedAt || task.createdAt)}</span>
+                              <span className="text-[11px] text-muted-foreground/50">{formatDate(task.updatedAt || task.createdAt)}</span>
                             </div>
 
                             {/* Hover actions */}
@@ -679,22 +779,33 @@ export function WarRoomView() {
                   return (
                     <div
                       key={evt.id}
-                      className="flex items-start gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-foreground/5 last:border-0"
                     >
-                      <Icon className={cn("h-3.5 w-3.5 shrink-0 mt-0.5", color)} />
+                      {/* Agent avatar or event icon */}
+                      {evtAgent ? (
+                        <div className="h-7 w-7 rounded-full bg-gradient-to-br from-violet-600 to-violet-800 flex items-center justify-center text-xs shrink-0 mt-0.5">
+                          {evtAgent.emoji || "🤖"}
+                        </div>
+                      ) : (
+                        <div className="h-7 w-7 rounded-full bg-foreground/5 flex items-center justify-center shrink-0 mt-0.5">
+                          <Icon className={cn("h-3.5 w-3.5", color)} />
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-foreground/90 leading-relaxed">
-                          <span className="font-medium capitalize">{evtAgent?.name || evt.actor}</span>
-                          {" "}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-semibold capitalize">{evtAgent?.name || evt.actor}</span>
+                          <span className="text-[11px] text-muted-foreground/40">{formatDate(evt.timestamp)}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+                          <Icon className={cn("inline h-3 w-3 mr-1 -mt-px", color)} />
                           {formatAction(evt.action)}
                           {evtTask && (
-                            <span className="text-muted-foreground"> &ldquo;{evtTask.title}&rdquo;</span>
+                            <> &ldquo;{evtTask.title}&rdquo;</>
                           )}
                           {evt.toColumn && (
-                            <span className="text-muted-foreground"> → {evt.toColumn}</span>
+                            <> → <span className="font-medium text-foreground/70">{evt.toColumn}</span></>
                           )}
                         </p>
-                        <span className="text-[11px] text-muted-foreground/50">{timeAgo(evt.timestamp)}</span>
                       </div>
                     </div>
                   );
