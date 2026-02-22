@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -155,6 +155,36 @@ function cronProgress(job: CronJobLive): number {
   const elapsed = Date.now() - job.lastRunAtMs;
   if (total <= 0) return 100;
   return Math.min(100, Math.max(0, (elapsed / total) * 100));
+}
+
+/* ── Animated number hook ────────────────────────── */
+
+function useAnimatedNumber(target: number, duration = 300): number {
+  const [display, setDisplay] = useState(target);
+  const rafRef = useRef<number>(0);
+  const startRef = useRef({ value: target, time: 0 });
+
+  useEffect(() => {
+    const from = display;
+    if (from === target) return;
+    startRef.current = { value: from, time: performance.now() };
+
+    const animate = (now: number) => {
+      const elapsed = now - startRef.current.time;
+      const progress = Math.min(1, elapsed / duration);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(startRef.current.value + (target - startRef.current.value) * eased);
+      setDisplay(current);
+      if (progress < 1) rafRef.current = requestAnimationFrame(animate);
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, duration]);
+
+  return display;
 }
 
 /* ── System stats types ──────────────────────────── */
@@ -384,10 +414,17 @@ function MemoryCompositionBar({
 function SystemStatsPanel({ stats, connected }: { stats: SystemStats | null; connected: boolean }) {
   if (!stats) {
     return (
-      <div className="rounded-xl border border-foreground/10 bg-card/90 p-6">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
-          <Gauge className="h-4 w-4 animate-pulse" />
-          Connecting to system stats stream...
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <Server className="h-3.5 w-3.5" /> System Monitor
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 rounded-xl border border-foreground/10 bg-card/90 px-4 py-5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex flex-col items-center gap-2">
+              <div className="h-[80px] w-[80px] animate-pulse rounded-full bg-foreground/5" />
+              <div className="h-2.5 w-12 animate-pulse rounded bg-foreground/5" />
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -950,10 +987,43 @@ export function DashboardView() {
 
   if (!live) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground/60">
-        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-        Connecting to system...
-      </div>
+      <SectionLayout>
+        <SectionBody width="content" padding="regular" innerClassName="space-y-5">
+          {/* Skeleton stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="rounded-xl border border-foreground/10 bg-card/90 p-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-7 w-7 animate-pulse rounded-lg bg-foreground/5" />
+                  <div className="space-y-1.5">
+                    <div className="h-3 w-10 animate-pulse rounded bg-foreground/5" />
+                    <div className="h-2.5 w-14 animate-pulse rounded bg-foreground/5" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Skeleton agent + cron grid */}
+          <div className="grid gap-5 lg:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="space-y-2.5">
+                <div className="h-3 w-20 animate-pulse rounded bg-foreground/5" />
+                {Array.from({ length: 2 }).map((_, j) => (
+                  <div key={j} className="rounded-xl border border-foreground/10 bg-card/90 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 animate-pulse rounded-lg bg-foreground/5" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3 w-24 animate-pulse rounded bg-foreground/5" />
+                        <div className="h-2.5 w-36 animate-pulse rounded bg-foreground/5" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </SectionBody>
+      </SectionLayout>
     );
   }
 
@@ -1156,6 +1226,7 @@ export function DashboardView() {
               alert={live.cron.stats.error > 0 ? `${live.cron.stats.error} error` : undefined}
               alertHref={live.cron.stats.error > 0 ? "/?section=cron&show=errors" : undefined}
               onClick={live.cron.stats.error > 0 ? () => window.location.href = "/?section=cron&show=errors" : undefined}
+              glow={live.cron.stats.error > 0 ? "warning" : undefined}
             />
             <StatCard
               icon={Smartphone}
@@ -1214,9 +1285,11 @@ export function DashboardView() {
                     <div
                       key={issue.id}
                       className={cn(
-                        "flex items-start gap-3 rounded-xl border p-3.5",
+                        "flex items-start gap-3 rounded-xl border p-3.5 transition-shadow",
                         severityCfg.border,
-                        severityCfg.bg
+                        severityCfg.bg,
+                        issue.severity === "critical" && "glow-critical",
+                        issue.severity === "warning" && "glow-warning"
                       )}
                     >
                       <SevIcon className={cn("mt-0.5 h-4 w-4 shrink-0", severityCfg.iconColor)} />
@@ -1296,10 +1369,15 @@ export function DashboardView() {
                 <Bot className="h-3.5 w-3.5" /> Agents
               </h2>
               <div className="space-y-2.5">
-                {live.agents.map((agent) => (
+                {live.agents.map((agent) => {
+                  const isActive = now - agent.lastActivity < 300000;
+                  return (
                   <div
                     key={agent.id}
-                    className="rounded-xl border border-foreground/10 bg-card/90 p-4"
+                    className={cn(
+                      "rounded-xl border border-foreground/10 bg-card/90 p-4 transition-shadow",
+                      isActive && "glow-active"
+                    )}
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 text-base">
@@ -1318,7 +1396,7 @@ export function DashboardView() {
                       <div
                         className={cn(
                           "h-2 w-2 rounded-full",
-                          now - agent.lastActivity < 300000
+                          isActive
                             ? "bg-emerald-500"
                             : "bg-zinc-600"
                         )}
@@ -1340,7 +1418,8 @@ export function DashboardView() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Models */}
@@ -1526,9 +1605,13 @@ export function DashboardView() {
                   );
                 })}
                 {live.logEntries.length === 0 && (
-                  <p className="px-2 py-4 text-center text-muted-foreground/60">
-                    No recent log entries
-                  </p>
+                  <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-foreground/5">
+                      <Radio className="h-5 w-5 text-muted-foreground/30" />
+                    </div>
+                    <p className="text-xs font-medium text-muted-foreground/60">No recent log entries</p>
+                    <p className="text-xs text-muted-foreground/40">Gateway activity will appear here in real time</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -1550,6 +1633,13 @@ export function DashboardView() {
 
 /* ── sub-components ──────────────────────────────── */
 
+function AnimatedValue({ value }: { value: string | number }) {
+  const numericTarget = typeof value === "number" ? value : parseInt(String(value), 10);
+  const isNumeric = typeof value === "number" || /^\d+$/.test(String(value));
+  const animated = useAnimatedNumber(isNumeric ? numericTarget : 0);
+  return <>{isNumeric ? animated : value}</>;
+}
+
 function StatCard({
   icon: Icon,
   value,
@@ -1558,6 +1648,7 @@ function StatCard({
   alert,
   alertHref,
   onClick,
+  glow,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   value: string | number;
@@ -1566,12 +1657,15 @@ function StatCard({
   alert?: string;
   alertHref?: string;
   onClick?: () => void;
+  glow?: "critical" | "warning" | "active";
 }) {
+  const glowClass = glow === "critical" ? "glow-critical" : glow === "warning" ? "glow-warning" : glow === "active" ? "glow-active" : "";
   return (
     <div
       className={cn(
-        "rounded-xl border border-foreground/10 bg-card/90 p-3",
-        onClick && "cursor-pointer transition-colors hover:border-foreground/15"
+        "rounded-xl border border-foreground/10 bg-card/90 p-3 transition-shadow",
+        onClick && "cursor-pointer transition-colors hover:border-foreground/15",
+        glowClass
       )}
       onClick={onClick}
     >
@@ -1580,7 +1674,9 @@ function StatCard({
           <Icon className="h-4 w-4" />
         </div>
         <div>
-          <p className="text-xs font-semibold text-foreground">{value}</p>
+          <p className="text-xs font-semibold text-foreground">
+            <AnimatedValue value={value} />
+          </p>
           <p className="text-xs text-muted-foreground">{label}</p>
         </div>
       </div>

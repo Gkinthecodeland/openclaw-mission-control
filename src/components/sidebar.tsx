@@ -50,42 +50,81 @@ import {
   type GatewayStatus,
 } from "@/lib/gateway-status-store";
 
-const navItems: {
+type NavItem = {
   section: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   href?: string;
   tab?: string;
   isSubItem?: boolean;
-  dividerAfter?: boolean;
   comingSoon?: boolean;
-}[] = [
-  { section: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { section: "chat", label: "Chat", icon: MessageCircle },
-  { section: "channels", label: "Channels", icon: Radio },
-  { section: "agents", label: "Agents", icon: Users },
-  { section: "agents", label: "Subagents", icon: Users2, href: "/?section=agents&tab=subagents", tab: "subagents", isSubItem: true, dividerAfter: true },
-  { section: "tasks", label: "Tasks", icon: ListChecks },
-  { section: "sessions", label: "Sessions", icon: MessageSquare },
-  { section: "cron", label: "Cron Jobs", icon: Clock },
-  { section: "calendar", label: "Calendar", icon: CalendarDays, comingSoon: true },
-  { section: "memory", label: "Memory", icon: Brain },
-  { section: "docs", label: "Docs", icon: FolderOpen },
-  { section: "vectors", label: "Vector DB", icon: Database, dividerAfter: true },
-  { section: "skills", label: "Skills", icon: Wrench },
-  { section: "skills", label: "ClawHub", icon: Package, href: "/?section=skills&tab=clawhub", tab: "clawhub", isSubItem: true },
-  { section: "models", label: "Models", icon: Cpu },
-  { section: "accounts", label: "Accounts & Keys", icon: KeyRound },
-  { section: "audio", label: "Audio & Voice", icon: Volume2 },
-  { section: "browser", label: "Browser Relay", icon: Globe },
-  { section: "search", label: "Web Search", icon: Search },
-  { section: "tailscale", label: "Tailscale", icon: Waypoints },
-  { section: "permissions", label: "Permissions", icon: Shield, dividerAfter: true },
-  { section: "usage", label: "Usage", icon: BarChart3 },
-  { section: "terminal", label: "Terminal", icon: SquareTerminal },
-  { section: "logs", label: "Logs", icon: Terminal },
-  { section: "config", label: "Config", icon: Settings },
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Core",
+    items: [
+      { section: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { section: "chat", label: "Chat", icon: MessageCircle },
+      { section: "channels", label: "Channels", icon: Radio },
+    ],
+  },
+  {
+    label: "Agents",
+    items: [
+      { section: "agents", label: "Agents", icon: Users },
+      { section: "agents", label: "Subagents", icon: Users2, href: "/?section=agents&tab=subagents", tab: "subagents", isSubItem: true },
+      { section: "sessions", label: "Sessions", icon: MessageSquare },
+    ],
+  },
+  {
+    label: "Automation",
+    items: [
+      { section: "tasks", label: "Tasks", icon: ListChecks },
+      { section: "cron", label: "Cron Jobs", icon: Clock },
+      { section: "calendar", label: "Calendar", icon: CalendarDays, comingSoon: true },
+    ],
+  },
+  {
+    label: "Knowledge",
+    items: [
+      { section: "memory", label: "Memory", icon: Brain },
+      { section: "docs", label: "Docs", icon: FolderOpen },
+      { section: "vectors", label: "Vector DB", icon: Database },
+    ],
+  },
+  {
+    label: "Tools",
+    items: [
+      { section: "skills", label: "Skills", icon: Wrench },
+      { section: "skills", label: "ClawHub", icon: Package, href: "/?section=skills&tab=clawhub", tab: "clawhub", isSubItem: true },
+      { section: "models", label: "Models", icon: Cpu },
+      { section: "accounts", label: "Accounts & Keys", icon: KeyRound },
+      { section: "audio", label: "Audio & Voice", icon: Volume2 },
+      { section: "browser", label: "Browser Relay", icon: Globe },
+      { section: "search", label: "Web Search", icon: Search },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { section: "tailscale", label: "Tailscale", icon: Waypoints },
+      { section: "permissions", label: "Permissions", icon: Shield },
+      { section: "usage", label: "Usage", icon: BarChart3 },
+      { section: "terminal", label: "Terminal", icon: SquareTerminal },
+      { section: "logs", label: "Logs", icon: Terminal },
+      { section: "config", label: "Config", icon: Settings },
+    ],
+  },
 ];
+
+// Flat list for backward compat (collapse mode, etc.)
+const navItems = navGroups.flatMap((g) => g.items);
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar_collapsed";
 
@@ -111,111 +150,122 @@ function SidebarNav({ onNavigate, collapsed }: { onNavigate?: () => void; collap
     () => 0 // SSR fallback
   );
 
-  return (
-    <nav className={cn("flex flex-1 flex-col gap-0.5 overflow-y-auto pt-4", collapsed ? "px-2" : "px-3")}>
-      {navItems.map((item) => {
-        const isSkillsParent = item.section === "skills" && item.label === "Skills";
-        const isAgentsParent = item.section === "agents" && item.label === "Agents";
-        if (collapsed && item.isSubItem) return null;
-        if (item.isSubItem && item.section === "skills" && !showSkillsChildren) return null;
-        if (item.isSubItem && item.section === "agents" && !showAgentsChildren) return null;
+  const renderItem = (item: NavItem) => {
+    const isSkillsParent = item.section === "skills" && item.label === "Skills";
+    const isAgentsParent = item.section === "agents" && item.label === "Agents";
+    if (collapsed && item.isSubItem) return null;
+    if (item.isSubItem && item.section === "skills" && !showSkillsChildren) return null;
+    if (item.isSubItem && item.section === "agents" && !showAgentsChildren) return null;
 
-        const Icon = item.icon;
-        const isActive =
-          !item.comingSoon &&
-          section === item.section &&
-          (item.tab ? tab === item.tab : item.section !== "skills" || tab !== "clawhub");
-        const showBadge = item.section === "chat" && chatUnread > 0;
-        const isDisabled = item.comingSoon;
-        const linkClass = cn(
-          "flex items-center gap-2.5 rounded-md py-1.5 text-xs font-medium transition-colors",
-          collapsed ? "justify-center px-2" : "px-2.5",
-          item.isSubItem && !collapsed && "ml-6 py-1 text-xs",
-          isDisabled
-            ? "cursor-not-allowed opacity-60 text-muted-foreground dark:text-zinc-500"
-            : isActive
-              ? "bg-violet-600/20 text-violet-700 dark:text-violet-300"
-              : "text-muted-foreground dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-zinc-200"
-        );
-        return (
-          <div key={`${item.section}:${item.label}`}>
-            {isDisabled ? (
-              <span className={linkClass} aria-disabled>
-                <Icon className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                {!collapsed && (
-                  <>
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    <span className="shrink-0 whitespace-nowrap rounded-full border border-violet-500/20 bg-violet-500/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-violet-400/90">
-                      Soon
-                    </span>
-                  </>
+    const Icon = item.icon;
+    const isActive =
+      !item.comingSoon &&
+      section === item.section &&
+      (item.tab ? tab === item.tab : item.section !== "skills" || tab !== "clawhub");
+    const showBadge = item.section === "chat" && chatUnread > 0;
+    const isDisabled = item.comingSoon;
+    const linkClass = cn(
+      "flex items-center gap-2.5 rounded-md py-1.5 text-xs font-medium transition-colors",
+      collapsed ? "justify-center px-2" : "px-2.5",
+      item.isSubItem && !collapsed && "ml-6 py-1 text-xs",
+      isDisabled
+        ? "cursor-not-allowed opacity-60 text-muted-foreground dark:text-zinc-500"
+        : isActive
+          ? "bg-violet-600/20 text-violet-700 dark:text-violet-300"
+          : "text-muted-foreground dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-zinc-200"
+    );
+    return (
+      <div key={`${item.section}:${item.label}`}>
+        {isDisabled ? (
+          <span className={linkClass} aria-disabled>
+            <Icon className="h-3.5 w-3.5 shrink-0 opacity-70" />
+            {!collapsed && (
+              <>
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <span className="shrink-0 whitespace-nowrap rounded-full border border-violet-500/20 bg-violet-500/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-violet-400/90">
+                  Soon
+                </span>
+              </>
+            )}
+          </span>
+        ) : (
+          (isSkillsParent || isAgentsParent) && !collapsed ? (
+            <div className={linkClass}>
+              <Link
+                href={item.href || `/?section=${item.section}`}
+                onClick={onNavigate}
+                className="flex min-w-0 flex-1 items-center gap-3"
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1">{item.label}</span>
+              </Link>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (isSkillsParent) {
+                    setSkillsExpanded((prev) => !prev);
+                  } else {
+                    setAgentsExpanded((prev) => !prev);
+                  }
+                }}
+                className="rounded p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground/90"
+                aria-label={
+                  isSkillsParent
+                    ? (showSkillsChildren ? "Collapse skills submenu" : "Expand skills submenu")
+                    : (showAgentsChildren ? "Collapse agents submenu" : "Expand agents submenu")
+                }
+              >
+                <ChevronRight
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform",
+                    (isSkillsParent ? showSkillsChildren : showAgentsChildren) && "rotate-90"
+                  )}
+                />
+              </button>
+            </div>
+          ) : (
+            <Link
+              href={item.href || `/?section=${item.section}`}
+              onClick={onNavigate}
+              className={linkClass}
+              title={collapsed ? item.label : undefined}
+            >
+              <span className="relative inline-flex shrink-0">
+                <Icon className="h-3.5 w-3.5" />
+                {collapsed && showBadge && (
+                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-violet-600" title={`${chatUnread} unread`} aria-hidden />
                 )}
               </span>
-            ) : (
-              (isSkillsParent || isAgentsParent) && !collapsed ? (
-                <div className={linkClass}>
-                  <Link
-                    href={item.href || `/?section=${item.section}`}
-                    onClick={onNavigate}
-                    className="flex min-w-0 flex-1 items-center gap-3"
-                  >
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span className="flex-1">{item.label}</span>
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (isSkillsParent) {
-                        setSkillsExpanded((prev) => !prev);
-                      } else {
-                        setAgentsExpanded((prev) => !prev);
-                      }
-                    }}
-                    className="rounded p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground/90"
-                    aria-label={
-                      isSkillsParent
-                        ? (showSkillsChildren ? "Collapse skills submenu" : "Expand skills submenu")
-                        : (showAgentsChildren ? "Collapse agents submenu" : "Expand agents submenu")
-                    }
-                  >
-                    <ChevronRight
-                      className={cn(
-                        "h-3.5 w-3.5 transition-transform",
-                        (isSkillsParent ? showSkillsChildren : showAgentsChildren) && "rotate-90"
-                      )}
-                    />
-                  </button>
-                </div>
-              ) : (
-                <Link
-                  href={item.href || `/?section=${item.section}`}
-                  onClick={onNavigate}
-                  className={linkClass}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <span className="relative inline-flex shrink-0">
-                    <Icon className="h-3.5 w-3.5" />
-                    {collapsed && showBadge && (
-                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-violet-600" title={`${chatUnread} unread`} aria-hidden />
-                    )}
-                  </span>
-                  {!collapsed && <span className="flex-1">{item.label}</span>}
-                  {!collapsed && showBadge && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-600 px-1.5 text-xs font-bold text-white">
-                      {chatUnread > 9 ? "9+" : chatUnread}
-                    </span>
-                  )}
-                </Link>
-              )
-            )}
-            {item.dividerAfter && (
-              <div className="my-2 border-t border-border" />
-            )}
-          </div>
-        );
-      })}
+              {!collapsed && <span className="flex-1">{item.label}</span>}
+              {!collapsed && showBadge && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-600 px-1.5 text-xs font-bold text-white">
+                  {chatUnread > 9 ? "9+" : chatUnread}
+                </span>
+              )}
+            </Link>
+          )
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <nav className={cn("flex flex-1 flex-col gap-0.5 overflow-y-auto pt-4", collapsed ? "px-2" : "px-3")}>
+      {navGroups.map((group) => (
+        <div key={group.label} className="mb-1">
+          {!collapsed && (
+            <div className="mb-1 mt-3 first:mt-0 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40">
+              {group.label}
+            </div>
+          )}
+          {collapsed && group.label !== "Core" && (
+            <div className="my-1.5 mx-1 border-t border-border/50" />
+          )}
+          {group.items.map(renderItem)}
+        </div>
+      ))}
     </nav>
   );
 }
