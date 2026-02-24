@@ -30,6 +30,7 @@ import { CommsView } from "@/components/comms-view";
 import { CodeView } from "@/components/code-view";
 import { EcosystemView } from "@/components/ecosystem-view";
 import { PixelOfficeView } from "@/components/pixel-office-view";
+import { IntelFeedView } from "@/components/intel-feed-view";
 import { OpenClawUpdateBanner } from "@/components/openclaw-update-banner";
 import { setChatActive } from "@/lib/chat-store";
 
@@ -92,6 +93,8 @@ function SectionContent({ section }: { section: string }) {
       return <PixelOfficeView />;
     case "ecosystem":
       return <EcosystemView />;
+    case "intel":
+      return <IntelFeedView />;
     default:
       return <DashboardView />;
   }
