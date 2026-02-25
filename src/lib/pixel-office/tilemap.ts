@@ -195,21 +195,42 @@ function buildGroundFloor(): FloorData {
   tiles[11][6] = TileType.WELCOME_MAT;
   tiles[11][7] = TileType.WELCOME_MAT;
 
-  // Reception furniture
-  // Front desk (cols 4-6, row 7-8)
-  placeFurniture(furniture, collision, 'desk', 4, 7, 3, 2, buildDeskSprite);
-  // Monitor on front desk
-  placeFurniture(furniture, collision, 'monitor', 5, 7, 1, 1, buildMonitorSprite);
-  // Chair behind desk
-  placeFurniture(furniture, collision, 'chair', 5, 9, 1, 1, buildChairSprite, { noCollision: true });
+  // Command Center furniture
   // Plant in corner
   placeFurniture(furniture, collision, 'plant', 1, 4, 1, 1, buildPlantSprite);
-  // Couch against left wall
-  placeFurniture(furniture, collision, 'couch', 1, 6, 1, 3, buildCouchSprite);
+  // Couch against left wall (row 9-10)
+  placeFurniture(furniture, collision, 'couch', 1, 9, 1, 3, buildCouchSprite);
   // Plant near couch
   placeFurniture(furniture, collision, 'plant', 1, 10, 1, 1, buildPlantSprite);
   // Water cooler
   placeFurniture(furniture, collision, 'waterCooler', 12, 4, 1, 1, buildWaterCoolerSprite);
+
+  // --- Command Center desks (reception area, for Donna + Jarvis) ---
+  // Desk CC-1 (cols 3-5, row 5-6)
+  placeFurniture(furniture, collision, 'desk', 3, 5, 3, 2, buildDeskSprite);
+  placeFurniture(furniture, collision, 'monitor', 4, 5, 1, 1, buildMonitorSprite);
+  placeFurniture(furniture, collision, 'chair', 4, 7, 1, 1, buildChairSprite, { noCollision: true });
+  desks.push({
+    pos: { col: 3, row: 5 },
+    seatCol: 4,
+    seatRow: 7,
+    seatDir: Direction.UP,
+    assignedTo: null,
+    zone: 'command',
+  });
+
+  // Desk CC-2 (cols 8-10, row 5-6)
+  placeFurniture(furniture, collision, 'desk', 8, 5, 3, 2, buildDeskSprite);
+  placeFurniture(furniture, collision, 'monitor', 9, 5, 1, 1, buildMonitorSprite);
+  placeFurniture(furniture, collision, 'chair', 9, 7, 1, 1, buildChairSprite, { noCollision: true });
+  desks.push({
+    pos: { col: 8, row: 5 },
+    seatCol: 9,
+    seatRow: 7,
+    seatDir: Direction.UP,
+    assignedTo: null,
+    zone: 'command',
+  });
 
   // Door from reception to hallway (row 12, cols 6-7)
   tiles[12][6] = TileType.DOOR;
@@ -228,52 +249,77 @@ function buildGroundFloor(): FloorData {
   setCollision(collision, 15, 4, 28, 11, false);
 
   // 4 desks in main office
-  // Desk 1 (cols 16-18, row 5-6) — top left
+  // --- Factory Operations Floor desks (7 desks for factory-* agents) ---
+  // Row 1: 3 desks across top
+  // Factory Desk 1 (cols 16-18, row 5-6)
   placeFurniture(furniture, collision, 'desk', 16, 5, 3, 2, buildDeskSprite);
   placeFurniture(furniture, collision, 'monitor', 17, 5, 1, 1, buildMonitorSprite);
   placeFurniture(furniture, collision, 'chair', 17, 7, 1, 1, buildChairSprite, { noCollision: true });
   desks.push({
     pos: { col: 16, row: 5 },
-    seatCol: 17,
-    seatRow: 7,
-    seatDir: Direction.UP,
-    assignedTo: null,
+    seatCol: 17, seatRow: 7, seatDir: Direction.UP,
+    assignedTo: null, zone: 'factory',
   });
 
-  // Desk 2 (cols 22-24, row 5-6) — top right
-  placeFurniture(furniture, collision, 'desk', 22, 5, 3, 2, buildDeskSprite);
-  placeFurniture(furniture, collision, 'monitor', 23, 5, 1, 1, buildMonitorSprite);
-  placeFurniture(furniture, collision, 'chair', 23, 7, 1, 1, buildChairSprite, { noCollision: true });
+  // Factory Desk 2 (cols 20-22, row 5-6)
+  placeFurniture(furniture, collision, 'desk', 20, 5, 3, 2, buildDeskSprite);
+  placeFurniture(furniture, collision, 'monitor', 21, 5, 1, 1, buildMonitorSprite);
+  placeFurniture(furniture, collision, 'chair', 21, 7, 1, 1, buildChairSprite, { noCollision: true });
   desks.push({
-    pos: { col: 22, row: 5 },
-    seatCol: 23,
-    seatRow: 7,
-    seatDir: Direction.UP,
-    assignedTo: null,
+    pos: { col: 20, row: 5 },
+    seatCol: 21, seatRow: 7, seatDir: Direction.UP,
+    assignedTo: null, zone: 'factory',
   });
 
-  // Desk 3 (cols 16-18, row 9-10) — bottom left
-  placeFurniture(furniture, collision, 'desk', 16, 9, 3, 2, buildDeskSprite);
-  placeFurniture(furniture, collision, 'monitor', 17, 9, 1, 1, buildMonitorSprite);
-  placeFurniture(furniture, collision, 'chair', 17, 8, 1, 1, buildChairSprite, { noCollision: true });
+  // Factory Desk 3 (cols 24-26, row 5-6)
+  placeFurniture(furniture, collision, 'desk', 24, 5, 3, 2, buildDeskSprite);
+  placeFurniture(furniture, collision, 'monitor', 25, 5, 1, 1, buildMonitorSprite);
+  placeFurniture(furniture, collision, 'chair', 25, 7, 1, 1, buildChairSprite, { noCollision: true });
   desks.push({
-    pos: { col: 16, row: 9 },
-    seatCol: 17,
-    seatRow: 8,
-    seatDir: Direction.DOWN,
-    assignedTo: null,
+    pos: { col: 24, row: 5 },
+    seatCol: 25, seatRow: 7, seatDir: Direction.UP,
+    assignedTo: null, zone: 'factory',
   });
 
-  // Desk 4 (cols 22-24, row 9-10) — bottom right
-  placeFurniture(furniture, collision, 'desk', 22, 9, 3, 2, buildDeskSprite);
-  placeFurniture(furniture, collision, 'monitor', 23, 9, 1, 1, buildMonitorSprite);
-  placeFurniture(furniture, collision, 'chair', 23, 8, 1, 1, buildChairSprite, { noCollision: true });
+  // Row 2: 4 desks across bottom
+  // Factory Desk 4 (cols 15-17, row 9-10)
+  placeFurniture(furniture, collision, 'desk', 15, 9, 3, 2, buildDeskSprite);
+  placeFurniture(furniture, collision, 'monitor', 16, 9, 1, 1, buildMonitorSprite);
+  placeFurniture(furniture, collision, 'chair', 16, 8, 1, 1, buildChairSprite, { noCollision: true });
   desks.push({
-    pos: { col: 22, row: 9 },
-    seatCol: 23,
-    seatRow: 8,
-    seatDir: Direction.DOWN,
-    assignedTo: null,
+    pos: { col: 15, row: 9 },
+    seatCol: 16, seatRow: 8, seatDir: Direction.DOWN,
+    assignedTo: null, zone: 'factory',
+  });
+
+  // Factory Desk 5 (cols 19-21, row 9-10)
+  placeFurniture(furniture, collision, 'desk', 19, 9, 3, 2, buildDeskSprite);
+  placeFurniture(furniture, collision, 'monitor', 20, 9, 1, 1, buildMonitorSprite);
+  placeFurniture(furniture, collision, 'chair', 20, 8, 1, 1, buildChairSprite, { noCollision: true });
+  desks.push({
+    pos: { col: 19, row: 9 },
+    seatCol: 20, seatRow: 8, seatDir: Direction.DOWN,
+    assignedTo: null, zone: 'factory',
+  });
+
+  // Factory Desk 6 (cols 23-25, row 9-10)
+  placeFurniture(furniture, collision, 'desk', 23, 9, 3, 2, buildDeskSprite);
+  placeFurniture(furniture, collision, 'monitor', 24, 9, 1, 1, buildMonitorSprite);
+  placeFurniture(furniture, collision, 'chair', 24, 8, 1, 1, buildChairSprite, { noCollision: true });
+  desks.push({
+    pos: { col: 23, row: 9 },
+    seatCol: 24, seatRow: 8, seatDir: Direction.DOWN,
+    assignedTo: null, zone: 'factory',
+  });
+
+  // Factory Desk 7 (cols 27-28, row 9-10) — against right wall
+  placeFurniture(furniture, collision, 'desk', 26, 9, 3, 2, buildDeskSprite);
+  placeFurniture(furniture, collision, 'monitor', 27, 9, 1, 1, buildMonitorSprite);
+  placeFurniture(furniture, collision, 'chair', 27, 8, 1, 1, buildChairSprite, { noCollision: true });
+  desks.push({
+    pos: { col: 26, row: 9 },
+    seatCol: 27, seatRow: 8, seatDir: Direction.DOWN,
+    assignedTo: null, zone: 'factory',
   });
 
   // Printer in main office

@@ -390,7 +390,8 @@ export class OfficeStateManager {
     // Add new characters
     for (const agent of agents) {
       if (!existingIds.has(agent.id)) {
-        const deskIndex = this.findNextAvailableDesk(groundFloor);
+        const zone = agent.id.startsWith('factory-') ? 'factory' : 'command';
+        const deskIndex = this.findNextAvailableDeskInZone(groundFloor, zone);
         const desk = deskIndex >= 0 ? groundFloor.desks[deskIndex] : null;
 
         if (desk) {
@@ -439,6 +440,17 @@ export class OfficeStateManager {
       throw new Error(`Floor ${id} not found`);
     }
     return floor;
+  }
+
+  private findNextAvailableDeskInZone(floor: FloorData, zone: 'command' | 'factory'): number {
+    // First try to find a desk in the correct zone
+    for (let i = 0; i < floor.desks.length; i++) {
+      if (floor.desks[i].assignedTo === null && floor.desks[i].zone === zone) {
+        return i;
+      }
+    }
+    // Fallback: any available desk
+    return this.findNextAvailableDesk(floor);
   }
 
   private findNextAvailableDesk(floor: FloorData): number {

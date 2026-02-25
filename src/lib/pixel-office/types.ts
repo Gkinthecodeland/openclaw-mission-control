@@ -254,6 +254,7 @@ export interface DeskAssignment {
   seatRow: number;
   seatDir: Direction; // direction to face while seated
   assignedTo: string | null;
+  zone?: 'command' | 'factory'; // command = Donna+Jarvis, factory = factory-* agents
 }
 
 export interface FurnitureInstance {
