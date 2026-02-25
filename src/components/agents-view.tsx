@@ -1009,9 +1009,11 @@ function GridView({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {agents.map((agent, idx) => {
+  // Group agents: Core (non-factory) vs Factory OS
+  const coreAgents = agents.filter(a => !a.id.startsWith("factory-"));
+  const factoryAgents = agents.filter(a => a.id.startsWith("factory-"));
+
+  const renderCard = (agent: Agent, idx: number) => {
         const sc = STATUS_COLORS[agent.status] || STATUS_COLORS.unknown;
         const selected = selectedId === agent.id;
 
@@ -1077,7 +1079,41 @@ function GridView({
             </div>
           </button>
         );
-      })}
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Core Agents */}
+      {coreAgents.length > 0 && (
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/15">
+              <Star className="h-3.5 w-3.5 text-violet-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-foreground/80">Command Center</h3>
+            <span className="text-xs text-muted-foreground">({coreAgents.length})</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {coreAgents.map((agent, idx) => renderCard(agent, idx))}
+          </div>
+        </div>
+      )}
+
+      {/* Factory OS Agents */}
+      {factoryAgents.length > 0 && (
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/15">
+              <Layers className="h-3.5 w-3.5 text-amber-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-foreground/80">Factory OS — Achaiki Pita</h3>
+            <span className="text-xs text-muted-foreground">({factoryAgents.length})</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {factoryAgents.map((agent, idx) => renderCard(agent, idx + coreAgents.length))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -41,7 +41,7 @@ type LiveData = {
     stats: { total: number; ok: number; error: number };
   };
   cronRuns: CronRun[];
-  agents: { id: string; sessionCount: number; totalTokens: number; lastActivity: number }[];
+  agents: { id: string; emoji?: string; sessionCount: number; totalTokens: number; lastActivity: number }[];
   logEntries: LogEntry[];
 };
 
@@ -1295,15 +1295,17 @@ export function DashboardView() {
               <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <Bot className="h-3.5 w-3.5" /> Agents
               </h2>
+              {/* Command Center */}
+              <p className="mb-1.5 text-xs font-medium text-violet-400/70">⭐ Command Center</p>
               <div className="space-y-2.5">
-                {live.agents.map((agent) => (
+                {live.agents.filter(a => !a.id.startsWith("factory-")).map((agent) => (
                   <div
                     key={agent.id}
                     className="rounded-xl border border-foreground/10 bg-card/90 p-4"
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 text-base">
-                        {agent.id === "main" ? "🦞" : "💀"}
+                        {agent.emoji || (agent.id === "main" ? "🤖" : "⚙️")}
                       </div>
                       <div className="flex-1">
                         <p className="text-xs font-semibold text-foreground capitalize">
@@ -1342,6 +1344,42 @@ export function DashboardView() {
                   </div>
                 ))}
               </div>
+
+              {/* Factory OS Agents */}
+              {live.agents.filter(a => a.id.startsWith("factory-")).length > 0 && (
+                <>
+                  <p className="mb-1.5 mt-4 text-xs font-medium text-amber-400/70">🏭 Factory OS — Achaiki Pita</p>
+                  <div className="space-y-2">
+                    {live.agents.filter(a => a.id.startsWith("factory-")).map((agent) => (
+                      <div
+                        key={agent.id}
+                        className="rounded-lg border border-amber-500/10 bg-amber-500/5 px-3 py-2.5"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-base">{agent.emoji || "🏭"}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-foreground capitalize truncate">
+                              {agent.id.replace("factory-", "")}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>{agent.sessionCount} sess.</span>
+                              <span>{formatTokens(agent.totalTokens)} tok</span>
+                            </div>
+                          </div>
+                          <div
+                            className={cn(
+                              "h-2 w-2 rounded-full",
+                              now - agent.lastActivity < 300000
+                                ? "bg-emerald-500"
+                                : "bg-zinc-600"
+                            )}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
 
               {/* Models */}
               {system?.models && system.models.length > 0 && (
