@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
 import {
   SectionBody,
@@ -10,181 +9,112 @@ import {
 } from "@/components/section-layout";
 import { OfficeStateManager } from "@/lib/pixel-office/office-state";
 import { PixelOfficeRenderer } from "@/lib/pixel-office/renderer";
-import type { OfficeAgent, AgentActivity, OfficeState } from "@/lib/pixel-office/types";
-import { TARGET_FPS } from "@/lib/pixel-office/types";
+import type {
+  OfficeAgent,
+  Character,
+  GameState,
+  FloorData,
+  AgentActivity,
+} from "@/lib/pixel-office/types";
+import { FloorId, TARGET_FPS, POLL_MS } from "@/lib/pixel-office/types";
 
 // ---------------------------------------------------------------------------
-// API response types
+// Hover info card state
 // ---------------------------------------------------------------------------
 
-type ApiSubagent = {
-  sessionKey: string;
-  model: string;
-  totalTokens: number;
-  lastActive: number;
-  ageMs: number;
-  status: string;
-};
-
-type ApiAgent = {
-  id: string;
+interface HoverInfo {
   name: string;
   emoji: string;
   model: string;
-  status: "active" | "idle" | "unknown";
-  sessionCount: number;
-  lastActive: number;
-  totalTokens: number;
-  runtimeSubagents: ApiSubagent[];
-};
-
-type ApiSession = {
-  key: string;
-  sessionId: string;
-  updatedAt: number | null;
-  ageMs: number | null;
-  totalTokens: number;
-  model: string;
-};
-
-// ---------------------------------------------------------------------------
-// Agent color palette
-// ---------------------------------------------------------------------------
-
-const AGENT_COLORS: Record<
-  string,
-  { primary: string; secondary: string; skin: string }
-> = {
-  donna: { primary: "#e07050", secondary: "#c05030", skin: "#f0c0a0" },
-  jarvis: { primary: "#4090d0", secondary: "#2070b0", skin: "#e0c8a0" },
-};
-
-const FALLBACK_COLORS = [
-  { primary: "#9060c0", secondary: "#7040a0", skin: "#e0c0b0" },
-  { primary: "#50a060", secondary: "#308040", skin: "#e0c8a0" },
-  { primary: "#40a0a0", secondary: "#208080", skin: "#e0c0b0" },
-  { primary: "#c0a040", secondary: "#a08020", skin: "#e0c8a0" },
-];
-
-function getAgentColor(
-  agentId: string,
-  index: number,
-): { primary: string; secondary: string; skin: string } {
-  const key = agentId.toLowerCase();
-  if (key in AGENT_COLORS) return AGENT_COLORS[key];
-  return FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+  task: string | null;
+  tokens: number;
+  status: string;
+  x: number;
+  y: number;
 }
 
 // ---------------------------------------------------------------------------
-// Activity mapping
+// Helpers
 // ---------------------------------------------------------------------------
 
-function mapActivity(agent: ApiAgent, sessions: ApiSession[]): AgentActivity {
-  const agentSessions = sessions.filter((s) =>
-    s.key.includes(`agent:${agent.id}:`),
-  );
-  const latestSession = agentSessions[0];
+function getFloorName(floor: FloorId): string {
+  switch (floor) {
+    case FloorId.GROUND:
+      return "Ground Floor";
+    case FloorId.UPPER:
+      return "Upper Floor";
+    case FloorId.BASEMENT:
+      return "Basement";
+    case FloorId.ROOFTOP:
+      return "Rooftop";
+    default:
+      return "Unknown";
+  }
+}
 
-  if (agent.status === "unknown" || !latestSession) return "sleeping";
+/** Keys that the game loop consumes — prevent browser default for these. */
+const GAME_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "KeyW",
+  "KeyA",
+  "KeyS",
+  "KeyD",
+  "Space",
+  "Enter",
+  "Tab",
+  "Escape",
+]);
 
-  const ageMs =
-    latestSession.ageMs ?? Date.now() - (latestSession.updatedAt ?? 0);
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Activity mapping (same logic as V2)
+// ---------------------------------------------------------------------------
+
+function mapActivity(ageMs: number): AgentActivity {
   if (ageMs < 10_000) return "typing";
   if (ageMs < 30_000) return "thinking";
   if (ageMs < 300_000) return "idle";
   return "sleeping";
 }
 
-// ---------------------------------------------------------------------------
-// Task extraction
-// ---------------------------------------------------------------------------
-
-function extractCurrentTask(
-  agent: ApiAgent,
-  sessions: ApiSession[],
-): string | null {
-  const agentSessions = sessions.filter((s) =>
-    s.key.includes(`agent:${agent.id}:`),
-  );
-  const latestSession = agentSessions[0];
-  if (!latestSession) return null;
-
-  const activity = mapActivity(agent, sessions);
-  if (activity === "typing") return "Working...";
-  if (activity === "thinking") return "Thinking...";
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Build OfficeAgent[] from API data
-// ---------------------------------------------------------------------------
-
-function buildOfficeAgents(
-  agents: ApiAgent[],
-  sessions: ApiSession[],
-): OfficeAgent[] {
-  const result: OfficeAgent[] = [];
-
-  for (let i = 0; i < agents.length; i++) {
-    const agent = agents[i];
-    result.push({
-      id: agent.id,
-      name: agent.name,
-      emoji: agent.emoji,
-      status: agent.status,
-      activity: mapActivity(agent, sessions),
-      color: getAgentColor(agent.id, i),
-      currentTask: extractCurrentTask(agent, sessions),
-      model: agent.model,
-      totalTokens: agent.totalTokens,
-    });
-
-    // Sub-agents
-    if (agent.runtimeSubagents && agent.runtimeSubagents.length > 0) {
-      for (let j = 0; j < agent.runtimeSubagents.length; j++) {
-        const sub = agent.runtimeSubagents[j];
-        result.push({
-          id: `${agent.id}_sub_${j}`,
-          name: `${agent.name}-sub`,
-          emoji: agent.emoji,
-          status: sub.status === "active" ? "active" : "idle",
-          activity: sub.ageMs < 10_000 ? "typing" : "idle",
-          color: getAgentColor(agent.id, i),
-          currentTask: sub.status === "active" ? "Working..." : null,
-          model: sub.model,
-          totalTokens: sub.totalTokens,
-          isSubagent: true,
-          parentId: agent.id,
-        });
-      }
+function buildOfficeAgents(sessions: Record<string, unknown>[], agents: Record<string, unknown>[]): OfficeAgent[] {
+  const sessionMap = new Map<string, number>();
+  const now = Date.now();
+  for (const s of sessions) {
+    const agentId = String(s.agentId ?? s.agent_id ?? "");
+    const updated = s.updatedAt ?? s.updated_at ?? s.lastActivity ?? s.last_activity;
+    if (agentId && updated) {
+      const age = now - new Date(String(updated)).getTime();
+      const existing = sessionMap.get(agentId);
+      if (existing === undefined || age < existing) sessionMap.set(agentId, age);
     }
   }
 
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Polling interval
-// ---------------------------------------------------------------------------
-
-const POLL_MS = 5000;
-const FRAME_INTERVAL = 1000 / TARGET_FPS;
-
-// ---------------------------------------------------------------------------
-// Hover info type
-// ---------------------------------------------------------------------------
-
-interface HoverInfo {
-  agentId: string;
-  name: string;
-  emoji: string;
-  model?: string;
-  currentTask: string | null;
-  totalTokens?: number;
-  status: "active" | "idle" | "unknown";
-  screenX: number;
-  screenY: number;
+  return agents.map((a) => {
+    const id = String(a.id ?? "");
+    const ageMs = sessionMap.get(id) ?? Infinity;
+    const activity = mapActivity(ageMs);
+    return {
+      id,
+      name: String(a.name ?? "Agent"),
+      emoji: String(a.emoji ?? "🤖"),
+      status: (activity === "typing" || activity === "thinking" ? "active" : activity === "idle" ? "idle" : "unknown") as "active" | "idle" | "unknown",
+      activity,
+      currentTask: (a.currentTask as string) ?? (a.current_task as string) ?? null,
+      model: String(a.model ?? ""),
+      totalTokens: Number(a.totalTokens ?? a.total_tokens ?? 0),
+      isSubagent: Boolean(a.isSubagent ?? a.is_subagent ?? false),
+      parentId: a.parentId ? String(a.parentId) : a.parent_id ? String(a.parent_id) : undefined,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -192,61 +122,47 @@ interface HoverInfo {
 // ---------------------------------------------------------------------------
 
 export function PixelOfficeView() {
-  const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const stateManagerRef = useRef<OfficeStateManager | null>(null);
+  const stateRef = useRef<OfficeStateManager | null>(null);
   const rendererRef = useRef<PixelOfficeRenderer | null>(null);
-  const officeStateRef = useRef<OfficeState | null>(null);
+  const animFrameRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
+  const gameStateRef = useRef<GameState | null>(null);
+  const floorsRef = useRef<Map<FloorId, FloorData> | null>(null);
 
-  const [agents, setAgents] = useState<ApiAgent[]>([]);
-  const [sessions, setSessions] = useState<ApiSession[]>([]);
+  // React overlay state — updated periodically, not every frame
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
+  const [activeCount, setActiveCount] = useState(0);
+  const [currentFloor, setCurrentFloor] = useState("Ground Floor");
   const [fps, setFps] = useState(0);
 
-  // --- Data fetching ---
+  // ----- Data fetching (internal polling) ----------------------------------
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [agentsRes, sessionsRes] = await Promise.allSettled([
-        fetch("/api/agents", { cache: "no-store" }),
-        fetch("/api/sessions", { cache: "no-store" }),
-      ]);
-
-      if (agentsRes.status === "fulfilled" && agentsRes.value.ok) {
-        const data: { agents?: ApiAgent[] } = await agentsRes.value.json();
-        setAgents(data.agents ?? []);
+  useEffect(() => {
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const [agentsRes, sessionsRes] = await Promise.all([
+          fetch("/api/agents", { cache: "no-store" }),
+          fetch("/api/sessions", { cache: "no-store" }),
+        ]);
+        if (!mounted) return;
+        const agentsJson = agentsRes.ok ? await agentsRes.json() : { agents: [] };
+        const sessionsJson = sessionsRes.ok ? await sessionsRes.json() : { sessions: [] };
+        const agentList = Array.isArray(agentsJson) ? agentsJson : (agentsJson.agents ?? []);
+        const sessionList = Array.isArray(sessionsJson) ? sessionsJson : (sessionsJson.sessions ?? []);
+        const officeAgents = buildOfficeAgents(sessionList, agentList);
+        stateRef.current?.updateAgents(officeAgents);
+      } catch {
+        // silently retry next poll
       }
-
-      if (sessionsRes.status === "fulfilled" && sessionsRes.value.ok) {
-        const data: { sessions?: ApiSession[] } = await sessionsRes.value.json();
-        setSessions(data.sessions ?? []);
-      }
-    } catch {
-      // Office works even without data
-    }
+    };
+    poll();
+    const id = setInterval(poll, POLL_MS);
+    return () => { mounted = false; clearInterval(id); };
   }, []);
 
-  // Initial fetch
-  useEffect(() => {
-    queueMicrotask(() => void fetchData());
-  }, [fetchData]);
-
-  // Polling
-  useEffect(() => {
-    const pollId = window.setInterval(() => {
-      if (document.visibilityState === "visible") void fetchData();
-    }, POLL_MS);
-
-    const onFocus = () => void fetchData();
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      window.clearInterval(pollId);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [fetchData]);
-
-  // --- Engine lifecycle ---
+  // ----- Initialize engine + game loop -------------------------------------
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -254,31 +170,33 @@ export function PixelOfficeView() {
 
     const stateManager = new OfficeStateManager();
     const renderer = new PixelOfficeRenderer(canvas);
-    stateManagerRef.current = stateManager;
+    stateRef.current = stateManager;
     rendererRef.current = renderer;
 
-    let lastFrameTime = performance.now();
     let running = true;
-    let rafId: number;
     let frameCount = 0;
     let fpsTimer = 0;
 
-    const loop = (now: number): void => {
+    const loop = (timestamp: number): void => {
       if (!running) return;
-      rafId = requestAnimationFrame(loop);
+      animFrameRef.current = requestAnimationFrame(loop);
 
-      const rawDt = now - lastFrameTime;
+      const rawDt = timestamp - lastTimeRef.current;
       if (rawDt < FRAME_INTERVAL) return;
 
-      lastFrameTime = now - (rawDt % FRAME_INTERVAL);
+      // Align to frame boundary to avoid drift
+      lastTimeRef.current = timestamp - (rawDt % FRAME_INTERVAL);
       const dt = Math.min(rawDt / 1000, 0.1);
 
       stateManager.update(dt);
-      const state = stateManager.getState();
-      officeStateRef.current = state;
-      renderer.render(state, dt);
+      const gameState: GameState = stateManager.getState();
+      const floors: Map<FloorId, FloorData> = stateManager.getFloors();
+      gameStateRef.current = gameState;
+      floorsRef.current = floors;
 
-      // FPS tracking
+      renderer.render(gameState, floors, dt);
+
+      // FPS tracking (once per second)
       frameCount++;
       fpsTimer += rawDt;
       if (fpsTimer >= 1000) {
@@ -286,169 +204,226 @@ export function PixelOfficeView() {
         frameCount = 0;
         fpsTimer = 0;
       }
+
+      // Update React overlay state every ~30 frames to avoid excessive re-renders
+      if (gameState.frame % 30 === 0) {
+        setActiveCount(
+          gameState.characters.filter(
+            (c: Character) =>
+              c.state === "type" || c.state === "think",
+          ).length,
+        );
+        setCurrentFloor(getFloorName(gameState.currentFloor));
+      }
     };
 
-    rafId = requestAnimationFrame(loop);
-
-    const handleResize = () => renderer.resize();
-    window.addEventListener("resize", handleResize);
+    lastTimeRef.current = performance.now();
+    animFrameRef.current = requestAnimationFrame(loop);
 
     return () => {
       running = false;
-      cancelAnimationFrame(rafId);
-      stateManagerRef.current = null;
+      cancelAnimationFrame(animFrameRef.current);
+      stateRef.current = null;
       rendererRef.current = null;
-      window.removeEventListener("resize", handleResize);
+      gameStateRef.current = null;
+      floorsRef.current = null;
     };
   }, []);
 
-  // --- Sync agents into state manager ---
+  // ----- Keyboard events ---------------------------------------------------
 
   useEffect(() => {
-    const officeAgents = buildOfficeAgents(agents, sessions);
-    stateManagerRef.current?.updateAgents(officeAgents);
-  }, [agents, sessions]);
-
-  // --- Mouse handlers ---
-
-  const handleCanvasClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const renderer = rendererRef.current;
-      const state = officeStateRef.current;
-      if (!renderer || !state) return;
-
-      const entity = renderer.getEntityAt(e.clientX, e.clientY, state);
-      if (entity && entity.type === "agent") {
-        router.push("/?section=sessions");
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (GAME_KEYS.has(e.code)) {
+        e.preventDefault();
       }
-    },
-    [router],
-  );
+      stateRef.current?.handleKeyDown(e.code);
+    };
 
-  const handleCanvasMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const handleKeyUp = (e: KeyboardEvent): void => {
+      stateRef.current?.handleKeyUp(e.code);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
+  // ----- Canvas resize -----------------------------------------------------
+
+  useEffect(() => {
+    const handleResize = (): void => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const parent = canvas.parentElement;
+      if (!parent) return;
+      const rect = parent.getBoundingClientRect();
+      rendererRef.current?.resize(rect.width, rect.height);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // ----- Hit-testing helper ------------------------------------------------
+
+  const hitTest = useCallback(
+    (
+      e: React.MouseEvent,
+    ): { type: "character"; character: Character } | { type: "cat" } | null => {
+      const canvas = canvasRef.current;
       const renderer = rendererRef.current;
-      const state = officeStateRef.current;
-      if (!renderer || !state) return;
+      const gameState = gameStateRef.current;
+      const floors = floorsRef.current;
+      if (!canvas || !renderer || !gameState || !floors) return null;
 
-      const entity = renderer.getEntityAt(e.clientX, e.clientY, state);
-      if (entity && entity.type === "agent") {
-        const char = state.characters.find((c) => c.id === entity.id);
-        if (char) {
-          setHoverInfo({
-            agentId: char.id,
-            name: char.name,
-            emoji: char.emoji,
-            model: char.model,
-            currentTask: char.currentTask,
-            totalTokens: char.totalTokens,
-            status: char.status,
-            screenX: e.clientX,
-            screenY: e.clientY,
-          });
-          return;
-        }
-      }
-      setHoverInfo(null);
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      return renderer.getEntityAt(x, y, gameState, floors);
     },
     [],
   );
 
-  const handleCanvasMouseLeave = useCallback(() => {
+  // ----- Mouse handlers ----------------------------------------------------
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent): void => {
+      const hit = hitTest(e);
+      if (hit?.type === "character") {
+        const char = hit.character;
+        setHoverInfo({
+          name: char.name,
+          emoji: char.emoji,
+          model: char.model,
+          task: char.currentTask,
+          tokens: char.totalTokens,
+          status: char.status,
+          x: e.clientX,
+          y: e.clientY,
+        });
+      } else {
+        setHoverInfo(null);
+      }
+    },
+    [hitTest],
+  );
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent): void => {
+      const hit = hitTest(e);
+      if (hit?.type === "character") {
+        stateRef.current?.handleClick(hit.character, false);
+      } else if (hit?.type === "cat") {
+        stateRef.current?.handleClick(null, true);
+      }
+    },
+    [hitTest],
+  );
+
+  const handleMouseLeave = useCallback((): void => {
     setHoverInfo(null);
   }, []);
 
-  // --- Active agent count ---
-
-  const activeCount = agents.filter((a) => a.status !== "unknown").length;
-
-  // --- Render ---
+  // ----- Render ------------------------------------------------------------
 
   return (
     <SectionLayout>
       <SectionHeader
         title="Pixel Office"
-        description="Your AI team at work"
+        description="Pokemon Red Edition"
         actions={
           <span className="flex items-center gap-1.5 rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-muted-foreground">
             <Users className="h-3 w-3" />
-            {activeCount} agent{activeCount !== 1 ? "s" : ""} online
+            {activeCount} active
           </span>
         }
       />
       <SectionBody width="full" padding="none">
-        <div className="relative h-full w-full bg-[#0D0D1A]">
+        <div className="relative h-full w-full overflow-hidden bg-black">
           <canvas
             ref={canvasRef}
-            className="h-full w-full cursor-pointer"
+            className="block h-full w-full cursor-pointer"
             style={{ imageRendering: "pixelated" }}
-            onClick={handleCanvasClick}
-            onMouseMove={handleCanvasMouseMove}
-            onMouseLeave={handleCanvasMouseLeave}
+            onMouseMove={handleMouseMove}
+            onClick={handleClick}
+            onMouseLeave={handleMouseLeave}
           />
 
+          {/* Floor indicator */}
+          <div className="absolute left-2 top-2 rounded bg-black/50 px-2 py-1 font-mono text-xs text-white/70">
+            {currentFloor}
+          </div>
+
+          {/* Active agents count */}
+          <div className="absolute right-2 top-2 rounded bg-black/50 px-2 py-1 font-mono text-xs text-white/70">
+            {activeCount} active
+          </div>
+
           {/* FPS counter */}
-          <div className="absolute bottom-4 left-4 rounded bg-black/50 px-2 py-1 text-[10px] font-mono text-muted-foreground/60">
+          <div className="absolute bottom-2 left-2 font-mono text-xs text-white/40">
             {fps} FPS
           </div>
 
-          {/* Legend overlay */}
-          <div className="absolute bottom-4 right-4 rounded-lg bg-black/50 px-3 py-2 text-xs text-muted-foreground backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-green-400" /> Working
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-yellow-400" /> Thinking
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-gray-400" /> Idle
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-gray-600" /> Offline
-              </span>
+          {/* Controls hint */}
+          <div className="absolute bottom-2 right-2 font-mono text-xs text-white/40">
+            WASD/Arrows: Move &middot; Space: Talk &middot; Tab: Spectate
+          </div>
+
+          {/* Legend */}
+          <div className="absolute bottom-8 right-2 flex flex-col gap-1 font-mono text-xs text-white/60">
+            <div className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+              Active
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-yellow-500" />
+              Thinking
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-gray-500" />
+              Idle
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-gray-800" />
+              Sleeping
             </div>
           </div>
 
           {/* Hover info card */}
           {hoverInfo && (
             <div
-              className="pointer-events-none absolute z-50 rounded-lg border border-foreground/10 bg-background/90 p-3 text-xs shadow-lg backdrop-blur-sm"
-              style={{
-                left: hoverInfo.screenX + 16,
-                top: hoverInfo.screenY - 80,
-              }}
+              className="pointer-events-none absolute z-10 rounded-lg border border-gray-700 bg-gray-900/95 px-3 py-2 font-mono text-xs text-white"
+              style={{ left: hoverInfo.x + 12, top: hoverInfo.y - 10 }}
             >
-              <div className="mb-1 flex items-center gap-1.5 font-semibold">
-                <span>{hoverInfo.emoji}</span>
-                <span>{hoverInfo.name}</span>
+              <div className="font-bold">
+                {hoverInfo.emoji} {hoverInfo.name}
               </div>
               {hoverInfo.model && (
-                <div className="text-muted-foreground">{hoverInfo.model}</div>
+                <div className="text-gray-400">{hoverInfo.model}</div>
               )}
-              {hoverInfo.currentTask && (
-                <div className="mt-1 text-muted-foreground">
-                  {hoverInfo.currentTask}
+              {hoverInfo.task && (
+                <div className="max-w-48 truncate text-green-400">
+                  {hoverInfo.task}
                 </div>
               )}
-              {hoverInfo.totalTokens !== undefined && (
-                <div className="mt-1 text-muted-foreground">
-                  {hoverInfo.totalTokens.toLocaleString()} tokens
+              {hoverInfo.tokens > 0 && (
+                <div className="text-yellow-400">
+                  {(hoverInfo.tokens / 1000).toFixed(1)}K tokens
                 </div>
               )}
-              <div className="mt-1 flex items-center gap-1">
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    hoverInfo.status === "active"
-                      ? "bg-green-400"
-                      : hoverInfo.status === "idle"
-                        ? "bg-yellow-400"
-                        : "bg-gray-500"
-                  }`}
-                />
-                <span className="capitalize text-muted-foreground">
-                  {hoverInfo.status}
-                </span>
+              <div
+                className={
+                  hoverInfo.status === "active"
+                    ? "text-green-500"
+                    : "text-gray-500"
+                }
+              >
+                {hoverInfo.status}
               </div>
             </div>
           )}

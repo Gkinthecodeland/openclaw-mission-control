@@ -1,280 +1,569 @@
 // ---------------------------------------------------------------------------
-// Pixel Office V2 — Canvas Renderer
+// Pixel Office V3 — Pokemon Red Edition — Canvas Renderer
+// ---------------------------------------------------------------------------
+// The main rendering engine. Draws the entire game world to a <canvas> each
+// frame. Handles camera, tile rendering, z-sorted entities, effects overlays,
+// speech bubbles, and screen transitions.
 // ---------------------------------------------------------------------------
 
 import type {
-  OfficeState,
-  SpriteData,
+  GameState,
+  FloorData,
   Character,
   Cat,
-  Particle,
-  Furniture,
-  ServerLed,
-  MonitorState,
+  FurnitureInstance,
+  SpriteData,
+  EnvironmentState,
   RenderEntity,
-  TileInfo,
 } from "./types";
-import { TILE_SIZE, ZOOM, GRID_COLS, GRID_ROWS, COLORS } from "./types";
-import { buildTileMap } from "./tilemap";
-import { getWindowColors, getClockAngles, formatClockTime, getWindowRect } from "./effects";
-import { CAT_SPRITES } from "./sprites";
+
+import {
+  TileType,
+  FloorId,
+  Direction,
+  TILE_SIZE,
+  ZOOM,
+  FLOOR_COLS,
+  FLOOR_ROWS,
+  FLOOR_WIDTH,
+  FLOOR_HEIGHT,
+  CAMERA_LERP,
+  GBC,
+} from "./types";
+
+import {
+  renderNightOverlay,
+  renderParticle,
+  renderServerLed,
+  renderMonitorScreen,
+  renderTransition,
+  getSkyColor,
+  getWindowColor,
+} from "./effects";
+
+import { renderDialog } from "./dialog";
 
 // ---------------------------------------------------------------------------
-// Renderer
+// Constants
+// ---------------------------------------------------------------------------
+
+/** How far beyond the visible area to render tiles (in tiles) */
+const CULL_PAD = 2;
+
+/** Skyline building definitions for rooftop view */
+const SKYLINE_BUILDINGS: Array<{
+  x: number;
+  w: number;
+  h: number;
+  shade: string;
+}> = [
+  { x: 20, w: 30, h: 60, shade: GBC.skylineD },
+  { x: 60, w: 20, h: 45, shade: GBC.skylineM },
+  { x: 90, w: 40, h: 80, shade: GBC.skylineD },
+  { x: 140, w: 25, h: 50, shade: GBC.skylineL },
+  { x: 175, w: 35, h: 70, shade: GBC.skylineD },
+  { x: 220, w: 20, h: 40, shade: GBC.skylineM },
+  { x: 250, w: 45, h: 90, shade: GBC.skylineD },
+  { x: 305, w: 30, h: 55, shade: GBC.skylineL },
+  { x: 345, w: 25, h: 65, shade: GBC.skylineM },
+  { x: 380, w: 40, h: 75, shade: GBC.skylineD },
+  { x: 430, w: 20, h: 35, shade: GBC.skylineL },
+];
+
+/** Character sprite size in game pixels */
+const CHAR_SIZE = 16;
+
+/** Cat sprite size in game pixels */
+const CAT_SIZE = 8;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function directionKey(d: Direction): "down" | "up" | "left" | "right" {
+  switch (d) {
+    case Direction.DOWN:
+      return "down";
+    case Direction.UP:
+      return "up";
+    case Direction.LEFT:
+      return "left";
+    case Direction.RIGHT:
+      return "right";
+  }
+}
+
+/** Clamp a value between min and max */
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+// ---------------------------------------------------------------------------
+// Renderer Class
 // ---------------------------------------------------------------------------
 
 export class PixelOfficeRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private bgCanvas: HTMLCanvasElement;
-  private bgCtx: CanvasRenderingContext2D;
-  private tileMap: TileInfo[][];
-  private bgDirty = true;
-  private canvasWidth = 0;
-  private canvasHeight = 0;
+  private width = 0;
+  private height = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Failed to get 2d context");
+    if (!ctx) {
+      throw new Error("PixelOfficeRenderer: failed to get 2d context");
+    }
     this.ctx = ctx;
-
-    this.bgCanvas = document.createElement("canvas");
-    const bgCtx = this.bgCanvas.getContext("2d");
-    if (!bgCtx) throw new Error("Failed to get offscreen 2d context");
-    this.bgCtx = bgCtx;
-
-    this.tileMap = buildTileMap();
-    this.resize();
+    this.ctx.imageSmoothingEnabled = false;
   }
 
-  resize(): void {
-    const dpr = window.devicePixelRatio || 1;
-    const rect = this.canvas.getBoundingClientRect();
-    const w = Math.floor(rect.width);
-    const h = Math.floor(rect.height);
+  // -----------------------------------------------------------------------
+  // Resize
+  // -----------------------------------------------------------------------
 
-    this.canvas.width = w * dpr;
-    this.canvas.height = h * dpr;
+  resize(width: number, height: number): void {
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = Math.floor(width * dpr);
+    this.canvas.height = Math.floor(height * dpr);
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
+
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
 
-    this.canvasWidth = w;
-    this.canvasHeight = h;
-
-    // Background canvas matches the pixel art size
-    const bgW = GRID_COLS * TILE_SIZE;
-    const bgH = GRID_ROWS * TILE_SIZE;
-    this.bgCanvas.width = bgW;
-    this.bgCanvas.height = bgH;
-    const freshBgCtx = this.bgCanvas.getContext("2d");
-    if (freshBgCtx) {
-      this.bgCtx = freshBgCtx;
-      this.bgCtx.imageSmoothingEnabled = false;
-    }
-
-    this.bgDirty = true;
-  }
-
-  getEntityAt(
-    clientX: number,
-    clientY: number,
-    state: OfficeState,
-  ): { type: "agent" | "cat"; id: string } | null {
-    const rect = this.canvas.getBoundingClientRect();
-    const cssX = clientX - rect.left;
-    const cssY = clientY - rect.top;
-
-    // Convert to pixel art coordinates
-    const officeW = GRID_COLS * TILE_SIZE * ZOOM;
-    const officeH = GRID_ROWS * TILE_SIZE * ZOOM;
-    const offsetX = Math.max(0, (this.canvasWidth - officeW) / 2);
-    const offsetY = Math.max(0, (this.canvasHeight - officeH) / 2);
-
-    const px = (cssX - offsetX) / ZOOM;
-    const py = (cssY - offsetY) / ZOOM;
-
-    // Check characters (reverse order for top-most first)
-    for (let i = state.characters.length - 1; i >= 0; i--) {
-      const char = state.characters[i];
-      if (px >= char.x && px < char.x + 16 && py >= char.y && py < char.y + 16) {
-        return { type: "agent", id: char.id };
-      }
-    }
-
-    // Check cat
-    const cat = state.cat;
-    if (px >= cat.x && px < cat.x + 8 && py >= cat.y && py < cat.y + 8) {
-      return { type: "cat", id: "cat" };
-    }
-
-    return null;
+    this.width = width;
+    this.height = height;
   }
 
   // -----------------------------------------------------------------------
-  // Main render
+  // Main Render
   // -----------------------------------------------------------------------
 
-  render(state: OfficeState, _dt: number): void {
+  render(
+    state: GameState,
+    floors: Map<FloorId, FloorData>,
+    dt: number,
+  ): void {
     const ctx = this.ctx;
-    const officeW = GRID_COLS * TILE_SIZE;
-    const officeH = GRID_ROWS * TILE_SIZE;
+    const w = this.width;
+    const h = this.height;
+    const zoom = ZOOM;
 
-    // Draw background (cached)
-    if (this.bgDirty) {
-      this.drawBackground(this.bgCtx, state);
-      this.bgDirty = false;
-    }
+    const floor = floors.get(state.currentFloor);
+    if (!floor) return;
 
-    // Clear
-    ctx.fillStyle = COLORS.BG;
-    ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+    // --- Update camera ---
+    this.updateCamera(state, zoom);
 
-    // Center the office in the canvas
-    const scaledW = officeW * ZOOM;
-    const scaledH = officeH * ZOOM;
-    const offsetX = Math.max(0, (this.canvasWidth - scaledW) / 2);
-    const offsetY = Math.max(0, (this.canvasHeight - scaledH) / 2);
+    const camX = state.camera.x;
+    const camY = state.camera.y;
 
-    ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(ZOOM, ZOOM);
-    ctx.imageSmoothingEnabled = false;
-
-    // Draw cached background
-    ctx.drawImage(this.bgCanvas, 0, 0);
-
-    // Draw window (animated, not cached)
-    this.drawWindow(ctx, state);
-
-    // Draw clock
-    this.drawClock(ctx, state);
-
-    // Collect z-sortable entities
-    const entities: RenderEntity[] = [];
-
-    // Furniture entities
-    for (const f of state.furniture) {
-      const fRef = f;
-      entities.push({
-        type: "furniture",
-        zSortY: f.zSortY,
-        id: `furniture_${f.type}_${f.col}_${f.row}`,
-        render: (c) => this.drawSprite(c, fRef.sprite, fRef.col * TILE_SIZE, fRef.row * TILE_SIZE),
-      });
-    }
-
-    // Character entities
-    for (const char of state.characters) {
-      const charRef = char;
-      entities.push({
-        type: "character",
-        zSortY: char.y + 16,
-        id: char.id,
-        render: (c, frame) => this.drawCharacter(c, charRef, frame),
-      });
-    }
-
-    // Cat entity
-    entities.push({
-      type: "cat",
-      zSortY: state.cat.y + 8,
-      id: "cat",
-      render: (c, frame) => this.drawCat(c, state.cat, frame),
-    });
-
-    // Z-sort (lower y = further back = drawn first)
-    entities.sort((a, b) => a.zSortY - b.zSortY);
-
-    // Draw all entities
-    for (const entity of entities) {
-      entity.render(ctx, state.frame);
-    }
-
-    // Draw monitor screens (on top of desk/monitor furniture)
-    this.drawMonitorScreens(ctx, state);
-
-    // Draw server LEDs
-    this.drawServerLeds(ctx, state.serverLeds);
-
-    // Draw particles
-    this.drawParticles(ctx, state.particles, state.frame);
-
-    // Draw speech/thought bubbles
-    for (const char of state.characters) {
-      this.drawCharacterOverlay(ctx, char, state.frame);
-    }
-
-    // Draw name labels
-    for (const char of state.characters) {
-      this.drawNameLabel(ctx, char);
-    }
-
-    // Night overlay
-    if (state.environment.nightOverlayAlpha > 0) {
-      ctx.fillStyle = `rgba(0,0,20,${state.environment.nightOverlayAlpha})`;
-      ctx.fillRect(0, 0, officeW, officeH);
-    }
-
-    ctx.restore();
-
-    // Draw Athens time overlay (top-right, outside the scaled area)
-    this.drawTimeOverlay(ctx, state, offsetX, scaledW);
-  }
-
-  // -----------------------------------------------------------------------
-  // Background (static, cached)
-  // -----------------------------------------------------------------------
-
-  private drawBackground(ctx: CanvasRenderingContext2D, state: OfficeState): void {
-    const w = GRID_COLS * TILE_SIZE;
-    const h = GRID_ROWS * TILE_SIZE;
-
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = COLORS.BG;
+    // --- 1. Clear canvas ---
+    ctx.fillStyle = GBC.black;
     ctx.fillRect(0, 0, w, h);
 
-    // Draw floor tiles
-    for (let r = 0; r < GRID_ROWS; r++) {
-      for (let c = 0; c < GRID_COLS; c++) {
-        const tile = this.tileMap[r][c];
-        const x = c * TILE_SIZE;
-        const y = r * TILE_SIZE;
+    // --- Floor-specific background ---
+    if (state.currentFloor === FloorId.ROOFTOP) {
+      this.renderRooftopBackground(state.environment, camX, camY);
+    }
 
-        switch (tile.type) {
-          case "floor_work":
-            ctx.fillStyle = tile.variant === 0 ? COLORS.FLOOR_WORK_A : COLORS.FLOOR_WORK_B;
-            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+    // --- Store environment for window rendering ---
+    this.windowEnv = state.environment;
+
+    // --- 2. Render floor tiles ---
+    this.renderFloorTiles(floor, camX, camY);
+
+    // --- 3. Render wall base layer ---
+    this.renderWalls(floor, camX, camY);
+
+    // --- 4. Collect all renderables for z-sorting ---
+    const entities: RenderEntity[] = [];
+
+    // Furniture
+    for (const f of floor.furniture) {
+      const fRef = f;
+      entities.push({
+        kind: "furniture",
+        zSortY: f.zSortY,
+        id: `f_${f.kind}_${f.col}_${f.row}`,
+        draw: (c, cx, cy) => this.renderFurniture(fRef, cx, cy),
+      });
+    }
+
+    // Characters on current floor
+    for (const char of state.characters) {
+      if (char.floor !== state.currentFloor) continue;
+      const charRef = char;
+      entities.push({
+        kind: "character",
+        zSortY: char.y + CHAR_SIZE,
+        id: char.id,
+        draw: (c, cx, cy) => this.renderCharacter(charRef, cx, cy),
+      });
+    }
+
+    // Cat (if on current floor)
+    if (state.cat.floor === state.currentFloor) {
+      entities.push({
+        kind: "cat",
+        zSortY: state.cat.y + CAT_SIZE,
+        id: "cat",
+        draw: (c, cx, cy) => this.renderCat(state.cat, cx, cy),
+      });
+    }
+
+    // --- 5. Z-sort: lower y drawn first (further from viewer) ---
+    entities.sort((a, b) => a.zSortY - b.zSortY);
+
+    // --- 6. Render each entity ---
+    for (const entity of entities) {
+      entity.draw(ctx, camX, camY);
+    }
+
+    // --- 7. Render wall top overhang layer ---
+    this.renderWallTops(floor, camX, camY);
+
+    // --- 8. Render monitor screens ---
+    this.renderMonitorScreens(state, floor, camX, camY);
+
+    // --- 9. Render server LEDs (basement) ---
+    if (state.currentFloor === FloorId.BASEMENT) {
+      for (const led of state.serverLeds) {
+        renderServerLed(ctx, led, camX, camY, zoom);
+      }
+    }
+
+    // --- 10. Render particles ---
+    for (const p of state.particles) {
+      if (p.floor === state.currentFloor) {
+        renderParticle(ctx, p, camX, camY, zoom);
+      }
+    }
+
+    // --- 11. Speech bubbles + name labels ---
+    for (const char of state.characters) {
+      if (char.floor !== state.currentFloor) continue;
+
+      // Activity indicator bubble
+      const bubbleText = this.getActivityBubbleText(char, state.frame);
+      if (bubbleText) {
+        this.renderSpeechBubble(
+          char.x + CHAR_SIZE / 2,
+          char.y,
+          bubbleText,
+          camX,
+          camY,
+        );
+      }
+
+      // Name label
+      this.renderNameLabel(
+        char.name,
+        char.emoji,
+        char.x,
+        char.y,
+        camX,
+        camY,
+      );
+    }
+
+    // Cat speech bubble
+    if (
+      state.cat.floor === state.currentFloor &&
+      state.cat.speechTimer > 0
+    ) {
+      this.renderSpeechBubble(
+        state.cat.x + CAT_SIZE / 2,
+        state.cat.y,
+        state.cat.speechBubble,
+        camX,
+        camY,
+      );
+    }
+
+    // --- 12. UI layer: dialog box ---
+    renderDialog(ctx, state.dialog, w, h, state.frame);
+
+    // --- 13. Night overlay ---
+    renderNightOverlay(ctx, state.environment.nightAlpha, w, h);
+
+    // --- 14. Weather effects (rain on rooftop) ---
+    if (
+      state.currentFloor === FloorId.ROOFTOP &&
+      state.environment.weather === "rain"
+    ) {
+      this.renderRainOverlay(state, camX, camY);
+    }
+
+    // --- 15. Screen transition (fade to/from black) ---
+    renderTransition(ctx, state.transition, w, h);
+  }
+
+  // -----------------------------------------------------------------------
+  // Camera
+  // -----------------------------------------------------------------------
+
+  private updateCamera(state: GameState, zoom: number): void {
+    const cam = state.camera;
+
+    // Determine which character the camera should follow
+    let targetChar: Character | undefined;
+    if (cam.spectatorMode && cam.spectatorTargetId) {
+      targetChar = state.characters.find(
+        (c) => c.id === cam.spectatorTargetId,
+      );
+    }
+    if (!targetChar) {
+      targetChar = state.player;
+    }
+
+    // Target: center the character in the viewport
+    const viewW = this.width / zoom;
+    const viewH = this.height / zoom;
+
+    cam.targetX = targetChar.x + CHAR_SIZE / 2 - viewW / 2;
+    cam.targetY = targetChar.y + CHAR_SIZE / 2 - viewH / 2;
+
+    // Clamp to map bounds
+    const maxX = FLOOR_WIDTH - viewW;
+    const maxY = FLOOR_HEIGHT - viewH;
+    cam.targetX = clamp(cam.targetX, 0, Math.max(0, maxX));
+    cam.targetY = clamp(cam.targetY, 0, Math.max(0, maxY));
+
+    // Smooth follow with lerp
+    cam.x += (cam.targetX - cam.x) * CAMERA_LERP;
+    cam.y += (cam.targetY - cam.y) * CAMERA_LERP;
+
+    // Clamp camera position too
+    cam.x = clamp(cam.x, 0, Math.max(0, maxX));
+    cam.y = clamp(cam.y, 0, Math.max(0, maxY));
+  }
+
+  // -----------------------------------------------------------------------
+  // Floor Tiles
+  // -----------------------------------------------------------------------
+
+  private renderFloorTiles(
+    floor: FloorData,
+    camX: number,
+    camY: number,
+  ): void {
+    const ctx = this.ctx;
+    const zoom = ZOOM;
+    const tileScreen = TILE_SIZE * zoom;
+
+    // Calculate visible tile range (camera culling)
+    const startCol = Math.max(0, Math.floor(camX / TILE_SIZE) - CULL_PAD);
+    const startRow = Math.max(0, Math.floor(camY / TILE_SIZE) - CULL_PAD);
+    const endCol = Math.min(
+      FLOOR_COLS,
+      Math.ceil((camX + this.width / zoom) / TILE_SIZE) + CULL_PAD,
+    );
+    const endRow = Math.min(
+      FLOOR_ROWS,
+      Math.ceil((camY + this.height / zoom) / TILE_SIZE) + CULL_PAD,
+    );
+
+    for (let row = startRow; row < endRow; row++) {
+      const tileRow = floor.tiles[row];
+      if (!tileRow) continue;
+
+      for (let col = startCol; col < endCol; col++) {
+        const tile = tileRow[col];
+        if (tile === undefined || tile === TileType.VOID) continue;
+
+        // Skip wall types here — rendered separately
+        if (
+          tile === TileType.WALL ||
+          tile === TileType.WALL_TOP ||
+          tile === TileType.WALL_ACCENT
+        ) {
+          continue;
+        }
+
+        const sx = Math.floor((col * TILE_SIZE - camX) * zoom);
+        const sy = Math.floor((row * TILE_SIZE - camY) * zoom);
+
+        // Checkerboard helper
+        const checker = (col + row) % 2 === 0;
+
+        switch (tile) {
+          case TileType.FLOOR:
+          case TileType.FLOOR_ALT:
+            ctx.fillStyle = checker ? GBC.floorLight : GBC.floorDark;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
             break;
-          case "floor_kitchen":
-            ctx.fillStyle = tile.variant === 0 ? COLORS.FLOOR_KITCHEN_A : COLORS.FLOOR_KITCHEN_B;
-            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+          case TileType.CARPET:
+            ctx.fillStyle = GBC.carpetRed;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
             break;
-          case "floor_server":
-            ctx.fillStyle = tile.variant === 0 ? COLORS.FLOOR_SERVER_A : COLORS.FLOOR_SERVER_B;
-            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+          case TileType.CARPET_ALT:
+            ctx.fillStyle = GBC.carpetLight;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
             break;
-          case "floor_lounge":
-            ctx.fillStyle = tile.variant === 0 ? COLORS.FLOOR_LOUNGE_A : COLORS.FLOOR_LOUNGE_B;
-            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+          case TileType.METAL_FLOOR:
+            ctx.fillStyle = GBC.metalDark;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
             break;
-          case "door":
-            ctx.fillStyle = COLORS.FLOOR_WORK_A;
-            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+          case TileType.METAL_ALT:
+            ctx.fillStyle = GBC.metalVDark;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
             break;
-          case "wall":
-            ctx.fillStyle = COLORS.WALL;
-            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-            // Accent line on bottom edge of top walls, right edge of left walls
-            if (r === 0 || (r > 0 && this.tileMap[r - 1][c].type !== "wall")) {
-              ctx.fillStyle = COLORS.WALL_ACCENT;
-              ctx.fillRect(x, y + TILE_SIZE - 2, TILE_SIZE, 2);
+
+          case TileType.WOOD_FLOOR:
+            ctx.fillStyle = GBC.woodLight;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Wood grain lines
+            ctx.fillStyle = GBC.woodMed;
+            ctx.fillRect(sx, sy + Math.floor(tileScreen * 0.3), tileScreen, zoom);
+            ctx.fillRect(sx, sy + Math.floor(tileScreen * 0.7), tileScreen, zoom);
+            break;
+
+          case TileType.GRASS:
+          case TileType.GRASS_ALT:
+            ctx.fillStyle = checker ? GBC.plantMed : GBC.plantLight;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            break;
+
+          case TileType.RAILING: {
+            // Base floor
+            ctx.fillStyle = GBC.metalLight;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Horizontal rail lines
+            ctx.fillStyle = GBC.metalDark;
+            ctx.fillRect(sx, sy + zoom, tileScreen, zoom);
+            ctx.fillRect(sx, sy + tileScreen - zoom * 2, tileScreen, zoom);
+            // Vertical post in center
+            ctx.fillRect(
+              sx + Math.floor(tileScreen / 2) - zoom,
+              sy,
+              zoom,
+              tileScreen,
+            );
+            break;
+          }
+
+          case TileType.WELCOME_MAT: {
+            ctx.fillStyle = GBC.carpetRed;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Pattern: lighter center stripe
+            ctx.fillStyle = GBC.carpetLight;
+            ctx.fillRect(
+              sx + zoom * 2,
+              sy + zoom * 2,
+              tileScreen - zoom * 4,
+              tileScreen - zoom * 4,
+            );
+            // Border dots
+            ctx.fillStyle = GBC.yellow;
+            ctx.fillRect(sx + zoom, sy + zoom, zoom, zoom);
+            ctx.fillRect(sx + tileScreen - zoom * 2, sy + zoom, zoom, zoom);
+            ctx.fillRect(
+              sx + zoom,
+              sy + tileScreen - zoom * 2,
+              zoom,
+              zoom,
+            );
+            ctx.fillRect(
+              sx + tileScreen - zoom * 2,
+              sy + tileScreen - zoom * 2,
+              zoom,
+              zoom,
+            );
+            break;
+          }
+
+          case TileType.CABLE_FLOOR: {
+            ctx.fillStyle = GBC.metalDark;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Cable lines (lighter)
+            ctx.fillStyle = GBC.metalMed;
+            const cableY1 = sy + Math.floor(tileScreen * 0.25);
+            const cableY2 = sy + Math.floor(tileScreen * 0.65);
+            ctx.fillRect(sx, cableY1, tileScreen, zoom);
+            ctx.fillRect(sx, cableY2, tileScreen, zoom);
+            break;
+          }
+
+          case TileType.WINDOW:
+            // Rendered in wall pass — skip here
+            break;
+
+          case TileType.STAIRS_UP: {
+            ctx.fillStyle = GBC.woodMed;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Step lines
+            ctx.fillStyle = GBC.woodDark;
+            for (let s = 0; s < 4; s++) {
+              const stepY = sy + s * Math.floor(tileScreen / 4);
+              ctx.fillRect(sx, stepY, tileScreen, zoom);
+            }
+            // Up arrow indicator
+            this.renderArrowIndicator(
+              ctx,
+              sx + Math.floor(tileScreen / 2),
+              sy + Math.floor(tileScreen / 2),
+              "up",
+            );
+            break;
+          }
+
+          case TileType.STAIRS_DOWN: {
+            ctx.fillStyle = GBC.woodMed;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Step lines
+            ctx.fillStyle = GBC.woodDark;
+            for (let s = 0; s < 4; s++) {
+              const stepY = sy + s * Math.floor(tileScreen / 4);
+              ctx.fillRect(sx, stepY, tileScreen, zoom);
+            }
+            // Down arrow indicator
+            this.renderArrowIndicator(
+              ctx,
+              sx + Math.floor(tileScreen / 2),
+              sy + Math.floor(tileScreen / 2),
+              "down",
+            );
+            break;
+          }
+
+          case TileType.PATH:
+            ctx.fillStyle = GBC.cream;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Stone path edge marks
+            ctx.fillStyle = GBC.gray;
+            if (checker) {
+              ctx.fillRect(sx, sy, zoom, zoom);
+              ctx.fillRect(
+                sx + tileScreen - zoom,
+                sy + tileScreen - zoom,
+                zoom,
+                zoom,
+              );
             }
             break;
-          case "window":
-            // Will be drawn dynamically
-            ctx.fillStyle = COLORS.WALL;
-            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+          case TileType.DOOR:
+            ctx.fillStyle = GBC.woodLight;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Door frame
+            ctx.fillStyle = GBC.woodDark;
+            ctx.fillRect(sx, sy, zoom, tileScreen);
+            ctx.fillRect(sx + tileScreen - zoom, sy, zoom, tileScreen);
+            ctx.fillRect(sx, sy, tileScreen, zoom);
+            // Door handle
+            ctx.fillStyle = GBC.metalLight;
+            ctx.fillRect(
+              sx + tileScreen - zoom * 4,
+              sy + Math.floor(tileScreen / 2),
+              zoom,
+              zoom * 2,
+            );
             break;
         }
       }
@@ -282,139 +571,215 @@ export class PixelOfficeRenderer {
   }
 
   // -----------------------------------------------------------------------
-  // Window (day/night cycle + rain)
+  // Wall Rendering (base layer — below entities)
   // -----------------------------------------------------------------------
 
-  private drawWindow(ctx: CanvasRenderingContext2D, state: OfficeState): void {
-    const win = getWindowRect();
-    const colors = getWindowColors(state.environment.timeOfDay);
+  private renderWalls(
+    floor: FloorData,
+    camX: number,
+    camY: number,
+  ): void {
+    const ctx = this.ctx;
+    const zoom = ZOOM;
+    const tileScreen = TILE_SIZE * zoom;
 
-    // Window frame
-    ctx.fillStyle = COLORS.WALL_ACCENT;
-    ctx.fillRect(win.x - 1, win.y, win.w + 2, win.h);
+    const startCol = Math.max(0, Math.floor(camX / TILE_SIZE) - CULL_PAD);
+    const startRow = Math.max(0, Math.floor(camY / TILE_SIZE) - CULL_PAD);
+    const endCol = Math.min(
+      FLOOR_COLS,
+      Math.ceil((camX + this.width / zoom) / TILE_SIZE) + CULL_PAD,
+    );
+    const endRow = Math.min(
+      FLOOR_ROWS,
+      Math.ceil((camY + this.height / zoom) / TILE_SIZE) + CULL_PAD,
+    );
 
-    // Sky gradient (simple 2-band)
-    const halfH = Math.floor(win.h / 2);
-    ctx.fillStyle = colors.top;
-    ctx.fillRect(win.x, win.y + 2, win.w, halfH);
-    ctx.fillStyle = colors.bottom;
-    ctx.fillRect(win.x, win.y + 2 + halfH, win.w, halfH);
+    for (let row = startRow; row < endRow; row++) {
+      const tileRow = floor.tiles[row];
+      if (!tileRow) continue;
 
-    // Day: clouds
-    if (state.environment.timeOfDay === "day") {
-      ctx.fillStyle = "#FFFFFF";
-      const cloudX = win.x + 10 + (state.frame * 0.1) % 50;
-      ctx.fillRect(cloudX, win.y + 4, 6, 2);
-      ctx.fillRect(cloudX + 2, win.y + 3, 4, 1);
-    }
+      for (let col = startCol; col < endCol; col++) {
+        const tile = tileRow[col];
+        if (tile === undefined) continue;
 
-    // Night: stars (static ones in addition to particles)
-    if (state.environment.timeOfDay === "night") {
-      ctx.fillStyle = "#FFFFFF";
-      const starPositions = [
-        [win.x + 5, win.y + 4],
-        [win.x + 20, win.y + 3],
-        [win.x + 40, win.y + 5],
-        [win.x + 55, win.y + 3],
-        [win.x + 35, win.y + 8],
-      ];
-      for (const [sx, sy] of starPositions) {
-        if (state.frame % 60 < 50 || Math.random() > 0.3) {
-          ctx.fillRect(sx, sy, 1, 1);
+        const sx = Math.floor((col * TILE_SIZE - camX) * zoom);
+        const sy = Math.floor((row * TILE_SIZE - camY) * zoom);
+
+        switch (tile) {
+          case TileType.WALL:
+            ctx.fillStyle = GBC.wallBrown;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Bottom accent edge
+            ctx.fillStyle = GBC.wallEdge;
+            ctx.fillRect(sx, sy + tileScreen - zoom, tileScreen, zoom);
+            break;
+
+          case TileType.WALL_ACCENT:
+            ctx.fillStyle = GBC.wallLight;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Subtle dark edge
+            ctx.fillStyle = GBC.wallBrown;
+            ctx.fillRect(sx, sy + tileScreen - zoom, tileScreen, zoom);
+            break;
+
+          case TileType.WINDOW:
+            // Wall around the window
+            ctx.fillStyle = GBC.wallBrown;
+            ctx.fillRect(sx, sy, tileScreen, tileScreen);
+            // Window pane (inset)
+            this.renderWindowPane(ctx, sx, sy, tileScreen, zoom);
+            break;
         }
       }
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Wall Top Overhang Layer (above entities — creates 3D depth)
+  // -----------------------------------------------------------------------
+
+  private renderWallTops(
+    floor: FloorData,
+    camX: number,
+    camY: number,
+  ): void {
+    const ctx = this.ctx;
+    const zoom = ZOOM;
+    const tileScreen = TILE_SIZE * zoom;
+
+    const startCol = Math.max(0, Math.floor(camX / TILE_SIZE) - CULL_PAD);
+    const startRow = Math.max(0, Math.floor(camY / TILE_SIZE) - CULL_PAD);
+    const endCol = Math.min(
+      FLOOR_COLS,
+      Math.ceil((camX + this.width / zoom) / TILE_SIZE) + CULL_PAD,
+    );
+    const endRow = Math.min(
+      FLOOR_ROWS,
+      Math.ceil((camY + this.height / zoom) / TILE_SIZE) + CULL_PAD,
+    );
+
+    for (let row = startRow; row < endRow; row++) {
+      const tileRow = floor.tiles[row];
+      if (!tileRow) continue;
+
+      for (let col = startCol; col < endCol; col++) {
+        const tile = tileRow[col];
+        if (tile !== TileType.WALL_TOP) continue;
+
+        const sx = Math.floor((col * TILE_SIZE - camX) * zoom);
+        const sy = Math.floor((row * TILE_SIZE - camY) * zoom);
+
+        // Dark overhang block
+        ctx.fillStyle = GBC.wallDark;
+        ctx.fillRect(sx, sy, tileScreen, tileScreen);
+
+        // Lighter bottom edge for shadow gradient effect
+        ctx.fillStyle = GBC.wallEdge;
+        ctx.fillRect(sx, sy + tileScreen - zoom, tileScreen, zoom);
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Window Pane (shows sky / time of day)
+  // -----------------------------------------------------------------------
+
+  private windowEnv: EnvironmentState | null = null;
+
+  /** Store the environment for window color lookups during render */
+  private renderWindowPane(
+    ctx: CanvasRenderingContext2D,
+    sx: number,
+    sy: number,
+    tileScreen: number,
+    zoom: number,
+  ): void {
+    const inset = zoom * 2;
+    const paneX = sx + inset;
+    const paneY = sy + inset;
+    const paneW = tileScreen - inset * 2;
+    const paneH = tileScreen - inset * 2;
+
+    // Use stored environment or fall back to default
+    const color = this.windowEnv
+      ? getWindowColor(this.windowEnv)
+      : GBC.waterLight;
+
+    // Window glass
+    ctx.fillStyle = color;
+    ctx.fillRect(paneX, paneY, paneW, paneH);
+
+    // Night: tiny star dots
+    if (this.windowEnv && this.windowEnv.timeOfDay === "night") {
+      ctx.fillStyle = GBC.white;
+      // Deterministic star positions based on tile location
+      const seed = sx * 7 + sy * 13;
+      if ((seed % 5) < 3) {
+        ctx.fillRect(paneX + zoom, paneY + zoom, zoom, zoom);
+      }
+      if ((seed % 7) < 2) {
+        ctx.fillRect(paneX + paneW - zoom * 2, paneY + zoom * 2, zoom, zoom);
+      }
+    }
+
+    // Rain streaks
+    if (this.windowEnv && this.windowEnv.weather === "rain") {
+      ctx.fillStyle = GBC.waterDark;
+      ctx.globalAlpha = 0.6;
+      ctx.fillRect(paneX + zoom, paneY, zoom, paneH);
+      ctx.fillRect(paneX + zoom * 3, paneY + zoom, zoom, paneH - zoom);
+      ctx.globalAlpha = 1;
     }
 
     // Window frame border
-    ctx.fillStyle = "#555570";
-    ctx.fillRect(win.x - 1, win.y + 1, 1, win.h - 1);
-    ctx.fillRect(win.x + win.w, win.y + 1, 1, win.h - 1);
-    ctx.fillRect(win.x, win.y + 1, win.w, 1);
-    ctx.fillRect(win.x, win.y + win.h - 1, win.w, 1);
-    // Center divider
-    ctx.fillRect(win.x + Math.floor(win.w / 2), win.y + 1, 1, win.h - 1);
-  }
+    ctx.fillStyle = GBC.wallEdge;
+    ctx.fillRect(paneX, paneY, paneW, zoom);
+    ctx.fillRect(paneX, paneY + paneH - zoom, paneW, zoom);
+    ctx.fillRect(paneX, paneY, zoom, paneH);
+    ctx.fillRect(paneX + paneW - zoom, paneY, zoom, paneH);
 
-  // -----------------------------------------------------------------------
-  // Wall Clock
-  // -----------------------------------------------------------------------
-
-  private drawClock(ctx: CanvasRenderingContext2D, state: OfficeState): void {
-    // Clock on the wall of the work area (right side of top wall)
-    const cx = 18 * TILE_SIZE + 8;
-    const cy = 6;
-    const radius = 5;
-
-    // Face
-    ctx.fillStyle = "#3A3A5A";
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        if (dx * dx + dy * dy <= radius * radius) {
-          ctx.fillRect(cx + dx, cy + dy, 1, 1);
-        }
-      }
-    }
-
-    // Border
-    ctx.fillStyle = "#5A5A7A";
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        const dist = dx * dx + dy * dy;
-        if (dist <= radius * radius && dist >= (radius - 1) * (radius - 1)) {
-          ctx.fillRect(cx + dx, cy + dy, 1, 1);
-        }
-      }
-    }
-
-    // Center dot
-    ctx.fillStyle = "#CCCCDD";
-    ctx.fillRect(cx, cy, 1, 1);
-
-    // Hands
-    const { hourAngle, minuteAngle } = getClockAngles(
-      state.environment.hour,
-      state.environment.minute,
+    // Center cross divider
+    ctx.fillRect(
+      paneX + Math.floor(paneW / 2),
+      paneY,
+      zoom,
+      paneH,
     );
-
-    const hx = Math.round(cx + Math.cos(hourAngle) * 3);
-    const hy = Math.round(cy + Math.sin(hourAngle) * 3);
-    this.drawPixelLine(ctx, cx, cy, hx, hy, "#CCCCDD");
-
-    const mx = Math.round(cx + Math.cos(minuteAngle) * 4);
-    const my = Math.round(cy + Math.sin(minuteAngle) * 4);
-    this.drawPixelLine(ctx, cx, cy, mx, my, "#AAAACC");
+    ctx.fillRect(
+      paneX,
+      paneY + Math.floor(paneH / 2),
+      paneW,
+      zoom,
+    );
   }
 
-  private drawPixelLine(
-    ctx: CanvasRenderingContext2D,
-    x0: number,
-    y0: number,
-    x1: number,
-    y1: number,
-    color: string,
-  ): void {
-    ctx.fillStyle = color;
-    const dx = Math.abs(x1 - x0);
-    const dy = Math.abs(y1 - y0);
-    const sx = x0 < x1 ? 1 : -1;
-    const sy = y0 < y1 ? 1 : -1;
-    let err = dx - dy;
-    let px = x0;
-    let py = y0;
+  // -----------------------------------------------------------------------
+  // Stair Arrow Indicator
+  // -----------------------------------------------------------------------
 
-    for (let steps = 0; steps < 20; steps++) {
-      ctx.fillRect(px, py, 1, 1);
-      if (px === x1 && py === y1) break;
-      const e2 = 2 * err;
-      if (e2 > -dy) {
-        err -= dy;
-        px += sx;
-      }
-      if (e2 < dx) {
-        err += dx;
-        py += sy;
-      }
+  private renderArrowIndicator(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    dir: "up" | "down",
+  ): void {
+    const zoom = ZOOM;
+    ctx.fillStyle = GBC.white;
+    ctx.globalAlpha = 0.8;
+
+    if (dir === "up") {
+      // Upward arrow: ▲
+      ctx.fillRect(cx - zoom, cy, zoom * 2, zoom);
+      ctx.fillRect(cx - zoom * 2, cy + zoom, zoom * 4, zoom);
+      ctx.fillRect(cx, cy - zoom, zoom, zoom);
+    } else {
+      // Downward arrow: ▼
+      ctx.fillRect(cx - zoom * 2, cy - zoom, zoom * 4, zoom);
+      ctx.fillRect(cx - zoom, cy, zoom * 2, zoom);
+      ctx.fillRect(cx, cy + zoom, zoom, zoom);
     }
+
+    ctx.globalAlpha = 1;
   }
 
   // -----------------------------------------------------------------------
@@ -422,422 +787,535 @@ export class PixelOfficeRenderer {
   // -----------------------------------------------------------------------
 
   private drawSprite(
-    ctx: CanvasRenderingContext2D,
     sprite: SpriteData,
-    x: number,
-    y: number,
+    screenX: number,
+    screenY: number,
     alpha?: number,
   ): void {
+    const ctx = this.ctx;
+    const zoom = ZOOM;
     const prevAlpha = ctx.globalAlpha;
+
     if (alpha !== undefined) {
       ctx.globalAlpha = alpha;
     }
-    for (let row = 0; row < sprite.length; row++) {
-      for (let col = 0; col < sprite[row].length; col++) {
-        const color = sprite[row][col];
+
+    for (let r = 0; r < sprite.length; r++) {
+      const row = sprite[r];
+      for (let c = 0; c < row.length; c++) {
+        const color = row[c];
         if (color) {
           ctx.fillStyle = color;
-          ctx.fillRect(x + col, y + row, 1, 1);
+          ctx.fillRect(
+            screenX + c * zoom,
+            screenY + r * zoom,
+            zoom,
+            zoom,
+          );
         }
       }
     }
+
     ctx.globalAlpha = prevAlpha;
   }
 
   // -----------------------------------------------------------------------
-  // Character Drawing
+  // Character Rendering
   // -----------------------------------------------------------------------
 
-  private drawCharacter(
-    ctx: CanvasRenderingContext2D,
+  private renderCharacter(
     char: Character,
-    frame: number,
+    camX: number,
+    camY: number,
   ): void {
+    const zoom = ZOOM;
+    const sx = Math.floor((char.x - camX) * zoom);
+    const sy = Math.floor((char.y - camY) * zoom);
+
+    // Get the correct sprite for current state
+    const sprite = this.getCharacterSprite(char);
     const alpha = char.isSubagent ? 0.7 : 1;
-    const x = Math.round(char.x);
-    const y = Math.round(char.y);
 
-    let sprite: SpriteData;
+    // Shadow beneath character
+    const ctx = this.ctx;
+    ctx.fillStyle = GBC.black;
+    ctx.globalAlpha = 0.12;
+    ctx.fillRect(
+      sx + zoom * 2,
+      sy + (CHAR_SIZE - 2) * zoom,
+      (CHAR_SIZE - 4) * zoom,
+      zoom * 2,
+    );
+    ctx.globalAlpha = 1;
 
-    switch (char.state) {
-      case "type":
-        sprite = char.sprites.type[char.animFrame];
-        break;
-      case "sleep":
-        sprite = char.sprites.sleep;
-        break;
-      case "walk":
-      case "coffee":
-        sprite = this.getWalkSprite(char);
-        break;
-      case "idle":
-      default:
-        sprite = char.sprites.front;
-        break;
-    }
-
-    // Shadow
-    ctx.fillStyle = "rgba(0,0,0,0.15)";
-    ctx.fillRect(x + 3, y + 14, 10, 2);
-
-    this.drawSprite(ctx, sprite, x, y, alpha);
+    // Draw the sprite
+    this.drawSprite(sprite, sx, sy, alpha);
 
     // Coffee cup in hand during coffee state
     if (char.state === "coffee") {
-      ctx.fillStyle = "#8B4513";
-      const cupX = char.direction === "left" ? x + 2 : x + 12;
-      const cupY = y + 7;
-      ctx.fillRect(cupX, cupY, 2, 3);
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(cupX, cupY, 2, 1);
+      ctx.fillStyle = GBC.woodDark;
+      const cupOffsetX =
+        char.direction === Direction.LEFT ? 1 : CHAR_SIZE - 3;
+      ctx.fillRect(
+        sx + cupOffsetX * zoom,
+        sy + 7 * zoom,
+        zoom * 2,
+        zoom * 3,
+      );
+      ctx.fillStyle = GBC.white;
+      ctx.fillRect(
+        sx + cupOffsetX * zoom,
+        sy + 7 * zoom,
+        zoom * 2,
+        zoom,
+      );
     }
   }
 
-  private getWalkSprite(char: Character): SpriteData {
-    const frame = char.animFrame;
-    switch (char.direction) {
-      case "down":
-        return char.sprites.walkDown[frame];
-      case "up":
-        return char.sprites.walkUp[frame];
-      case "left":
-        return char.sprites.walkLeft[frame];
-      case "right":
-        return char.sprites.walkRight[frame];
+  private getCharacterSprite(char: Character): SpriteData {
+    const dir = directionKey(char.direction);
+
+    switch (char.state) {
+      case "walk":
+        // Alternating walk frames: [idle, walk1, walk2] -> 1 + (animFrame % 2)
+        return char.sprites[dir][1 + (char.animFrame % 2)];
+
+      case "type":
+        return char.sprites.type[char.animFrame % 2];
+
+      case "sleep":
+        return char.sprites.sleep;
+
+      case "coffee":
+      case "think":
+        // Use idle pose in facing direction
+        return char.sprites[dir][0];
+
+      case "idle":
+      default:
+        return char.sprites[dir][0];
     }
   }
 
   // -----------------------------------------------------------------------
-  // Cat Drawing
+  // Cat Rendering
   // -----------------------------------------------------------------------
 
-  private drawCat(ctx: CanvasRenderingContext2D, cat: Cat, frame: number): void {
-    const x = Math.round(cat.x);
-    const y = Math.round(cat.y);
+  private renderCat(cat: Cat, camX: number, camY: number): void {
+    const zoom = ZOOM;
+    const sx = Math.floor((cat.x - camX) * zoom);
+    const sy = Math.floor((cat.y - camY) * zoom);
 
-    let sprite: SpriteData;
+    const sprite = this.getCatSprite(cat);
+
+    // Tiny shadow
+    const ctx = this.ctx;
+    ctx.fillStyle = GBC.black;
+    ctx.globalAlpha = 0.1;
+    ctx.fillRect(
+      sx + zoom,
+      sy + (CAT_SIZE - 1) * zoom,
+      (CAT_SIZE - 2) * zoom,
+      zoom,
+    );
+    ctx.globalAlpha = 1;
+
+    this.drawSprite(sprite, sx, sy);
+  }
+
+  private getCatSprite(cat: Cat): SpriteData {
+    const dir = directionKey(cat.direction);
 
     switch (cat.state) {
       case "sleep":
-        // If still walking to couch, draw walking sprite
+        // If actively pathing, show walk animation; otherwise sleep pose
         if (cat.path.length > 0 && cat.pathIndex < cat.path.length) {
-          sprite = this.getCatWalkSprite(cat);
-        } else {
-          sprite = CAT_SPRITES.sleep;
+          return cat.sprites[dir][cat.animFrame % 2];
         }
-        break;
+        return cat.sprites.sleep;
+
       case "sit":
-        sprite = CAT_SPRITES.sit;
-        break;
+        return cat.sprites.sit;
+
       case "wander":
       case "follow":
         if (cat.path.length > 0 && cat.pathIndex < cat.path.length) {
-          sprite = this.getCatWalkSprite(cat);
-        } else {
-          sprite = CAT_SPRITES.sit;
+          return cat.sprites[dir][cat.animFrame % 2];
         }
-        break;
+        return cat.sprites.sit;
     }
-
-    // Tiny shadow
-    ctx.fillStyle = "rgba(0,0,0,0.1)";
-    ctx.fillRect(x + 1, y + 7, 6, 1);
-
-    this.drawSprite(ctx, sprite, x, y);
   }
 
-  private getCatWalkSprite(cat: Cat): SpriteData {
-    const frame = cat.animFrame;
-    if (cat.direction === "left") {
-      return frame === 0 ? CAT_SPRITES.walkLeft1 : CAT_SPRITES.walkLeft2;
-    }
-    return frame === 0 ? CAT_SPRITES.walkRight1 : CAT_SPRITES.walkRight2;
+  // -----------------------------------------------------------------------
+  // Furniture Rendering
+  // -----------------------------------------------------------------------
+
+  private renderFurniture(
+    f: FurnitureInstance,
+    camX: number,
+    camY: number,
+  ): void {
+    const zoom = ZOOM;
+    const sx = Math.floor((f.col * TILE_SIZE - camX) * zoom);
+    const sy = Math.floor((f.row * TILE_SIZE - camY) * zoom);
+
+    this.drawSprite(f.sprite, sx, sy);
   }
 
   // -----------------------------------------------------------------------
   // Monitor Screens
   // -----------------------------------------------------------------------
 
-  private drawMonitorScreens(ctx: CanvasRenderingContext2D, state: OfficeState): void {
-    // Monitors are placed via furniture, but the screen content is dynamic
-    // Find monitor furniture items and draw screen content on top
+  private renderMonitorScreens(
+    state: GameState,
+    floor: FloorData,
+    camX: number,
+    camY: number,
+  ): void {
+    const zoom = ZOOM;
+
     for (const mon of state.monitors) {
-      const monitorFurniture = state.furniture.find(
-        (f, idx) => {
-          // Match monitors by desk index order
-          let monCount = 0;
-          for (let fi = 0; fi <= idx; fi++) {
-            if (state.furniture[fi].type === "monitor") monCount++;
-          }
-          return f.type === "monitor" && monCount - 1 === mon.deskIndex;
-        },
+      // Find the desk this monitor belongs to
+      const desk = floor.desks[mon.deskIndex];
+      if (!desk) continue;
+
+      // Monitor screen is rendered relative to desk position
+      // The monitor furniture is typically 1 tile above the desk seat
+      // Find the monitor furniture associated with this desk
+      const monFurniture = floor.furniture.find(
+        (f) =>
+          f.kind === "monitor" &&
+          Math.abs(f.col - desk.pos.col) <= 1 &&
+          Math.abs(f.row - desk.pos.row) <= 1,
       );
-      if (!monitorFurniture) continue;
 
-      const screenX = monitorFurniture.col * TILE_SIZE + 2;
-      const screenY = monitorFurniture.row * TILE_SIZE + 1;
-      const screenW = 12;
-      const screenH = 8;
+      if (!monFurniture) continue;
 
-      switch (mon.activity) {
-        case "typing": {
-          // Green matrix-style text
-          ctx.fillStyle = "#0A2A0A";
-          ctx.fillRect(screenX, screenY, screenW, screenH);
-          ctx.fillStyle = "#44FF66";
-          for (let line = 0; line < 3; line++) {
-            const offset = Math.floor(mon.scrollOffset + line * 3) % 10;
-            const lineW = 4 + (offset % 6);
-            ctx.fillRect(screenX + 1, screenY + 1 + line * 3, lineW, 1);
-          }
-          // Blinking cursor
-          if (state.frame % 20 < 10) {
-            ctx.fillStyle = "#88FFAA";
-            ctx.fillRect(screenX + 8, screenY + 7, 1, 1);
-          }
-          break;
-        }
-        case "idle": {
-          // Blue screensaver dot
-          ctx.fillStyle = "#0A0A2A";
-          ctx.fillRect(screenX, screenY, screenW, screenH);
-          ctx.fillStyle = "#4488CC";
-          const bx = screenX + 1 + Math.floor(mon.bounceX);
-          const by = screenY + 1 + Math.floor(mon.bounceY);
-          ctx.fillRect(bx, by, 2, 2);
-          break;
-        }
-        case "sleeping":
-        case "off": {
-          ctx.fillStyle = "#0A0A12";
-          ctx.fillRect(screenX, screenY, screenW, screenH);
-          break;
-        }
-      }
+      // Screen area: offset into the monitor sprite
+      const monSX = Math.floor(
+        (monFurniture.col * TILE_SIZE + 3 - camX) * zoom,
+      );
+      const monSY = Math.floor(
+        (monFurniture.row * TILE_SIZE + 2 - camY) * zoom,
+      );
 
-      // Screen glow
-      if (mon.activity === "typing") {
-        ctx.fillStyle = "rgba(40,255,80,0.04)";
-        ctx.fillRect(screenX - 2, screenY - 2, screenW + 4, screenH + 4);
-      }
+      renderMonitorScreen(
+        this.ctx,
+        mon,
+        monSX,
+        monSY,
+        zoom,
+        state.frame,
+      );
     }
   }
 
   // -----------------------------------------------------------------------
-  // Server LEDs
+  // Speech Bubbles
   // -----------------------------------------------------------------------
 
-  private drawServerLeds(ctx: CanvasRenderingContext2D, leds: ServerLed[]): void {
-    for (const led of leds) {
-      ctx.fillStyle = led.on ? led.color : "#222222";
-      ctx.fillRect(led.x, led.y, 2, 2);
-      // Glow effect
-      if (led.on) {
-        ctx.fillStyle = led.color.replace(")", ",0.15)").replace("rgb(", "rgba(");
-        // Simple hex-to-rgba for glow
-        const hex = led.color;
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        ctx.fillStyle = `rgba(${r},${g},${b},0.15)`;
-        ctx.fillRect(led.x - 1, led.y - 1, 4, 4);
-      }
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Particles
-  // -----------------------------------------------------------------------
-
-  private drawParticles(
-    ctx: CanvasRenderingContext2D,
-    particles: Particle[],
-    frame: number,
-  ): void {
-    for (const p of particles) {
-      const alpha = Math.max(0, Math.min(1, p.life / p.maxLife));
-      const x = Math.round(p.x);
-      const y = Math.round(p.y);
-
-      if (p.char === "Z") {
-        // Draw pixel Z
-        const prevAlpha = ctx.globalAlpha;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
-        const size = Math.max(1, Math.ceil(p.size));
-        ctx.fillRect(x, y, size * 3, 1);
-        ctx.fillRect(x + size * 2, y + 1, size, 1);
-        ctx.fillRect(x + size, y + 2, size, 1);
-        ctx.fillRect(x, y + 3, size * 3, 1);
-        ctx.globalAlpha = prevAlpha;
-      } else if (p.char) {
-        // Music note or other text
-        const prevAlpha = ctx.globalAlpha;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
-        // Simple music note as pixels
-        ctx.fillRect(x, y, 1, 3);
-        ctx.fillRect(x + 1, y, 2, 1);
-        ctx.fillRect(x + 2, y + 1, 1, 1);
-        ctx.globalAlpha = prevAlpha;
-      } else {
-        const prevAlpha = ctx.globalAlpha;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
-        ctx.fillRect(x, y, p.size, p.size);
-        ctx.globalAlpha = prevAlpha;
-      }
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Character Overlays (speech bubbles, thought bubbles)
-  // -----------------------------------------------------------------------
-
-  private drawCharacterOverlay(
-    ctx: CanvasRenderingContext2D,
-    char: Character,
-    frame: number,
-  ): void {
-    const x = Math.round(char.x);
-    const y = Math.round(char.y);
-
-    // Thought bubble for thinking state
-    if (char.targetActivity === "thinking") {
-      const dotCount = (Math.floor(frame / 10) % 3) + 1;
-      const bubbleX = x + 14;
-      const bubbleY = y - 6;
-
-      // Leading dots
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.fillRect(bubbleX - 2, bubbleY + 4, 1, 1);
-      ctx.fillRect(bubbleX, bubbleY + 2, 2, 2);
-
-      // Bubble background
-      ctx.fillStyle = "rgba(255,255,255,0.15)";
-      ctx.fillRect(bubbleX + 1, bubbleY - 3, 12, 5);
-
-      // Dots
-      ctx.fillStyle = "#CCCCEE";
-      for (let d = 0; d < dotCount; d++) {
-        ctx.fillRect(bubbleX + 3 + d * 3, bubbleY - 1, 2, 2);
-      }
-    }
-
-    // Speech bubble for current task
-    if (char.currentTask && char.targetActivity !== "thinking") {
-      this.drawSpeechBubble(ctx, x + 8, y - 6, char.currentTask);
-    }
-  }
-
-  private drawSpeechBubble(
-    ctx: CanvasRenderingContext2D,
-    cx: number,
-    bottomY: number,
+  private renderSpeechBubble(
+    x: number,
+    y: number,
     text: string,
+    camX: number,
+    camY: number,
   ): void {
-    const maxLen = 18;
-    const display = text.length > maxLen ? text.slice(0, maxLen - 1) + "~" : text;
-    const charW = 4;
-    const textW = display.length * charW;
-    const padX = 3;
-    const padY = 2;
-    const bubbleW = textW + padX * 2;
-    const bubbleH = 7 + padY * 2;
-    const bx = cx - Math.floor(bubbleW / 2);
-    const by = bottomY - bubbleH - 3;
+    const ctx = this.ctx;
+    const zoom = ZOOM;
 
-    // Background
-    ctx.fillStyle = "#F0F0F0";
+    // Screen position (centered above the entity)
+    const sx = Math.floor((x - camX) * zoom);
+    const sy = Math.floor((y - camY) * zoom);
+
+    // Truncate long text
+    const maxLen = 16;
+    const display =
+      text.length > maxLen ? text.slice(0, maxLen - 1) + "~" : text;
+
+    // Measure
+    ctx.save();
+    ctx.font = `${Math.max(8, zoom * 3)}px monospace`;
+    const metrics = ctx.measureText(display);
+    const textW = metrics.width;
+
+    const padX = zoom * 2;
+    const padY = zoom * 1.5;
+    const bubbleW = textW + padX * 2;
+    const bubbleH = zoom * 4 + padY * 2;
+    const bx = Math.floor(sx - bubbleW / 2);
+    const by = sy - bubbleH - zoom * 3;
+
+    // Bubble background
+    ctx.fillStyle = GBC.dialogBg;
     ctx.fillRect(bx, by, bubbleW, bubbleH);
 
-    // Border
-    ctx.fillStyle = "#333344";
-    ctx.fillRect(bx, by, bubbleW, 1);
-    ctx.fillRect(bx, by + bubbleH - 1, bubbleW, 1);
-    ctx.fillRect(bx, by, 1, bubbleH);
-    ctx.fillRect(bx + bubbleW - 1, by, 1, bubbleH);
+    // Bubble border
+    ctx.fillStyle = GBC.dialogBorder;
+    ctx.fillRect(bx, by, bubbleW, zoom); // top
+    ctx.fillRect(bx, by + bubbleH - zoom, bubbleW, zoom); // bottom
+    ctx.fillRect(bx, by, zoom, bubbleH); // left
+    ctx.fillRect(bx + bubbleW - zoom, by, zoom, bubbleH); // right
 
-    // Pointer triangle
-    ctx.fillStyle = "#F0F0F0";
-    ctx.fillRect(cx - 1, by + bubbleH, 3, 1);
-    ctx.fillRect(cx, by + bubbleH + 1, 1, 1);
-    ctx.fillStyle = "#333344";
-    ctx.fillRect(cx - 2, by + bubbleH, 1, 1);
-    ctx.fillRect(cx + 2, by + bubbleH, 1, 1);
-    ctx.fillRect(cx - 1, by + bubbleH + 1, 1, 1);
-    ctx.fillRect(cx + 1, by + bubbleH + 1, 1, 1);
+    // Pointer triangle (pointing down)
+    ctx.fillStyle = GBC.dialogBg;
+    ctx.fillRect(sx - zoom, by + bubbleH, zoom * 2, zoom);
+    ctx.fillRect(sx, by + bubbleH + zoom, zoom, zoom);
+    // Pointer border
+    ctx.fillStyle = GBC.dialogBorder;
+    ctx.fillRect(sx - zoom * 2, by + bubbleH, zoom, zoom);
+    ctx.fillRect(sx + zoom, by + bubbleH, zoom, zoom);
+    ctx.fillRect(sx - zoom, by + bubbleH + zoom, zoom, zoom);
+    ctx.fillRect(sx + zoom, by + bubbleH + zoom, zoom, zoom);
 
     // Text
-    ctx.fillStyle = "#222233";
-    ctx.font = "5px monospace";
+    ctx.fillStyle = GBC.dialogText;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(display, cx, by + Math.floor(bubbleH / 2));
-    ctx.textAlign = "start";
-    ctx.textBaseline = "alphabetic";
+    ctx.fillText(display, sx, by + Math.floor(bubbleH / 2));
+
+    ctx.restore();
   }
 
   // -----------------------------------------------------------------------
   // Name Labels
   // -----------------------------------------------------------------------
 
-  private drawNameLabel(ctx: CanvasRenderingContext2D, char: Character): void {
-    const x = Math.round(char.x) + 8;
-    const y = Math.round(char.y) + 18;
+  private renderNameLabel(
+    name: string,
+    emoji: string,
+    x: number,
+    y: number,
+    camX: number,
+    camY: number,
+  ): void {
+    const ctx = this.ctx;
+    const zoom = ZOOM;
 
-    ctx.fillStyle = "#AAAACC";
-    ctx.font = "5px monospace";
+    // Position: centered below the character
+    const sx = Math.floor((x + CHAR_SIZE / 2 - camX) * zoom);
+    const sy = Math.floor((y + CHAR_SIZE + 1 - camY) * zoom);
+
+    ctx.save();
+
+    const fontSize = Math.max(7, zoom * 2.5);
+    ctx.font = `${fontSize}px monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(char.name, x, y);
 
-    // Status dot
-    const textHalfW = Math.ceil(char.name.length * 1.5);
-    const dotX = x + textHalfW + 3;
-    const dotY = y + 2;
+    const label = `${emoji} ${name}`;
 
-    switch (char.status) {
-      case "active":
-        ctx.fillStyle = "#44CC44";
-        break;
-      case "idle":
-        ctx.fillStyle = "#CCCC44";
-        break;
-      case "unknown":
-        ctx.fillStyle = "#666666";
-        break;
-    }
-    ctx.fillRect(dotX, dotY, 2, 2);
+    // Shadow
+    ctx.fillStyle = GBC.black;
+    ctx.globalAlpha = 0.4;
+    ctx.fillText(label, sx + 1, sy + 1);
 
-    ctx.textAlign = "start";
-    ctx.textBaseline = "alphabetic";
+    // Text
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = GBC.white;
+    ctx.fillText(label, sx, sy);
+
+    ctx.restore();
   }
 
   // -----------------------------------------------------------------------
-  // Time Overlay (rendered in screen space, not pixel art space)
+  // Activity Bubble Text
   // -----------------------------------------------------------------------
 
-  private drawTimeOverlay(
-    ctx: CanvasRenderingContext2D,
-    state: OfficeState,
-    offsetX: number,
-    scaledW: number,
+  private getActivityBubbleText(
+    char: Character,
+    frame: number,
+  ): string | null {
+    switch (char.state) {
+      case "type":
+        return "...";
+
+      case "think": {
+        const dots = 1 + (Math.floor(frame / 15) % 3);
+        return ".".repeat(dots);
+      }
+
+      case "sleep":
+        return "zzZ";
+
+      case "coffee":
+        if (char.coffeeState === "brewing") return "~coffee~";
+        return null;
+
+      default:
+        // Show current task as tiny bubble if idle and has a task
+        if (char.currentTask && char.state === "idle") {
+          return char.currentTask;
+        }
+        return null;
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Rooftop Special Rendering
+  // -----------------------------------------------------------------------
+
+  private renderRooftopBackground(
+    env: EnvironmentState,
+    camX: number,
+    camY: number,
   ): void {
-    const timeStr = formatClockTime(state.environment.hour, state.environment.minute);
-    const label = `Athens ${timeStr}`;
+    const ctx = this.ctx;
+    const zoom = ZOOM;
+    const w = this.width;
+    const h = this.height;
 
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    const tx = offsetX + scaledW - 100;
-    const ty = 10;
-    ctx.fillRect(tx - 4, ty - 2, 96, 18);
+    // Sky gradient background
+    const skyColor = getSkyColor(env);
+    ctx.fillStyle = skyColor;
+    ctx.fillRect(0, 0, w, h);
 
-    ctx.fillStyle = "#AAAACC";
-    ctx.font = "11px monospace";
-    ctx.textAlign = "right";
-    ctx.textBaseline = "top";
-    ctx.fillText(label, offsetX + scaledW - 12, ty);
-    ctx.textAlign = "start";
-    ctx.textBaseline = "alphabetic";
+    // Slightly darker band at the top for depth
+    ctx.fillStyle = GBC.black;
+    ctx.globalAlpha = 0.1;
+    ctx.fillRect(0, 0, w, Math.floor(h * 0.15));
+    ctx.globalAlpha = 1;
+
+    // Stars at night
+    if (env.timeOfDay === "night") {
+      ctx.fillStyle = GBC.white;
+      // Deterministic star field
+      for (let i = 0; i < 40; i++) {
+        const starX = ((i * 137 + 43) % w);
+        const starY = ((i * 89 + 17) % Math.floor(h * 0.4));
+        const twinkle = Math.sin(i * 2.7 + env.minute * 0.3) > 0.3;
+        if (twinkle) {
+          ctx.globalAlpha = 0.5 + ((i * 31) % 50) / 100;
+          ctx.fillRect(starX, starY, zoom, zoom);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Skyline silhouette
+    this.renderSkyline(camY);
+  }
+
+  private renderSkyline(camY: number): void {
+    const ctx = this.ctx;
+    const zoom = ZOOM;
+    const w = this.width;
+
+    // Skyline sits at the bottom of the sky area
+    // Anchor it relative to the top of the floor map area
+    const baseY = Math.floor((FLOOR_HEIGHT * 0.3 - camY) * zoom);
+
+    for (const bldg of SKYLINE_BUILDINGS) {
+      const bx = bldg.x * zoom;
+      const bw = bldg.w * zoom;
+      const bh = bldg.h * zoom;
+      const by = baseY - bh;
+
+      // Skip if off-screen
+      if (bx + bw < 0 || bx > w) continue;
+
+      // Building body
+      ctx.fillStyle = bldg.shade;
+      ctx.fillRect(bx, by, bw, bh);
+
+      // Window grid
+      ctx.fillStyle = GBC.yellow;
+      ctx.globalAlpha = 0.25;
+      const winSize = zoom * 2;
+      const winGap = zoom * 4;
+      for (let wy = by + winGap; wy < by + bh - winGap; wy += winGap) {
+        for (let wx = bx + winGap; wx < bx + bw - winGap; wx += winGap) {
+          // Some windows are lit, some are dark
+          if (((wx * 7 + wy * 13) % 11) > 4) {
+            ctx.fillRect(wx, wy, winSize, winSize);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Rain Overlay (Rooftop)
+  // -----------------------------------------------------------------------
+
+  private renderRainOverlay(
+    state: GameState,
+    camX: number,
+    camY: number,
+  ): void {
+    const ctx = this.ctx;
+    const zoom = ZOOM;
+
+    // Dark overlay for rain atmosphere
+    ctx.fillStyle = GBC.skyNight;
+    ctx.globalAlpha = 0.08;
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.globalAlpha = 1;
+
+    // Rain particles are handled by the particle system,
+    // but we add a subtle horizontal streak effect too
+    ctx.fillStyle = GBC.waterDark;
+    ctx.globalAlpha = 0.1;
+
+    const streakCount = 12;
+    for (let i = 0; i < streakCount; i++) {
+      // Pseudo-random positions seeded by frame + index
+      const seed = (state.frame * 3 + i * 97) % 500;
+      const sx = (seed * 3) % this.width;
+      const sy = (seed * 7 + i * 41) % this.height;
+      ctx.fillRect(sx, sy, zoom, zoom * 6);
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  // -----------------------------------------------------------------------
+  // Hit Testing (for mouse interaction)
+  // -----------------------------------------------------------------------
+
+  getEntityAt(
+    screenX: number,
+    screenY: number,
+    state: GameState,
+    floors: Map<FloorId, FloorData>,
+  ): { type: "character"; character: Character } | { type: "cat" } | null {
+    const zoom = ZOOM;
+    const camX = state.camera.x;
+    const camY = state.camera.y;
+
+    // Convert screen coordinates to game coordinates
+    const gameX = screenX / zoom + camX;
+    const gameY = screenY / zoom + camY;
+
+    // Check characters (reverse order: last rendered = on top)
+    const floorChars = state.characters.filter(
+      (c) => c.floor === state.currentFloor,
+    );
+    for (let i = floorChars.length - 1; i >= 0; i--) {
+      const char = floorChars[i];
+      if (
+        gameX >= char.x &&
+        gameX < char.x + CHAR_SIZE &&
+        gameY >= char.y &&
+        gameY < char.y + CHAR_SIZE
+      ) {
+        return { type: "character", character: char };
+      }
+    }
+
+    // Check cat
+    const cat = state.cat;
+    if (
+      cat.floor === state.currentFloor &&
+      gameX >= cat.x &&
+      gameX < cat.x + CAT_SIZE &&
+      gameY >= cat.y &&
+      gameY < cat.y + CAT_SIZE
+    ) {
+      return { type: "cat" };
+    }
+
+    return null;
   }
 }
