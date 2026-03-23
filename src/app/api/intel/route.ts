@@ -28,3 +28,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
+
+/**
+ * PATCH /api/intel — Update rating/summary/category for an entry.
+ * Body: { id: number, rating: string, summary?: string, category?: string }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { updateRating } = await import("@/lib/intel/db");
+    const body = await request.json();
+    const { id, rating, summary, category } = body;
+    if (!id || !rating) {
+      return NextResponse.json({ error: "id and rating are required" }, { status: 400 });
+    }
+    updateRating(Number(id), rating, summary ?? null, category ?? null);
+    return NextResponse.json({ ok: true, id });
+  } catch (err) {
+    console.error("Intel PATCH error:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}

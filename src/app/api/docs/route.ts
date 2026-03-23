@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readdir, readFile, stat, writeFile, unlink, rename, copyFile } from "fs/promises";
-import { join, extname, dirname, basename } from "path";
+import { join, extname, dirname, basename, resolve } from "path";
 import { getOpenClawHome } from "@/lib/paths";
+
+function sanitizePath(input: string, rootDir: string): string | null {
+  const cleaned = input.replace(/^\/+/, "");
+  const full = resolve(rootDir, cleaned);
+  if (!full.startsWith(rootDir)) return null;
+  return full;
+}
 
 const OPENCLAW_HOME = getOpenClawHome();
 
@@ -118,8 +125,11 @@ export async function GET(request: NextRequest) {
   const filePath = searchParams.get("path");
   try {
     if (filePath) {
-      const safePath = filePath.replace(/\.\./g, "").replace(/^\/+/, "");
-      const fullPath = join(OPENCLAW_HOME, safePath);
+      const fullPath = sanitizePath(filePath, OPENCLAW_HOME);
+      if (!fullPath) {
+        return NextResponse.json({ error: "path traversal blocked" }, { status: 400 });
+      }
+      const safePath = fullPath.slice(OPENCLAW_HOME.length + 1);
       const content = await readFile(fullPath, "utf-8");
       const words = content.split(/\s+/).filter(Boolean).length;
       const size = Buffer.byteLength(content, "utf-8");
@@ -149,11 +159,14 @@ export async function PUT(request: NextRequest) {
     if (typeof filePath !== "string" || typeof content !== "string") {
       return NextResponse.json({ error: "path and content required" }, { status: 400 });
     }
-    const safePath = filePath.replace(/\.\./g, "").replace(/^\/+/, "");
+    const fullPath = sanitizePath(filePath, OPENCLAW_HOME);
+    if (!fullPath) {
+      return NextResponse.json({ error: "path traversal blocked" }, { status: 400 });
+    }
+    const safePath = fullPath.slice(OPENCLAW_HOME.length + 1);
     if (!/\.(md|json|txt)$/i.test(safePath)) {
       return NextResponse.json({ error: "unsupported file type" }, { status: 400 });
     }
-    const fullPath = join(OPENCLAW_HOME, safePath);
     await writeFile(fullPath, content, "utf-8");
     const words = content.split(/\s+/).filter(Boolean).length;
     const size = Buffer.byteLength(content, "utf-8");
@@ -172,8 +185,11 @@ export async function DELETE(request: NextRequest) {
     if (!filePath) {
       return NextResponse.json({ error: "path required" }, { status: 400 });
     }
-    const safePath = filePath.replace(/\.\./g, "").replace(/^\/+/, "");
-    const fullPath = join(OPENCLAW_HOME, safePath);
+    const fullPath = sanitizePath(filePath, OPENCLAW_HOME);
+    if (!fullPath) {
+      return NextResponse.json({ error: "path traversal blocked" }, { status: 400 });
+    }
+    const safePath = fullPath.slice(OPENCLAW_HOME.length + 1);
     // Verify it exists and is a file
     const s = await stat(fullPath);
     if (!s.isFile()) {
@@ -200,8 +216,11 @@ export async function PATCH(request: NextRequest) {
     if (!filePath || !action) {
       return NextResponse.json({ error: "action and path required" }, { status: 400 });
     }
-    const safePath = filePath.replace(/\.\./g, "").replace(/^\/+/, "");
-    const fullPath = join(OPENCLAW_HOME, safePath);
+    const fullPath = sanitizePath(filePath, OPENCLAW_HOME);
+    if (!fullPath) {
+      return NextResponse.json({ error: "path traversal blocked" }, { status: 400 });
+    }
+    const safePath = fullPath.slice(OPENCLAW_HOME.length + 1);
 
     if (action === "rename") {
       if (!newName) {

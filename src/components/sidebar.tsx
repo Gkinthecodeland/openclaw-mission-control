@@ -46,6 +46,7 @@ import {
   Code2,
   Building2,
   Rss,
+  Warehouse,
 } from "lucide-react";
 import { getChatUnreadCount, subscribeChatStore } from "@/lib/chat-store";
 import {
@@ -81,6 +82,7 @@ const navItems: {
   { section: "code", label: "Code", icon: Code2 },
   { section: "ecosystem", label: "Ecosystem", icon: Package },
   { section: "intel", label: "Intel Feed", icon: Rss },
+  { section: "factory", label: "Factory OS", icon: Warehouse, dividerAfter: true },
   { section: "office", label: "Pixel Office", icon: Building2, dividerAfter: true },
   { section: "skills", label: "Skills", icon: Wrench },
   { section: "skills", label: "ClawHub", icon: Package, href: "/?section=skills&tab=clawhub", tab: "clawhub", isSubItem: true },

@@ -24,6 +24,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Validate package name — only safe characters
+  if (!/^[@a-zA-Z0-9][a-zA-Z0-9._\-\/]{0,200}$/.test(pkg)) {
+    return new Response(
+      JSON.stringify({ error: "Invalid package name" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // Build command based on kind
   let cmd: string;
   let args: string[];

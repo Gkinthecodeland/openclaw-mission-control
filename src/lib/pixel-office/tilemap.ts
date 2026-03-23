@@ -335,42 +335,13 @@ function buildGroundFloor(): FloorData {
   collision[12][20] = false;
   collision[12][21] = false;
 
-  // --- KITCHEN (left, rows 13-19, cols 1-13) ---
-  fillRect(tiles, 1, 13, 13, 19, TileType.WOOD_FLOOR);
-  setCollision(collision, 1, 13, 13, 19, false);
+  // --- OPEN HALL (rows 13-19, cols 1-22) ---
+  fillRect(tiles, 1, 13, 22, 19, TileType.FLOOR);
+  setCollision(collision, 1, 13, 22, 19, false);
 
-  // Kitchen furniture
-  // Coffee machine against top wall
-  placeFurniture(furniture, collision, 'coffeeMachine', 1, 13, 1, 2, buildCoffeeMachineSprite, { animated: true });
-  // Fridge next to coffee machine
-  placeFurniture(furniture, collision, 'fridge', 3, 13, 1, 2, buildFridgeSprite);
-  // Microwave on counter
-  placeFurniture(furniture, collision, 'microwave', 5, 13, 1, 1, buildMicrowaveSprite);
-  // Sink
-  placeFurniture(furniture, collision, 'sink', 7, 13, 1, 1, buildSinkSprite);
-  // Kitchen table (cols 5-7, rows 16-17) — central
-  placeFurniture(furniture, collision, 'table', 5, 16, 3, 2, buildTableSprite);
-  // Chairs around table
-  placeFurniture(furniture, collision, 'chair', 5, 15, 1, 1, buildChairSprite, { noCollision: true });
-  placeFurniture(furniture, collision, 'chair', 7, 15, 1, 1, buildChairSprite, { noCollision: true });
-  placeFurniture(furniture, collision, 'chair', 5, 18, 1, 1, buildChairSprite, { noCollision: true });
-  placeFurniture(furniture, collision, 'chair', 7, 18, 1, 1, buildChairSprite, { noCollision: true });
-  // Plant in kitchen
+  // A couple of plants for decoration
+  placeFurniture(furniture, collision, 'plant', 1, 13, 1, 1, buildPlantSprite);
   placeFurniture(furniture, collision, 'plant', 12, 19, 1, 1, buildPlantSprite);
-  // Trash can
-  placeFurniture(furniture, collision, 'trashCan', 10, 13, 1, 1, buildTrashCanSprite);
-
-  // --- HALLWAY (rows 13-19, cols 15-22) ---
-  fillRect(tiles, 15, 13, 22, 19, TileType.FLOOR);
-  setCollision(collision, 15, 13, 22, 19, false);
-
-  // Door from kitchen to hallway (col 14, rows 15-16)
-  // Vertical wall between kitchen and hallway
-  fillRect(tiles, 14, 13, 14, 19, TileType.WALL);
-  tiles[15][14] = TileType.DOOR;
-  tiles[16][14] = TileType.DOOR;
-  collision[15][14] = false;
-  collision[16][14] = false;
 
   // Wall between hallway and stairs
   fillRect(tiles, 23, 13, 23, 19, TileType.WALL);
@@ -401,7 +372,7 @@ function buildGroundFloor(): FloorData {
     desks,
     stairsUp: { col: 26, row: 14 },
     stairsDown: { col: 26, row: 18 },
-    coffeeMachine: { col: 2, row: 14 },
+    coffeeMachine: null,
     secretTiles,
   };
 }
@@ -470,32 +441,15 @@ function buildUpperFloor(): FloorData {
   collision[12][6] = false;
   collision[12][7] = false;
 
-  // --- LOUNGE (right, rows 4-11, cols 15-28) ---
-  fillRect(tiles, 15, 4, 28, 11, TileType.CARPET_ALT);
+  // --- OPEN AREA (right, rows 4-11, cols 15-28) ---
+  fillRect(tiles, 15, 4, 28, 11, TileType.FLOOR);
   setCollision(collision, 15, 4, 28, 11, false);
 
-  // Couch (cols 16-18, row 5-6)
-  placeFurniture(furniture, collision, 'couch', 16, 5, 3, 2, buildCouchSprite);
-
-  // TV on the wall
-  placeFurniture(furniture, collision, 'tv', 17, 4, 1, 1, buildTVSprite);
-
-  // Bookshelf on the right wall
-  placeFurniture(furniture, collision, 'bookshelf', 27, 4, 2, 2, buildBookshelfSprite);
-
-  // Arcade machine
-  placeFurniture(furniture, collision, 'arcadeMachine', 25, 4, 1, 2, buildArcadeMachineSprite, { animated: true });
-  secretTiles.push({ pos: { col: 25, row: 6 }, kind: 'arcade' });
-
-  // Bean bags
-  placeFurniture(furniture, collision, 'beanBag', 20, 8, 1, 1, buildBeanBagSprite, { noCollision: true });
-  placeFurniture(furniture, collision, 'beanBag', 22, 9, 1, 1, buildBeanBagSprite, { noCollision: true });
-
-  // Plants
+  // Plants for decoration
   placeFurniture(furniture, collision, 'plant', 15, 4, 1, 1, buildPlantSprite);
   placeFurniture(furniture, collision, 'plant', 28, 11, 1, 1, buildPlantSprite);
 
-  // Door from lounge to hallway (row 12, cols 20-21)
+  // Door to hallway (row 12, cols 20-21)
   tiles[12][20] = TileType.DOOR;
   tiles[12][21] = TileType.DOOR;
   collision[12][20] = false;
