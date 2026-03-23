@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { createHash } from "crypto";
 
 const AUTH_COOKIE = "mc-auth";
-const PIN_HASH = process.env.MC_PIN_HASH || hashPin("0000"); // Default PIN: 0000
+const PIN_HASH = process.env.MC_PIN_HASH || "";
 
 function hashPin(pin: string): string {
   return createHash("sha256").update(pin).digest("hex");

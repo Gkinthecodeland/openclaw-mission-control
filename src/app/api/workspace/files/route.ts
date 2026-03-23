@@ -90,6 +90,15 @@ export async function GET(request: NextRequest) {
     // keep raw path for better error message
   }
 
+  // Restrict to home directory to prevent arbitrary filesystem enumeration
+  const homeDir = process.env.HOME || "/Users/gkagent";
+  if (!workspacePath.startsWith(homeDir)) {
+    return NextResponse.json(
+      { error: "Access denied: path outside allowed root" },
+      { status: 403 }
+    );
+  }
+
   let s;
   try {
     s = await stat(workspacePath);

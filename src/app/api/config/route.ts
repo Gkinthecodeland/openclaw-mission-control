@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       config: redacted,
       rawConfig: parsed, // same structure as ~/.openclaw/openclaw.json for form + raw editor
-      resolvedConfig: resolved,
+      resolvedConfig: redacted,
       baseHash: configData.hash || "",
       schema: schemaData?.schema || {},
       uiHints: schemaData?.uiHints || {},

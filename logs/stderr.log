@@ -1,0 +1,56 @@
+(node:674) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+(node:12662) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+(node:795) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+(node:722) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404
+[intel] RSS fetch failed for nextjs-blog (https://nextjs.org/blog/rss.xml): Status code 404
+[intel] RSS fetch failed for vercel-blog (https://vercel.com/atom): Invalid time value
+[intel] RSS fetch failed for anthropic-blog (https://www.anthropic.com/rss.xml): Status code 404

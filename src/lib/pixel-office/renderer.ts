@@ -325,9 +325,9 @@ export class PixelOfficeRenderer {
     cam.targetX = targetChar.x + CHAR_SIZE / 2 - viewW / 2;
     cam.targetY = targetChar.y + CHAR_SIZE / 2 - viewH / 2;
 
-    // Clamp to map bounds
+    // Clamp to map bounds (cap Y so camera stays on the office rooms, ~row 12)
     const maxX = FLOOR_WIDTH - viewW;
-    const maxY = FLOOR_HEIGHT - viewH;
+    const maxY = Math.min(FLOOR_HEIGHT - viewH, 12 * TILE_SIZE - viewH / 2);
     cam.targetX = clamp(cam.targetX, 0, Math.max(0, maxX));
     cam.targetY = clamp(cam.targetY, 0, Math.max(0, maxY));
 
