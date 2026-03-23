@@ -45,3 +45,15 @@
 [intel] Scan complete: 28 fetched, 28 new, 0 dupes, 0 errors
 [intel] Scan complete: 14 fetched, 14 new, 0 dupes, 0 errors
 [intel] Scan complete: 20 fetched, 20 new, 0 dupes, 0 errors
+▲ Next.js 16.1.6
+- Local:         http://localhost:3333
+- Network:       http://0.0.0.0:3333
+
+✓ Starting...
+✓ Ready in 237ms
+▲ Next.js 16.1.6
+- Local:         http://localhost:3333
+- Network:       http://0.0.0.0:3333
+
+✓ Starting...
+✓ Ready in 231ms
